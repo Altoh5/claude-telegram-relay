@@ -310,7 +310,7 @@ They work. Claude CLI uses your `~/.claude/settings.json` config, so all your MC
 
 ## Credits
 
-Built by [Goda](https://youtube.com/@godaprojects) as part of the Personal AI Infrastructure project.
+Built by [Goda](https://www.youtube.com/@godago) as part of the Personal AI Infrastructure project.
 
 ## License
 
