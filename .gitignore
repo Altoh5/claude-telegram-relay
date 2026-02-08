@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+logs/*.log
+temp/
+uploads/
+*.lock
+bot.lock
+session-state.json
+memory.json
+checkin-state.json
+news-history.json
+last-processed-call.json
+meeting-actions-state.json
+bun.lock
