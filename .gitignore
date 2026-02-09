@@ -1,7 +1,9 @@
 node_modules/
 dist/
 .env
-logs/*.log
+.env.*
+!.env.example
+logs/
 temp/
 uploads/
 *.lock
@@ -9,6 +11,8 @@ bot.lock
 session-state.json
 memory.json
 checkin-state.json
+config/profile.md
+config/schedule.json
 config/.google-tokens.json
 news-history.json
 last-processed-call.json

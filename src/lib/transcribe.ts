@@ -70,6 +70,57 @@ export async function transcribeAudio(filePath: string): Promise<string> {
 }
 
 /**
+ * Transcribe audio from an in-memory buffer using Gemini.
+ * Used by the VPS gateway where files aren't written to disk.
+ */
+export async function transcribeAudioBuffer(
+  audioBuffer: Buffer,
+  mimeType: string = "audio/ogg"
+): Promise<string> {
+  if (!GEMINI_API_KEY()) {
+    return "[Voice transcription unavailable - no Gemini API key configured]";
+  }
+
+  try {
+    const base64Audio = audioBuffer.toString("base64");
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: "Transcribe this audio message accurately. Only output the transcription, nothing else.",
+                },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Audio,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    const result = await response.json();
+    return (
+      result.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "[Could not transcribe audio]"
+    );
+  } catch (error) {
+    console.error("Buffer transcription error:", error);
+    return "[Transcription failed]";
+  }
+}
+
+/**
  * Check if transcription is configured.
  */
 export function isTranscriptionEnabled(): boolean {

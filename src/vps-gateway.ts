@@ -1,0 +1,824 @@
+/**
+ * VPS Gateway — Telegram Webhook + Smart Routing + Voice + Human-in-the-Loop
+ *
+ * Always-on entry point for the Telegram bot on a VPS.
+ * Routes to local machine (subscription, free) when alive, or processes
+ * on VPS via direct Anthropic API (pay-per-token) when local is down.
+ *
+ * Run: bun run src/vps-gateway.ts
+ */
+
+import { Bot, InputFile } from "grammy";
+import type { Context } from "grammy";
+import { readFile } from "fs/promises";
+import { join } from "path";
+import { createHmac } from "crypto";
+import { spawn } from "child_process";
+import {
+  isMacAlive,
+  startHealthMonitor,
+  getHealthState,
+} from "./lib/mac-health";
+import {
+  handleTaskCallback,
+  formatTaskStatus,
+  checkStaleTasks,
+} from "./lib/task-queue";
+import { processWithAnthropic } from "./lib/anthropic-processor";
+import type { ResumeState } from "./lib/anthropic-processor";
+import {
+  textToSpeech,
+  buildVoiceAgentContext,
+  summarizeTranscript,
+  getCallTranscript,
+} from "./lib/voice";
+import { transcribeAudioBuffer } from "./lib/transcribe";
+import * as supabase from "./lib/supabase";
+
+// ============================================================
+// LOAD ENVIRONMENT
+// ============================================================
+
+const envPath = process.env.ENV_PATH || join(import.meta.dir, "..", ".env");
+const envContent = await readFile(envPath, "utf-8").catch(() => "");
+for (const line of envContent.split("\n")) {
+  const trimmed = line.trim();
+  if (trimmed && !trimmed.startsWith("#")) {
+    const [key, ...valueParts] = trimmed.split("=");
+    if (key && valueParts.length > 0) {
+      process.env[key.trim()] = valueParts.join("=").trim();
+    }
+  }
+}
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const ALLOWED_USER_ID = process.env.TELEGRAM_USER_ID || "";
+const GATEWAY_SECRET = process.env.GATEWAY_SECRET || "";
+const MAC_PROCESS_URL = process.env.MAC_PROCESS_URL || "";
+const NODE_ID = process.env.NODE_ID || "vps";
+const PORT = parseInt(process.env.PORT || "3000");
+const DEPLOY_SECRET = process.env.DEPLOY_SECRET || "";
+const USER_NAME = process.env.USER_NAME || "User";
+const BOT_NAME = process.env.BOT_NAME || "Go";
+
+// ============================================================
+// BOT SETUP
+// ============================================================
+
+if (!BOT_TOKEN) {
+  console.error("TELEGRAM_BOT_TOKEN is required");
+  process.exit(1);
+}
+
+const bot = new Bot(BOT_TOKEN);
+
+// Initialize bot (required for webhook mode — bot.start() does this for polling)
+await bot.init();
+console.log(`Bot initialized: @${bot.botInfo.username}`);
+
+// Security: only accept messages from allowed user
+bot.use(async (ctx, next) => {
+  const userId = ctx.from?.id?.toString();
+  if (ALLOWED_USER_ID && userId !== ALLOWED_USER_ID) {
+    console.log(`Blocked message from unauthorized user: ${userId}`);
+    return;
+  }
+  await next();
+});
+
+// ============================================================
+// FORWARD TO LOCAL MACHINE
+// ============================================================
+
+interface LocalResponse {
+  success: boolean;
+  response?: string;
+  error?: string;
+}
+
+async function forwardToLocal(
+  text: string,
+  chatId: string,
+  threadId?: number
+): Promise<LocalResponse> {
+  if (!MAC_PROCESS_URL) {
+    return { success: false, error: "MAC_PROCESS_URL not configured" };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+
+    const res = await fetch(MAC_PROCESS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GATEWAY_SECRET}`,
+      },
+      body: JSON.stringify({ text, chatId, threadId }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      return { success: false, error: `Local returned ${res.status}` };
+    }
+
+    const data = (await res.json()) as Record<string, any>;
+    return {
+      success: true,
+      response: data.response || data.result || "Processed.",
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ============================================================
+// SEND RESPONSE (handles long messages)
+// ============================================================
+
+async function sendResponse(ctx: Context, text: string): Promise<void> {
+  if (!text) return; // Empty = handled elsewhere (e.g. ask_user buttons)
+
+  const MAX_LENGTH = 4096;
+
+  if (text.length <= MAX_LENGTH) {
+    await ctx
+      .reply(text, { parse_mode: "Markdown" })
+      .catch(() => ctx.reply(text));
+    return;
+  }
+
+  // Split into chunks at newlines
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (remaining.length <= MAX_LENGTH) {
+      chunks.push(remaining);
+      break;
+    }
+    let splitAt = remaining.lastIndexOf("\n", MAX_LENGTH);
+    if (splitAt < MAX_LENGTH * 0.5) splitAt = MAX_LENGTH;
+    chunks.push(remaining.substring(0, splitAt));
+    remaining = remaining.substring(splitAt);
+  }
+
+  for (const chunk of chunks) {
+    await ctx
+      .reply(chunk, { parse_mode: "Markdown" })
+      .catch(() => ctx.reply(chunk));
+  }
+}
+
+// ============================================================
+// PHONE CALL TRANSCRIPT POLLING (fire-and-forget)
+// ============================================================
+
+function startCallTranscriptPolling(
+  conversationId: string,
+  chatId: string
+): void {
+  const POLL_INTERVAL_MS = 10_000;
+  const MAX_ATTEMPTS = 90;
+
+  console.log(
+    `Starting transcript polling for call ${conversationId} (every ${POLL_INTERVAL_MS / 1000}s, max ${MAX_ATTEMPTS} attempts)`
+  );
+
+  (async () => {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+
+      try {
+        const transcript = await getCallTranscript(conversationId);
+        if (!transcript) {
+          if (attempt % 6 === 0) {
+            console.log(
+              `Transcript poll #${attempt} for ${conversationId}: not ready yet`
+            );
+          }
+          continue;
+        }
+
+        console.log(
+          `Transcript received for ${conversationId} after ${attempt} polls`
+        );
+
+        const summary = await summarizeTranscript(transcript);
+
+        const summaryMsg = `**Phone Call Summary**\n\n${summary}\n\n_Full transcript saved._`;
+        await fetch(
+          `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: summaryMsg,
+              parse_mode: "Markdown",
+            }),
+          }
+        ).catch(() => {
+          fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: summaryMsg.replace(/\*\*/g, "").replace(/_/g, ""),
+            }),
+          }).catch(() => {});
+        });
+
+        await supabase
+          .saveMessage({
+            chat_id: chatId,
+            role: "assistant",
+            content: `[Phone call transcript]\n${transcript}\n\n[Summary]\n${summary}`,
+            metadata: {
+              type: "phone_call",
+              conversation_id: conversationId,
+              processed_by: NODE_ID,
+            },
+          })
+          .catch(() => {});
+
+        return; // Done
+      } catch (err: any) {
+        console.error(
+          `Transcript poll error (attempt ${attempt}):`,
+          err.message
+        );
+      }
+    }
+
+    console.log(
+      `Transcript polling timed out for ${conversationId} after ${MAX_ATTEMPTS} attempts`
+    );
+  })();
+}
+
+// ============================================================
+// MESSAGE HANDLER — Smart Routing
+// ============================================================
+
+bot.command("start", async (ctx) => {
+  await ctx.reply(
+    `${BOT_NAME} Gateway active. Local machine: ` +
+      (isMacAlive()
+        ? "ONLINE (routing to local)"
+        : "OFFLINE (VPS processing)")
+  );
+});
+
+bot.command("status", async (ctx) => {
+  const health = getHealthState();
+  const localStatus = health.isAlive ? "ONLINE" : "OFFLINE";
+  const lastCheck = health.lastCheck
+    ? `${Math.round((Date.now() - health.lastCheck) / 1000)}s ago`
+    : "never";
+
+  await ctx.reply(
+    `**Gateway Status**\n` +
+      `Local machine: ${localStatus}\n` +
+      `Last check: ${lastCheck}\n` +
+      `Failures: ${health.consecutiveFailures}\n` +
+      `Node: ${NODE_ID}`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+bot.command("tasks", async (ctx) => {
+  const chatId = ctx.chat.id.toString();
+  const status = await formatTaskStatus(chatId);
+  await ctx
+    .reply(status, { parse_mode: "Markdown" })
+    .catch(() => ctx.reply(status));
+});
+
+bot.on("message:text", async (ctx) => {
+  const text = ctx.message.text;
+  const chatId = ctx.chat.id.toString();
+  const threadId = ctx.message.message_thread_id;
+
+  console.log(
+    `Message: "${text.substring(0, 50)}..." | Local: ${isMacAlive() ? "UP" : "DOWN"}`
+  );
+
+  await ctx.replyWithChatAction("typing").catch(() => {});
+
+  // Log incoming message
+  await supabase
+    .saveMessage({
+      chat_id: chatId,
+      role: "user",
+      content: text,
+      metadata: {
+        telegram_user_id: ctx.from?.id,
+        telegram_chat_id: ctx.chat.id,
+        thread_id: threadId,
+        processed_by: NODE_ID,
+      },
+    })
+    .catch(() => {});
+
+  const typingInterval = setInterval(() => {
+    ctx.replyWithChatAction("typing").catch(() => {});
+  }, 4000);
+
+  let response: string;
+  let processedBy = NODE_ID;
+
+  try {
+    if (isMacAlive()) {
+      console.log("Routing to local machine...");
+      const localResult = await forwardToLocal(text, chatId, threadId);
+
+      if (localResult.success && localResult.response) {
+        response = localResult.response;
+        processedBy = "local";
+      } else {
+        console.log(
+          `Local forwarding failed (${localResult.error}), processing on VPS...`
+        );
+        response = await processWithAnthropic(
+          text,
+          chatId,
+          ctx,
+          undefined,
+          (convId) => startCallTranscriptPolling(convId, chatId)
+        );
+      }
+    } else {
+      console.log("Local machine down, processing on VPS...");
+      response = await processWithAnthropic(
+        text,
+        chatId,
+        ctx,
+        undefined,
+        (convId) => startCallTranscriptPolling(convId, chatId)
+      );
+    }
+  } finally {
+    clearInterval(typingInterval);
+  }
+
+  if (response) {
+    await supabase
+      .saveMessage({
+        chat_id: chatId,
+        role: "assistant",
+        content: response,
+        metadata: {
+          telegram_chat_id: ctx.chat.id,
+          thread_id: threadId,
+          processed_by: processedBy,
+        },
+      })
+      .catch(() => {});
+  }
+
+  await sendResponse(ctx, response);
+});
+
+// ============================================================
+// VOICE MESSAGE HANDLER
+// ============================================================
+
+bot.on("message:voice", async (ctx) => {
+  console.log("Voice message received");
+  await ctx.replyWithChatAction("typing").catch(() => {});
+
+  const chatId = ctx.chat.id.toString();
+  const threadId = ctx.message.message_thread_id;
+
+  // Fire-and-forget: don't block Grammy's update loop
+  (async () => {
+    try {
+      // Download voice file as buffer (no temp files on VPS)
+      const file = await ctx.getFile();
+      const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
+      const downloadRes = await fetch(fileUrl);
+      const oggBuffer = Buffer.from(await downloadRes.arrayBuffer());
+
+      // Transcribe with Gemini (buffer-based, no disk writes)
+      const transcription = await transcribeAudioBuffer(oggBuffer);
+      console.log(`Transcribed: ${transcription.substring(0, 50)}...`);
+
+      await supabase
+        .saveMessage({
+          chat_id: chatId,
+          role: "user",
+          content: `[Voice message]: ${transcription}`,
+          metadata: {
+            telegram_user_id: ctx.from?.id,
+            telegram_chat_id: ctx.chat.id,
+            thread_id: threadId,
+            processed_by: NODE_ID,
+            type: "voice",
+          },
+        })
+        .catch(() => {});
+
+      const typingInterval = setInterval(() => {
+        ctx.replyWithChatAction("typing").catch(() => {});
+      }, 4000);
+
+      let response: string;
+      let processedBy = NODE_ID;
+
+      try {
+        if (isMacAlive()) {
+          const localResult = await forwardToLocal(
+            `[Voice message transcription]: ${transcription}`,
+            chatId,
+            threadId
+          );
+          if (localResult.success && localResult.response) {
+            response = localResult.response;
+            processedBy = "local";
+          } else {
+            response = await processWithAnthropic(
+              `[Voice message transcription]: ${transcription}`,
+              chatId,
+              ctx,
+              undefined,
+              (convId) => startCallTranscriptPolling(convId, chatId)
+            );
+          }
+        } else {
+          response = await processWithAnthropic(
+            `[Voice message transcription]: ${transcription}`,
+            chatId,
+            ctx,
+            undefined,
+            (convId) => startCallTranscriptPolling(convId, chatId)
+          );
+        }
+      } finally {
+        clearInterval(typingInterval);
+      }
+
+      if (!response) return; // ask_user handled it
+
+      await supabase
+        .saveMessage({
+          chat_id: chatId,
+          role: "assistant",
+          content: response,
+          metadata: {
+            telegram_chat_id: ctx.chat.id,
+            thread_id: threadId,
+            processed_by: processedBy,
+            type: "voice_response",
+          },
+        })
+        .catch(() => {});
+
+      // Reply with voice + text
+      const audioBuffer = await textToSpeech(response);
+      if (audioBuffer) {
+        await ctx
+          .replyWithVoice(new InputFile(audioBuffer, "response.mp3"))
+          .catch((err) => {
+            console.error("Failed to send voice reply:", err.message);
+          });
+      }
+      await sendResponse(ctx, response);
+    } catch (error: any) {
+      console.error("Voice processing error:", error);
+      await ctx
+        .reply(
+          "Sorry, couldn't process your voice message. Please try again or send text."
+        )
+        .catch(() => {});
+    }
+  })();
+});
+
+// ============================================================
+// CALLBACK QUERY HANDLER (Inline Buttons — Human-in-the-Loop)
+// ============================================================
+
+bot.on("callback_query:data", async (ctx) => {
+  const data = ctx.callbackQuery.data;
+  console.log(`Button pressed: ${data}`);
+  await ctx.answerCallbackQuery();
+
+  if (data.startsWith("atask:")) {
+    const result = await handleTaskCallback(data);
+    const chatId = ctx.chat?.id?.toString() || "";
+
+    if (!result) {
+      await ctx.editMessageText("Task not found.").catch(() => {});
+      return;
+    }
+
+    if (result.cancelled) {
+      await ctx.editMessageText("Task cancelled.").catch(() => {});
+      return;
+    }
+
+    // Check if task has messages_snapshot for proper resume
+    if (result.task?.metadata?.messages_snapshot) {
+      console.log(
+        `Resuming from ask_user: task=${result.taskId}, choice="${result.choice}"`
+      );
+      await ctx
+        .editMessageText(`Got it: "${result.choice}". Resuming...`)
+        .catch(() => {});
+
+      const resumeState: ResumeState = {
+        taskId: result.taskId,
+        messagesSnapshot: result.task.metadata.messages_snapshot,
+        assistantContent: result.task.metadata.assistant_content,
+        userChoice: result.choice,
+        toolUseId: result.task.metadata.tool_use_id,
+      };
+
+      const response = await processWithAnthropic(
+        result.task.original_prompt,
+        chatId,
+        ctx,
+        resumeState
+      );
+
+      if (response) {
+        await supabase
+          .saveMessage({
+            chat_id: chatId,
+            role: "assistant",
+            content: response,
+            metadata: {
+              telegram_chat_id: ctx.chat?.id,
+              processed_by: NODE_ID,
+              resumed_from_task: result.taskId,
+            },
+          })
+          .catch(() => {});
+
+        await sendResponse(ctx, response);
+      }
+
+      await supabase
+        .updateTask(result.taskId, {
+          status: "completed",
+          result: response?.substring(0, 1000) || "Completed",
+        })
+        .catch(() => {});
+
+      return;
+    }
+
+    // Fallback: no snapshot, start fresh with context
+    await ctx
+      .editMessageText(`Got it: "${result.choice}". Resuming...`)
+      .catch(() => {});
+
+    const response = await processWithAnthropic(
+      `Continue this task: ${result.task?.original_prompt}\n\nPrevious context: ${result.task?.current_step}\n\nUser chose: ${result.choice}`,
+      chatId,
+      ctx
+    );
+    await sendResponse(ctx, response);
+    return;
+  }
+
+  // Forward other callbacks to local if alive
+  if (isMacAlive()) {
+    // TODO: Forward callback to local machine's /callback endpoint
+  }
+});
+
+// ============================================================
+// HEARTBEAT + STALE TASK CHECKER
+// ============================================================
+
+setInterval(async () => {
+  await supabase.upsertHeartbeat(NODE_ID, {
+    mac_alive: isMacAlive(),
+    uptime: process.uptime(),
+  });
+}, 30_000);
+
+supabase.upsertHeartbeat(NODE_ID, { started_at: new Date().toISOString() });
+
+setInterval(async () => {
+  const reminded = await checkStaleTasks(BOT_TOKEN, ALLOWED_USER_ID);
+  if (reminded > 0) {
+    console.log(`Sent ${reminded} task reminder(s)`);
+  }
+}, 15 * 60 * 1000);
+
+// ============================================================
+// START
+// ============================================================
+
+startHealthMonitor();
+
+const server = Bun.serve({
+  port: PORT,
+  async fetch(req) {
+    const url = new URL(req.url);
+
+    const corsHeaders: Record<string, string> = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    // Health endpoint
+    if (url.pathname === "/health") {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          service: "vps-gateway",
+          node: NODE_ID,
+          local_alive: isMacAlive(),
+          uptime: Math.floor(process.uptime()),
+          timestamp: new Date().toISOString(),
+        }),
+        {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    // ElevenLabs voice agent context endpoint
+    if (url.pathname === "/context" && req.method === "GET") {
+      try {
+        console.log("Voice agent requesting context...");
+        const context = await buildVoiceAgentContext();
+        return new Response(JSON.stringify(context), {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (error: any) {
+        console.error("Context endpoint error:", error);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch context" }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
+      }
+    }
+
+    // ElevenLabs post-call webhook
+    if (url.pathname === "/webhook/elevenlabs" && req.method === "POST") {
+      try {
+        const payload = (await req.json()) as {
+          conversation_id?: string;
+          status?: string;
+          transcript?: { role: string; message: string }[];
+        };
+        console.log(
+          "ElevenLabs webhook received:",
+          payload.conversation_id
+        );
+
+        if (payload.status === "done" && payload.transcript) {
+          const botName = BOT_NAME;
+          const transcriptText = payload.transcript
+            .map(
+              (msg) =>
+                `${msg.role === "agent" ? botName : USER_NAME}: ${msg.message}`
+            )
+            .join("\n");
+
+          const summary = await summarizeTranscript(transcriptText);
+          const telegramMsg = `**Call Summary**\n\n${summary}`;
+
+          await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: ALLOWED_USER_ID,
+                text: telegramMsg,
+                parse_mode: "Markdown",
+              }),
+            }
+          );
+
+          await supabase
+            .saveMessage({
+              chat_id: ALLOWED_USER_ID,
+              role: "assistant",
+              content: `[Call transcript]\n${transcriptText}\n\n[Summary]\n${summary}`,
+              metadata: {
+                type: "phone_call",
+                conversation_id: payload.conversation_id,
+                processed_by: NODE_ID,
+              },
+            })
+            .catch(() => {});
+        }
+
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (error: any) {
+        console.error("ElevenLabs webhook error:", error);
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // GitHub auto-deploy webhook
+    if (url.pathname === "/deploy" && req.method === "POST") {
+      if (!DEPLOY_SECRET) {
+        return new Response("Deploy not configured", { status: 503 });
+      }
+
+      const body = await req.text();
+      const signature = req.headers.get("x-hub-signature-256") || "";
+      const expected =
+        "sha256=" +
+        createHmac("sha256", DEPLOY_SECRET).update(body).digest("hex");
+
+      if (signature !== expected) {
+        console.log("Deploy webhook: invalid signature");
+        return new Response("Invalid signature", { status: 401 });
+      }
+
+      try {
+        const payload = JSON.parse(body) as { ref?: string };
+        const deployBranch = process.env.DEPLOY_BRANCH || "refs/heads/master";
+        if (payload.ref && payload.ref !== deployBranch) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              skipped: `not ${deployBranch}`,
+            }),
+            { headers: { "Content-Type": "application/json" } }
+          );
+        }
+      } catch {}
+
+      console.log("Deploy webhook: valid push, deploying...");
+
+      const deployScript =
+        process.env.DEPLOY_SCRIPT || join(import.meta.dir, "..", "deploy.sh");
+      const child = spawn("bash", [deployScript], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      return new Response(
+        JSON.stringify({ ok: true, message: "Deploy started" }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Telegram webhook
+    if (url.pathname === "/telegram") {
+      const secretToken = req.headers.get(
+        "x-telegram-bot-api-secret-token"
+      );
+      if (GATEWAY_SECRET && secretToken !== GATEWAY_SECRET) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+
+      try {
+        const update = await req.json();
+        bot.handleUpdate(update).catch((err) => {
+          console.error("Error handling update:", err);
+        });
+      } catch (err) {
+        console.error("Failed to parse webhook update:", err);
+      }
+
+      return new Response("OK", { status: 200 });
+    }
+
+    return new Response("Not found", { status: 404 });
+  },
+});
+
+console.log(`
+VPS Gateway started!
+  Port: ${PORT}
+  Node: ${NODE_ID}
+  Bot: @${bot.botInfo.username}
+  Webhook: /telegram
+  Health: /health
+  Context: /context (voice agent)
+  Webhook: /webhook/elevenlabs
+  Deploy: /deploy${DEPLOY_SECRET ? " [configured]" : " [NOT configured]"}
+  Local health: ${process.env.MAC_HEALTH_URL || "(Supabase heartbeat only)"}
+`);
+
+supabase.testConnection().catch(() => {});

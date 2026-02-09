@@ -510,6 +510,246 @@ export async function log(
 }
 
 // ---------------------------------------------------------------------------
+// Async Tasks (Human-in-the-Loop — VPS mode)
+// ---------------------------------------------------------------------------
+
+export interface AsyncTask {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  chat_id: string;
+  original_prompt: string;
+  status: "pending" | "running" | "needs_input" | "completed" | "failed";
+  result?: string;
+  session_id?: string;
+  current_step?: string;
+  pending_question?: string;
+  pending_options?: { label: string; value: string }[];
+  user_response?: string;
+  thread_id?: number;
+  processed_by?: string;
+  reminder_sent?: boolean;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Create a new async task (used when Claude starts a long-running operation).
+ */
+export async function createTask(
+  chatId: string,
+  originalPrompt: string,
+  threadId?: number,
+  processedBy?: string
+): Promise<AsyncTask | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+
+  try {
+    const { data, error } = await sb
+      .from("async_tasks")
+      .insert({
+        chat_id: chatId,
+        original_prompt: originalPrompt,
+        status: "running",
+        thread_id: threadId,
+        processed_by: processedBy,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("createTask error:", error.message);
+      return null;
+    }
+    return data as AsyncTask;
+  } catch (err) {
+    console.error("createTask exception:", err);
+    return null;
+  }
+}
+
+/**
+ * Update an async task's fields.
+ */
+export async function updateTask(
+  taskId: string,
+  updates: Partial<Omit<AsyncTask, "id" | "created_at">>
+): Promise<boolean> {
+  const sb = getSupabase();
+  if (!sb) return false;
+
+  try {
+    const { error } = await sb
+      .from("async_tasks")
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq("id", taskId);
+
+    if (error) {
+      console.error("updateTask error:", error.message);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get a task by its ID.
+ */
+export async function getTaskById(taskId: string): Promise<AsyncTask | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+
+  try {
+    const { data, error } = await sb
+      .from("async_tasks")
+      .select("*")
+      .eq("id", taskId)
+      .single();
+
+    if (error) return null;
+    return data as AsyncTask;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get tasks waiting for user input in a specific chat.
+ */
+export async function getPendingTasks(chatId: string): Promise<AsyncTask[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+
+  try {
+    const { data, error } = await sb
+      .from("async_tasks")
+      .select("*")
+      .eq("chat_id", chatId)
+      .eq("status", "needs_input")
+      .order("created_at", { ascending: false });
+
+    if (error) return [];
+    return (data || []) as AsyncTask[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get currently running tasks in a specific chat.
+ */
+export async function getRunningTasks(chatId: string): Promise<AsyncTask[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+
+  try {
+    const { data, error } = await sb
+      .from("async_tasks")
+      .select("*")
+      .eq("chat_id", chatId)
+      .eq("status", "running")
+      .order("created_at", { ascending: false });
+
+    if (error) return [];
+    return (data || []) as AsyncTask[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get tasks that have been waiting for input longer than the threshold.
+ */
+export async function getStaleTasks(
+  thresholdMs: number = 2 * 60 * 60 * 1000
+): Promise<AsyncTask[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+
+  const cutoff = new Date(Date.now() - thresholdMs).toISOString();
+
+  try {
+    const { data, error } = await sb
+      .from("async_tasks")
+      .select("*")
+      .eq("status", "needs_input")
+      .eq("reminder_sent", false)
+      .lt("updated_at", cutoff);
+
+    if (error) return [];
+    return (data || []) as AsyncTask[];
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Node Heartbeat (Hybrid mode — local ↔ VPS health tracking)
+// ---------------------------------------------------------------------------
+
+/**
+ * Update heartbeat for a node.
+ */
+export async function upsertHeartbeat(
+  nodeId: string,
+  metadata?: Record<string, any>
+): Promise<boolean> {
+  const sb = getSupabase();
+  if (!sb) return false;
+
+  try {
+    const { error } = await sb
+      .from("node_heartbeat")
+      .upsert({
+        node_id: nodeId,
+        last_heartbeat: new Date().toISOString(),
+        metadata: metadata || {},
+      });
+
+    if (error) {
+      console.error("upsertHeartbeat error:", error.message);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a node is online (heartbeat within maxAgeMs).
+ */
+export async function getNodeStatus(
+  nodeId: string,
+  maxAgeMs: number = 90_000
+): Promise<{ online: boolean; lastHeartbeat: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { online: false, lastHeartbeat: null };
+
+  try {
+    const { data, error } = await sb
+      .from("node_heartbeat")
+      .select("last_heartbeat")
+      .eq("node_id", nodeId)
+      .single();
+
+    if (error || !data) return { online: false, lastHeartbeat: null };
+
+    const lastBeat = new Date(data.last_heartbeat).getTime();
+    const age = Date.now() - lastBeat;
+
+    return {
+      online: age < maxAgeMs,
+      lastHeartbeat: data.last_heartbeat,
+    };
+  } catch {
+    return { online: false, lastHeartbeat: null };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Connection Test
 // ---------------------------------------------------------------------------
 

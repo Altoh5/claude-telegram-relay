@@ -6,8 +6,12 @@
 ## What This Sets Up
 
 An always-on Telegram bot that:
-- Relays your messages to Claude Code and sends back responses
+- Relays your messages to Claude and sends back responses
+- **Two processing engines**: Claude Code CLI (local, free with subscription) or Anthropic API (VPS, pay-per-token)
+- **Hybrid mode**: VPS always on, forwards to local when your machine is awake
 - Runs multiple specialized AI agents (Research, Content, Finance, Strategy, Critic)
+- **Built-in tools**: Gmail, Calendar, Notion, WhatsApp, phone calls (VPS mode)
+- **Human-in-the-loop**: Claude asks for confirmation via inline buttons before taking actions
 - Proactively checks in with smart context awareness
 - Sends morning briefings with your goals, calendar, and AI news
 - Persists memory (facts, goals, conversation history) via Supabase
@@ -180,17 +184,55 @@ Daily summary with goals, calendar, and optionally AI news.
 ## Phase 9: VPS Deployment (Optional, ~30 min)
 
 ### What This Does
-Deploy the bot to a cloud VPS so it runs 24/7 without depending on your local machine.
+Deploy the bot to a cloud VPS so it runs 24/7 without depending on your local machine. The VPS uses the Anthropic API directly (no Claude Code CLI needed) and supports three deployment modes:
+
+| Mode | How It Works | Cost |
+|------|-------------|------|
+| **Local Only** | Runs on your desktop, uses Claude Code CLI | Free with Claude subscription |
+| **VPS Only** | Runs on a cloud server, uses Anthropic API directly | VPS (~$5/mo) + API tokens |
+| **Hybrid** (recommended) | VPS always on, forwards to local when awake | VPS cost + subscription |
+
+### VPS Architecture
+The VPS gateway (`src/vps-gateway.ts`) runs in webhook mode and processes messages directly through the Anthropic Messages API with built-in tools:
+
+- **Gmail** — search, read, send, reply (via Google OAuth refresh tokens)
+- **Calendar** — list events (via Google Workspace refresh tokens)
+- **Notion** — query tasks, search pages (via Notion API token)
+- **WhatsApp** — find chats, send messages (via Unipile)
+- **Phone Calls** — outbound calls via ElevenLabs + Twilio
+- **Human-in-the-Loop** — Claude asks for confirmation via inline buttons before taking actions
+
+### What you need:
+1. **A VPS** — Any provider works. [Hostinger](https://hostinger.com?REFERRALCODE=1GODA06) is recommended (promo code **GODAGO** for discount)
+2. **Anthropic API key** — From [console.anthropic.com](https://console.anthropic.com)
+3. **Domain or IP** — For Telegram webhook URL
 
 ### What Claude Code does:
-- Walks you through provisioning a VPS (Hostinger recommended, any provider works)
-- Guides server security hardening (SSH keys, UFW, fail2ban)
-- Installs Bun, Node.js, PM2, and Claude Code CLI
-- Deploys the bot with PM2 + cron (Linux equivalent of launchd)
-- Sets up Google OAuth token migration (Keychain → file)
+- Walks you through provisioning and hardening the VPS (SSH keys, UFW, fail2ban)
+- Installs Bun and deploys the bot
+- Configures Telegram webhook (`https://your-domain/telegram`)
+- Sets up `.env` with API keys and refresh tokens
+- Configures PM2 for process management
+- Sets up GitHub webhook for auto-deploy (optional)
+- For **hybrid mode**: configures Cloudflare Tunnel on your local machine + health check endpoints
+
+### VPS .env setup:
+```bash
+# Required for VPS
+ANTHROPIC_API_KEY=sk-ant-api03-your_key_here
+
+# Google APIs (export from your Mac with: bun run setup/export-tokens.ts)
+GMAIL_REFRESH_TOKEN=your_gmail_refresh_token
+WORKSPACE_REFRESH_TOKEN=your_workspace_refresh_token
+
+# Hybrid mode (optional)
+MAC_HEALTH_URL=https://your-tunnel.example.com/health
+MAC_PROCESS_URL=https://your-tunnel.example.com/process
+GATEWAY_SECRET=your_shared_secret
+```
 
 ### Tell me:
-"Deploy to VPS" and I'll walk you through it. See `docs/11-vps-deployment.md` for the full guide.
+"Deploy to VPS" and I'll walk you through it.
 
 ---
 
@@ -210,20 +252,26 @@ Deploy the bot to a cloud VPS so it runs 24/7 without depending on your local ma
 
 ```
 src/
-  bot.ts                 # Main relay daemon
+  bot.ts                 # Main relay daemon (local mode, polling)
+  vps-gateway.ts         # VPS gateway (webhook mode, Anthropic API)
   smart-checkin.ts       # Proactive check-ins
   morning-briefing.ts    # Daily briefing
   watchdog.ts            # Health monitor
   lib/                   # Shared utilities
     env.ts               # Environment loader
     telegram.ts          # Telegram helpers
-    claude.ts            # Claude Code subprocess
+    claude.ts            # Claude Code subprocess (local mode)
+    anthropic-processor.ts  # Direct Anthropic API with tools (VPS mode)
     google-auth.ts       # Google OAuth (cross-platform: keychain/file)
-    supabase.ts          # Database client
+    google-auth-vps.ts   # Google OAuth token refresh for VPS
+    direct-apis.ts       # Direct REST API calls (Gmail, Calendar, Notion)
+    mac-health.ts        # Local machine health checking (hybrid mode)
+    task-queue.ts        # Human-in-the-loop task management
+    supabase.ts          # Database client + async tasks + heartbeat
     memory.ts            # Facts, goals, intents
     fallback-llm.ts      # Backup LLM chain
-    voice.ts             # ElevenLabs TTS/calls
-    transcribe.ts        # Gemini transcription
+    voice.ts             # ElevenLabs TTS/calls/context
+    transcribe.ts        # Gemini transcription (file + buffer)
   agents/                # Multi-agent system
     base.ts              # Agent interface + routing
     index.ts             # Registry
@@ -239,6 +287,7 @@ config/
   schedule.example.json  # Default schedule template
 db/
   schema.sql             # Supabase database schema
+deploy.sh               # Auto-deploy script (VPS)
 setup/
   install.ts             # Prerequisites checker + installer
   configure-launchd.ts   # macOS launchd plist generator
@@ -251,14 +300,18 @@ launchd/
   templates/             # Plist templates for services (macOS)
 logs/                    # Service log files
 docs/
+  architecture.md        # Architecture deep dive
   troubleshooting.md     # Common issues and fixes
 ```
 
 ## Useful Commands
 
 ```bash
-# Start bot manually
+# Local mode (polling, uses Claude Code CLI)
 bun run start
+
+# VPS mode (webhook, uses Anthropic API directly)
+bun run vps
 
 # Run check-in manually
 bun run checkin
@@ -274,7 +327,13 @@ launchctl list | grep com.go                           # Check service status
 launchctl unload ~/Library/LaunchAgents/com.go.telegram-relay.plist  # Stop
 launchctl load ~/Library/LaunchAgents/com.go.telegram-relay.plist    # Start
 
-# --- Windows/Linux ---
+# --- VPS (PM2) ---
+pm2 start src/vps-gateway.ts --name go-bot --interpreter bun  # Start
+pm2 status                         # Check service status
+pm2 restart go-bot                 # Restart
+pm2 logs go-bot --lines 50        # View logs
+
+# --- Windows/Linux (local mode with PM2) ---
 npx pm2 status                      # Check service status
 npx pm2 restart go-telegram-relay   # Restart a service
 npx pm2 logs                        # View logs
@@ -301,6 +360,22 @@ See `docs/troubleshooting.md` for common issues and fixes.
 - `StartInterval` pauses during sleep and does NOT catch up
 - `StartCalendarInterval` fires immediately after wake if the time was missed
 - After editing a plist: unload then load (not just load)
+
+**VPS gateway not processing:**
+- Check `ANTHROPIC_API_KEY` is set and valid
+- Verify Telegram webhook is set: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo`
+- Check PM2 logs: `pm2 logs go-bot --lines 50`
+- For hybrid mode: verify `MAC_HEALTH_URL` is reachable from VPS
+
+**VPS Google API errors (401/403):**
+- Refresh tokens expire if unused for 6+ months -- re-export from your Mac
+- Run `bun run setup/export-tokens.ts` on your Mac to get fresh tokens
+- Verify `GMAIL_REFRESH_TOKEN` and `WORKSPACE_REFRESH_TOKEN` in VPS `.env`
+
+**Human-in-the-loop buttons not working:**
+- Ensure `async_tasks` table exists in Supabase (run `db/schema.sql`)
+- Check that the bot has callback_query permissions (BotFather settings)
+- Stale tasks auto-remind after 2 hours
 
 **Supabase connection errors:**
 - Verify your keys in `.env` match the Supabase dashboard

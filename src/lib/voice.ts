@@ -212,3 +212,91 @@ export function isCallEnabled(): boolean {
     USER_PHONE_NUMBER()
   );
 }
+
+/**
+ * Summarize a phone call transcript using Anthropic API.
+ * Falls back to truncated transcript if API unavailable.
+ */
+export async function summarizeTranscript(
+  transcript: string
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return transcript.substring(0, 500) + "\n\n(Full summary unavailable)";
+  }
+
+  try {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const client = new Anthropic({ apiKey });
+
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 1024,
+      messages: [
+        {
+          role: "user",
+          content: `Summarize this phone call transcript concisely. Include key points, decisions made, and any action items.\n\n${transcript.substring(0, 6000)}`,
+        },
+      ],
+    });
+
+    const textBlocks = response.content.filter(
+      (b): b is { type: "text"; text: string } => b.type === "text"
+    );
+    return textBlocks.map((b) => b.text).join("\n") || "No summary generated.";
+  } catch (err: any) {
+    console.error("Transcript summarization error:", err.message);
+    return transcript.substring(0, 500) + "\n\n(Summarization failed)";
+  }
+}
+
+/**
+ * Build dynamic context payload for ElevenLabs voice agent.
+ * Called by the /context endpoint when ElevenLabs agent starts a call.
+ */
+export async function buildVoiceAgentContext(): Promise<Record<string, any>> {
+  const userName = process.env.USER_NAME || "User";
+  const userTimezone = process.env.USER_TIMEZONE || "UTC";
+
+  const now = new Date();
+  const localTime = now.toLocaleString("en-US", {
+    timeZone: userTimezone,
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  // Gather context from Supabase
+  let memory = "";
+  let recentChat = "";
+  let goals = "";
+
+  try {
+    memory = await supabase.getMemoryContext();
+    const chatId = process.env.TELEGRAM_USER_ID || "";
+    const messages = await supabase.getRecentMessages(chatId, 5);
+    recentChat = messages
+      .map((m) => {
+        const role = m.role === "user" ? userName : "Bot";
+        return `${role}: ${m.content.substring(0, 200)}`;
+      })
+      .join("\n");
+    const activeGoals = await supabase.getActiveGoals();
+    goals = activeGoals
+      .map((g) => `- ${g.content}${g.deadline ? ` (by ${g.deadline})` : ""}`)
+      .join("\n");
+  } catch (err) {
+    console.error("Voice context fetch error:", err);
+  }
+
+  return {
+    user_name: userName,
+    current_time: localTime,
+    timezone: userTimezone,
+    memory: memory.substring(0, 2000),
+    recent_telegram: recentChat.substring(0, 2000),
+    active_goals: goals.substring(0, 1000),
+  };
+}

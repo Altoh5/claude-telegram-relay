@@ -1,10 +1,11 @@
 {
   "name": "go-telegram-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Always-on AI Telegram bot powered by Claude Code with multi-agent routing, proactive check-ins, and persistent memory",
   "type": "module",
   "scripts": {
     "start": "bun run src/bot.ts",
+    "vps": "bun run src/vps-gateway.ts",
     "checkin": "bun run src/smart-checkin.ts",
     "briefing": "bun run src/morning-briefing.ts",
     "watchdog": "bun run src/watchdog.ts",
@@ -17,8 +18,9 @@
     "uninstall": "bun run setup/uninstall.ts"
   },
   "dependencies": {
-    "grammy": "^1.35.0",
-    "@supabase/supabase-js": "^2.49.0"
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "grammy": "^1.35.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

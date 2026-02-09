@@ -1,28 +1,49 @@
 # Go — Always-On AI Telegram Bot
 
-An always-on Telegram bot powered by Claude Code with multi-agent routing, proactive check-ins, persistent memory, and morning briefings. Works on macOS, Windows, and Linux.
+An always-on Telegram bot powered by Claude with multi-agent routing, proactive check-ins, persistent memory, voice calls, and morning briefings. Supports three deployment modes: local desktop, cloud VPS, or hybrid (recommended).
+
+**Created by [Goda Go](https://youtube.com/@GodaGo)** | [AI Productivity Hub Community](https://skool.com/ai-productivity-hub)
 
 ## What It Does
 
 ```
-You (Telegram) → Go Bot → Claude Code → Response → You (Telegram)
-                    ↓
-              Multi-Agent System
-              ├── Research Agent (ReAct)
-              ├── Content Agent (RoT)
-              ├── Finance Agent (CoT)
-              ├── Strategy Agent (ToT)
-              └── Critic Agent (Devil's Advocate)
+                          ┌── Local Machine (Claude Code CLI, subscription)
+You ──▶ Telegram ──▶ Bot ─┤
+                          └── VPS (Anthropic API, pay-per-token)
+                                  │
+                                  ├── Gmail (search, send, reply)
+                                  ├── Calendar (list events)
+                                  ├── Notion (query tasks, search)
+                                  ├── WhatsApp (find chat, send)
+                                  ├── Phone Calls (ElevenLabs + Twilio)
+                                  └── Human-in-the-Loop (ask before acting)
 ```
 
-- **Relay**: Send messages on Telegram, get Claude Code responses back
+- **Relay**: Send messages on Telegram, get Claude responses back
 - **Multi-Agent**: Route messages to specialized agents via Telegram forum topics
 - **Memory**: Persistent facts, goals, and conversation history via Supabase
 - **Proactive**: Smart check-ins that know when to reach out (and when not to)
 - **Briefings**: Daily morning summary with goals, calendar, and AI news
-- **Always-On**: Survives reboots via launchd (macOS), PM2 + Task Scheduler (Windows), or PM2 + cron (Linux)
-- **Resilient**: Falls back to OpenRouter/Ollama when Claude is unavailable
-- **Voice** (optional): Text-to-speech replies and phone calls via ElevenLabs
+- **Voice**: Text-to-speech replies, voice transcription, and phone calls
+- **Human-in-the-Loop**: Claude asks for confirmation via inline buttons before taking actions
+- **Hybrid Mode**: VPS catches messages 24/7, forwards to your local machine when it's awake
+- **Auto-Deploy**: Push to GitHub, VPS pulls and restarts automatically
+
+## Deployment Modes
+
+| Mode | How It Works | Cost |
+|------|-------------|------|
+| **Local Only** | Runs on your desktop, uses Claude Code CLI | Free with Claude subscription ($20/mo) |
+| **VPS Only** | Runs on a cloud server, uses Anthropic API directly | VPS (~$5/mo) + API tokens (~$3-15/1M tokens) |
+| **Hybrid** (recommended) | VPS always on, forwards to local when awake | VPS cost + subscription (API only when local is off) |
+
+### Why Hybrid?
+
+Your laptop sleeps. Your VPS doesn't. With hybrid mode:
+- Messages are always processed, even at 3am
+- When your local machine is awake, it handles everything (free with subscription)
+- When it sleeps, VPS takes over with direct Anthropic API (pay-per-token)
+- You get the best of both: always-on reliability + subscription savings
 
 ## Quick Start
 
@@ -37,16 +58,17 @@ You (Telegram) → Go Bot → Claude Code → Response → You (Telegram)
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/go-telegram-bot.git
+git clone https://github.com/GodaGo/go-telegram-bot.git
 cd go-telegram-bot
 
-# Open with Claude Code
-claude
+# Install dependencies
+bun install
 
-# Claude reads CLAUDE.md and guides you through setup
+# Open with Claude Code — it reads CLAUDE.md and guides you through setup
+claude
 ```
 
-That's it. Claude Code reads the `CLAUDE.md` file and walks you through a guided conversation to:
+Claude Code reads the `CLAUDE.md` file and walks you through a guided conversation to:
 
 1. Create a Telegram bot via BotFather
 2. Set up Supabase for persistent memory
@@ -54,6 +76,7 @@ That's it. Claude Code reads the `CLAUDE.md` file and walks you through a guided
 4. Test the bot
 5. Configure always-on services
 6. Set up optional integrations (voice, AI news, fallback LLMs)
+7. Deploy to VPS (optional)
 
 ## Tech Stack
 
@@ -61,20 +84,24 @@ That's it. Claude Code reads the `CLAUDE.md` file and walks you through a guided
 |-----------|-----------|
 | Runtime | [Bun](https://bun.sh) |
 | Telegram SDK | [grammY](https://grammy.dev) |
-| AI Backend | [Claude Code](https://claude.ai/claude-code) CLI |
+| AI (Local) | [Claude Code](https://claude.ai/claude-code) CLI |
+| AI (VPS) | [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) |
 | Database | [Supabase](https://supabase.com) (PostgreSQL) |
-| Always-On | macOS launchd / PM2 + Task Scheduler / PM2 + cron |
+| Always-On | macOS launchd / PM2 + cron / VPS webhook mode |
 | Voice (opt.) | [ElevenLabs](https://elevenlabs.io) |
+| Phone Calls (opt.) | ElevenLabs + [Twilio](https://twilio.com) |
 | Transcription (opt.) | [Google Gemini](https://ai.google.dev) |
+| WhatsApp (opt.) | [Unipile](https://unipile.com) |
 | AI News (opt.) | [Grok/xAI](https://x.ai) |
 | Fallback LLM (opt.) | [OpenRouter](https://openrouter.ai) / [Ollama](https://ollama.ai) |
 
 ## Architecture
 
+### Local Mode
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
 │  Telegram    │────▶│  Go Bot      │────▶│  Claude Code    │
-│  (grammY)   │◀────│  (Bun)       │◀────│  CLI Subprocess │
+│  (grammY)   │◀────│  (polling)   │◀────│  CLI Subprocess │
 └─────────────┘     └──────┬───────┘     └─────────────────┘
                            │
                     ┌──────┴───────┐
@@ -83,47 +110,63 @@ That's it. Claude Code reads the `CLAUDE.md` file and walks you through a guided
                     │  - Memory    │
                     │  - Logs      │
                     └──────────────┘
-
-┌──────────────────────────────────────────────┐
-│  Background Services                          │
-│  macOS: launchd  │  Win/Linux: PM2 + scheduler│
-│  ├── telegram-relay (daemon)                  │
-│  ├── smart-checkin (periodic)                 │
-│  ├── morning-briefing (daily)                 │
-│  └── watchdog (hourly)                        │
-└──────────────────────────────────────────────┘
 ```
 
-## Course Modules
+### Hybrid Mode (Recommended)
+```
+┌───────────┐     ┌─────────────────────────────────────────────┐
+│ Telegram  │     │  VPS Gateway (always on, webhook mode)      │
+│           │────▶│                                              │
+│           │◀────│  Is local machine alive?                     │
+└───────────┘     │  ├── YES → forward to local (free)          │
+                  │  └── NO  → process with Anthropic API       │
+                  │           ├── Gmail tools                    │
+                  │           ├── Calendar tools                 │
+                  │           ├── Notion tools                   │
+                  │           ├── WhatsApp tools                 │
+                  │           ├── Phone call tool                │
+                  │           └── ask_user (human-in-the-loop)   │
+                  │                                              │
+                  │  Endpoints:                                  │
+                  │  /telegram    — Telegram webhook             │
+                  │  /health      — Health check                 │
+                  │  /context     — Voice agent context          │
+                  │  /webhook/elevenlabs — Post-call transcript  │
+                  │  /deploy      — GitHub auto-deploy           │
+                  └──────────────────┬──────────────────────────┘
+                                     │
+                              ┌──────┴───────┐
+                              │  Supabase    │
+                              │  - Messages  │
+                              │  - Memory    │
+                              │  - Tasks     │
+                              │  - Heartbeat │
+                              └──────────────┘
+```
 
-This repo doubles as a learning resource. Each module covers one architectural layer:
+## Learn to Build This
 
-| # | Module | What You Learn |
-|---|--------|---------------|
-| 00 | [Prerequisites](docs/00-prerequisites.md) | What you need before starting |
-| 01 | [Telegram Setup](docs/01-telegram-setup.md) | BotFather, forum groups, security |
-| 02 | [Core Relay](docs/02-core-relay.md) | The relay pattern, Claude subprocess |
-| 03 | [Supabase Memory](docs/03-supabase-memory.md) | Persistent memory, conversation history |
-| 04 | [Multi-Agent System](docs/04-multi-agent-system.md) | Reasoning frameworks, agent routing |
-| 05 | [Smart Check-ins](docs/05-smart-checkins.md) | Proactive AI, context gathering |
-| 06 | [Morning Briefing](docs/06-morning-briefing.md) | Data aggregation, formatting |
-| 07 | [Always-On Services](docs/07-launchd-always-on.md) | Background services (launchd, PM2, cron) |
-| 08 | [Optional Integrations](docs/08-optional-integrations.md) | Voice, fallback, extensibility |
-| 09 | [Hooks & Security](docs/09-hooks-security.md) | Message redaction, validation |
-| 10 | [Customization Guide](docs/10-customization-guide.md) | Add agents, integrations |
-| 11 | [VPS Deployment](docs/11-vps-deployment.md) | Deploy to a cloud VPS (Hostinger) |
+Step-by-step video walkthroughs for every module are available in the [AI Productivity Hub](https://skool.com/ai-productivity-hub) community on Skool.
 
-Also:
+Also in this repo:
 - [Architecture Deep Dive](docs/architecture.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 ## Commands
 
 ```bash
-bun run start              # Start bot manually
+# Local mode
+bun run start              # Start bot (polling mode, uses Claude Code CLI)
+
+# VPS mode
+bun run vps                # Start VPS gateway (webhook mode, uses Anthropic API)
+
+# Background services
 bun run checkin            # Run smart check-in
 bun run briefing           # Run morning briefing
 bun run watchdog           # Run health check
+
+# Setup & testing
 bun run setup              # Install dependencies
 bun run setup:launchd      # Configure launchd services (macOS)
 bun run setup:services     # Configure services (Windows/Linux)
@@ -133,6 +176,21 @@ bun run test:supabase      # Test Supabase connectivity
 bun run uninstall          # Remove all services
 ```
 
+## VPS Hosting
+
+Need a VPS? I recommend [Hostinger](https://hostinger.com?REFERRALCODE=1GODA06) — affordable, reliable, and works great for this bot. Use promo code **GODAGO** for a discount.
+
+## Community
+
+Join the [AI Productivity Hub](https://skool.com/ai-productivity-hub) on Skool for:
+- Step-by-step video walkthroughs of every module
+- Help with setup and customization
+- Share your bot builds and integrations
+
 ## License
 
 MIT
+
+---
+
+Built by [Goda Go](https://youtube.com/@GodaGo)

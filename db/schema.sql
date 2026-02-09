@@ -9,10 +9,9 @@
 CREATE TABLE IF NOT EXISTS messages (
   id BIGSERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  message_text TEXT NOT NULL,
-  sender_type TEXT NOT NULL CHECK (sender_type IN ('user', 'assistant')),
-  user_telegram_id TEXT,
-  chat_telegram_id TEXT,
+  chat_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
   metadata JSONB DEFAULT '{}'::jsonb,
   embedding VECTOR(1536)  -- Optional: for semantic search via OpenAI embeddings
 );
@@ -54,14 +53,43 @@ CREATE TABLE IF NOT EXISTS call_transcripts (
   metadata JSONB DEFAULT '{}'::jsonb
 );
 
+-- Async tasks table (human-in-the-loop: VPS mode)
+-- Used when Claude pauses to ask the user a question via inline buttons.
+CREATE TABLE IF NOT EXISTS async_tasks (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  chat_id TEXT NOT NULL,
+  original_prompt TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'running', 'needs_input', 'completed', 'failed')),
+  result TEXT,
+  session_id TEXT,
+  current_step TEXT,
+  pending_question TEXT,
+  pending_options JSONB,        -- [{label, value}]
+  user_response TEXT,
+  thread_id INTEGER,
+  processed_by TEXT,            -- 'vps', 'local', etc.
+  reminder_sent BOOLEAN DEFAULT FALSE,
+  metadata JSONB DEFAULT '{}'::jsonb  -- messages_snapshot, assistant_content, tool_use_id
+);
+
+-- Node heartbeat table (hybrid mode: VPS ↔ local machine health tracking)
+CREATE TABLE IF NOT EXISTS node_heartbeat (
+  node_id TEXT PRIMARY KEY,
+  last_heartbeat TIMESTAMPTZ DEFAULT NOW(),
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
 
--- Messages: fast lookup by time and channel
+-- Messages: fast lookup by chat, time, and role
+CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages (chat_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages ((metadata->>'channel'));
-CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages (sender_type);
+CREATE INDEX IF NOT EXISTS idx_messages_role ON messages (role);
 
 -- Memory: fast lookup by type
 CREATE INDEX IF NOT EXISTS idx_memory_type ON memory (type);
@@ -72,6 +100,11 @@ CREATE INDEX IF NOT EXISTS idx_logs_event ON logs (event);
 CREATE INDEX IF NOT EXISTS idx_logs_level ON logs (level);
 CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs (created_at DESC);
 
+-- Async tasks: fast lookup by chat and status
+CREATE INDEX IF NOT EXISTS idx_async_tasks_chat_id ON async_tasks (chat_id);
+CREATE INDEX IF NOT EXISTS idx_async_tasks_status ON async_tasks (status);
+CREATE INDEX IF NOT EXISTS idx_async_tasks_updated_at ON async_tasks (updated_at DESC);
+
 -- ============================================================
 -- ROW LEVEL SECURITY (Optional but recommended)
 -- ============================================================
@@ -81,6 +114,8 @@ ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE memory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE call_transcripts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE async_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE node_heartbeat ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (your bot uses service role key)
 CREATE POLICY "Service role full access" ON messages
@@ -93,6 +128,12 @@ CREATE POLICY "Service role full access" ON logs
   FOR ALL USING (auth.role() = 'service_role');
 
 CREATE POLICY "Service role full access" ON call_transcripts
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role full access" ON async_tasks
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role full access" ON node_heartbeat
   FOR ALL USING (auth.role() = 'service_role');
 
 -- Allow anon key read access (for dashboard, if you build one)
@@ -112,6 +153,31 @@ CREATE POLICY "Anon insert access" ON memory
 CREATE POLICY "Anon insert access" ON logs
   FOR INSERT WITH CHECK (auth.role() = 'anon');
 
+CREATE POLICY "Anon insert access" ON async_tasks
+  FOR INSERT WITH CHECK (auth.role() = 'anon');
+
+CREATE POLICY "Anon update access" ON async_tasks
+  FOR UPDATE USING (auth.role() = 'anon');
+
+CREATE POLICY "Anon insert access" ON node_heartbeat
+  FOR INSERT WITH CHECK (auth.role() = 'anon');
+
+CREATE POLICY "Anon update access" ON node_heartbeat
+  FOR UPDATE USING (auth.role() = 'anon');
+
+-- ============================================================
+-- MIGRATION: If upgrading from an older schema
+-- ============================================================
+-- If you have the old messages table with message_text/sender_type columns,
+-- run this to migrate:
+--
+-- ALTER TABLE messages RENAME COLUMN message_text TO content;
+-- ALTER TABLE messages RENAME COLUMN sender_type TO role;
+-- ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id TEXT DEFAULT '';
+-- UPDATE messages SET chat_id = COALESCE(chat_telegram_id, '') WHERE chat_id = '';
+-- ALTER TABLE messages DROP COLUMN IF EXISTS user_telegram_id;
+-- ALTER TABLE messages DROP COLUMN IF EXISTS chat_telegram_id;
+
 -- ============================================================
 -- OPTIONAL: Semantic Search Function
 -- ============================================================
@@ -125,8 +191,8 @@ CREATE POLICY "Anon insert access" ON logs
 -- )
 -- RETURNS TABLE (
 --   id BIGINT,
---   message_text TEXT,
---   sender_type TEXT,
+--   content TEXT,
+--   role TEXT,
 --   created_at TIMESTAMPTZ,
 --   similarity FLOAT
 -- )
@@ -136,8 +202,8 @@ CREATE POLICY "Anon insert access" ON logs
 --   RETURN QUERY
 --   SELECT
 --     m.id,
---     m.message_text,
---     m.sender_type,
+--     m.content,
+--     m.role,
 --     m.created_at,
 --     1 - (m.embedding <=> query_embedding) AS similarity
 --   FROM messages m
