@@ -10,7 +10,7 @@ An always-on Telegram agent that:
 - **Two processing engines**: Claude Code CLI (local, free with subscription) or Anthropic API (VPS, pay-per-token)
 - **Hybrid mode**: VPS always on, forwards to local when your machine is awake
 - Runs multiple specialized AI agents (Research, Content, Finance, Strategy, Critic)
-- **Built-in tools**: Gmail, Calendar, Notion, WhatsApp, phone calls (VPS mode)
+- **Extensible via MCP**: Connect any MCP servers you use (email, calendar, project management, etc.)
 - **Human-in-the-loop**: Claude asks for confirmation via inline buttons before taking actions
 - Proactively checks in with smart context awareness
 - Sends morning briefings with your goals, calendar, and AI news
@@ -24,9 +24,21 @@ An always-on Telegram agent that:
 Before starting, ensure you have:
 - [ ] **macOS, Windows, or Linux**
 - [ ] **Bun** runtime installed (`curl -fsSL https://bun.sh/install | bash`)
+  - **Important:** After installing Bun, restart your terminal or add Bun to your PATH:
+    ```bash
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+    ```
+  - To make this permanent, add those two lines to your `~/.zshrc` (macOS) or `~/.bashrc` (Linux)
 - [ ] **Claude Code** CLI installed and authenticated (`claude --version`)
 - [ ] A **Telegram** account
 - [ ] **Windows/Linux only**: PM2 for daemon services (`npm install -g pm2`)
+
+## What to Expect During Setup
+
+Claude Code will ask for permission before running commands or editing files. When you see a permission prompt:
+- **"Allow tool access"** — Select "Allow for this session" or "Always allow" to let Claude Code run setup commands
+- **macOS "Background Items" popup** — When launchd services start, macOS may show a notification saying *"Software from 'Jared Sumner' can run in the background"*. This is normal — Jared Sumner is the creator of the Bun runtime. Click **Allow** to let the bot services run.
 
 ---
 
@@ -58,8 +70,8 @@ Before starting, ensure you have:
 3. Wait for the project to finish setting up (~2 min)
 4. Go to Project Settings > API and copy:
    - **Project URL** (looks like `https://abc123.supabase.co`)
-   - **anon public key** (starts with `eyJ...`)
-   - **service_role secret key** (starts with `eyJ...` - keep this secret!)
+   - **Publishable key** (labeled "anon public" or "Publishable" — may start with `eyJ...` or `sb_publishable_...`)
+   - **Secret key** (labeled "service_role" or "Secret" — may start with `eyJ...` or `sb_secret_...` — keep this secret!)
 
 ### What Claude Code does:
 - Saves your Supabase credentials to `.env`
@@ -68,6 +80,8 @@ Before starting, ensure you have:
 
 ### Tell me:
 "Here are my Supabase keys: URL=[URL], anon=[KEY], service_role=[KEY]"
+
+> **Note:** Supabase recently renamed their keys. "anon public key" is now called "Publishable key" and may start with `sb_publishable_` instead of `eyJ`. Both formats work — just paste whatever your dashboard shows.
 
 ---
 
@@ -192,7 +206,7 @@ Deploy the bot to a cloud VPS so it runs 24/7 without depending on your local ma
 
 The key insight: **Claude Code CLI works with an `ANTHROPIC_API_KEY` environment variable.** When set, it uses the Anthropic API (pay-per-token) instead of requiring a browser-based subscription login. But you still get ALL Claude Code features:
 
-- **MCP servers** — Gmail, Calendar, Notion, whatever you've configured
+- **MCP servers** — whatever you've configured (email, calendar, databases, etc.)
 - **Skills** — Your custom Claude Code skills (presentations, research, etc.)
 - **Hooks** — Pre/post tool execution hooks
 - **CLAUDE.md** — Project instructions loaded automatically
@@ -260,11 +274,11 @@ to actually do things:
 ```
 Claude Code (brain)
   │
-  ├── MCP Server: Gmail        → read, send, reply to emails
-  ├── MCP Server: Calendar     → check schedule, create events
-  ├── MCP Server: Notion       → query tasks, update databases
+  ├── MCP Server: [email]      → read, send, reply to emails
+  ├── MCP Server: [calendar]   → check schedule, create events
+  ├── MCP Server: [databases]  → query tasks, update records
   ├── MCP Server: Supabase     → persistent memory, goals, facts
-  ├── MCP Server: [your tools] → whatever you connect
+  ├── MCP Server: [your tools] → whatever MCP servers you connect
   │
   └── Built-in Tools           → web search, file read, code execution
 ```
@@ -380,7 +394,7 @@ See `docs/troubleshooting.md` for common issues and fixes.
 - JSON responses are often wrapped in ```json``` fences -- the bot strips these automatically
 - Always kill subprocesses on timeout to avoid zombie processes
 - Check `claude --version` to ensure CLI is still authenticated
-- **Key lesson:** Never use Claude subprocesses to fetch data (email, calendar, etc.) from background scripts. Claude initializes all MCP servers on startup (60-180s). Use direct REST APIs instead -- see `src/lib/google-auth.ts` and `docs/architecture.md`
+- **Key lesson:** Never use Claude subprocesses to fetch data (email, calendar, etc.) from background scripts. Claude initializes all MCP servers on startup (60-180s). Use direct REST APIs instead -- see `docs/architecture.md`
 
 **launchd services not firing on schedule:**
 - `StartInterval` pauses during sleep and does NOT catch up
@@ -393,10 +407,9 @@ See `docs/troubleshooting.md` for common issues and fixes.
 - Check PM2 logs: `pm2 logs go-bot --lines 50`
 - For hybrid mode: verify `MAC_HEALTH_URL` is reachable from VPS
 
-**VPS Google API errors (401/403):**
-- Refresh tokens expire if unused for 6+ months -- re-export from your Mac
-- Run `bun run setup/export-tokens.ts` on your Mac to get fresh tokens
-- Verify `GMAIL_REFRESH_TOKEN` and `WORKSPACE_REFRESH_TOKEN` in VPS `.env`
+**VPS API errors (401/403):**
+- If using external APIs on VPS, ensure your tokens/keys are still valid
+- Refresh tokens can expire if unused for 6+ months
 
 **Human-in-the-loop buttons not working:**
 - Ensure `async_tasks` table exists in Supabase (run `db/schema.sql`)

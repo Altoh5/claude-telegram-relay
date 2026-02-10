@@ -55,6 +55,7 @@ Your laptop sleeps. Your VPS doesn't. With hybrid mode:
 
 - **macOS, Windows, or Linux**
 - **[Bun](https://bun.sh)** runtime (`curl -fsSL https://bun.sh/install | bash`)
+  - After installing, restart your terminal or run: `export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH"`
 - **[Claude Code](https://claude.ai/claude-code)** CLI installed and authenticated
 - **Windows/Linux only**: [PM2](https://pm2.keymetrics.io/) for daemon services (`npm install -g pm2`)
 

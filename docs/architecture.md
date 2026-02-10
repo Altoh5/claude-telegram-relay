@@ -103,11 +103,11 @@ to actually do things:
 ```
 Claude Code (brain)
   │
-  ├── MCP Server: Gmail        → read, send, reply to emails
-  ├── MCP Server: Calendar     → check schedule, create events
-  ├── MCP Server: Notion       → query tasks, update databases
+  ├── MCP Server: [email]      → read, send, reply to emails
+  ├── MCP Server: [calendar]   → check schedule, create events
+  ├── MCP Server: [databases]  → query tasks, update records
   ├── MCP Server: Supabase     → persistent memory, goals, facts
-  ├── MCP Server: [your tools] → whatever you connect
+  ├── MCP Server: [your tools] → whatever MCP servers you connect
   │
   └── Built-in Tools           → web search, file read, code execution
 ```
