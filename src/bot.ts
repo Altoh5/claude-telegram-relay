@@ -38,7 +38,24 @@ import {
   searchMessages,
   getRecentMessages,
   log as sbLog,
+  createTask,
+  updateTask,
 } from "./lib/supabase";
+
+// Task Queue (Human-in-the-Loop)
+import {
+  parseClaudeResponse,
+  buildTaskKeyboard,
+  handleTaskCallback,
+  formatTaskStatus,
+  checkStaleTasks,
+} from "./lib/task-queue";
+
+// VPS Anthropic Processor (for resuming VPS tasks)
+import {
+  processWithAnthropic,
+  type ResumeState,
+} from "./lib/anthropic-processor";
 
 // Agents
 import {
@@ -160,6 +177,20 @@ const heartbeatInterval = setInterval(async () => {
   }
 }, 60_000);
 
+// Stale task reminders: check every 15 minutes
+const staleTaskInterval = setInterval(async () => {
+  try {
+    if (BOT_TOKEN && ALLOWED_USER_ID) {
+      const reminded = await checkStaleTasks(BOT_TOKEN, ALLOWED_USER_ID);
+      if (reminded > 0) {
+        console.log(`Sent ${reminded} stale task reminder(s)`);
+      }
+    }
+  } catch (err) {
+    console.error("Stale task check error:", err);
+  }
+}, 15 * 60 * 1000);
+
 if (!(await acquireLock())) {
   process.exit(1);
 }
@@ -177,6 +208,7 @@ async function shutdown(signal: string): Promise<void> {
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
 
   clearInterval(heartbeatInterval);
+  clearInterval(staleTaskInterval);
 
   try {
     bot.stop();
@@ -304,6 +336,13 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     await ctx.reply(`**Stored Facts:**\n${facts}`, { parse_mode: "Markdown" }).catch(() =>
       ctx.reply(`Stored Facts:\n${facts}`)
     );
+    return;
+  }
+
+  // /tasks — show active async tasks
+  if (lowerText === "/tasks" || lowerText === "tasks") {
+    const status = await formatTaskStatus(chatId);
+    await ctx.reply(status, { parse_mode: "Markdown" }).catch(() => ctx.reply(status));
     return;
   }
 
@@ -645,6 +684,152 @@ async function handleDocumentMessage(ctx: Context): Promise<void> {
   }
 }
 
+// --- Callback Queries (Human-in-the-Loop Buttons) ---
+
+bot.on("callback_query:data", (ctx) => {
+  handleCallbackQuery(ctx).catch((err) => {
+    console.error("Callback query error:", err);
+  });
+});
+
+async function handleCallbackQuery(ctx: Context): Promise<void> {
+  const data = ctx.callbackQuery?.data;
+  if (!data) return;
+
+  // Acknowledge the button press immediately
+  await ctx.answerCallbackQuery().catch(() => {});
+
+  if (!data.startsWith("atask:")) return;
+
+  const result = await handleTaskCallback(data);
+  if (!result) {
+    await ctx.editMessageText("Task not found or expired.").catch(() => {});
+    return;
+  }
+
+  if (result.cancelled) {
+    await ctx.editMessageText("Task cancelled.").catch(() => {});
+    return;
+  }
+
+  const chatId = String(ctx.chat?.id || "");
+  const task = result.task!;
+
+  // Edit the button message to show the user's choice
+  await ctx
+    .editMessageText(
+      `${task.pending_question || "Question"}\n\n✅ You chose: ${result.choice}`
+    )
+    .catch(() => {});
+
+  // --- VPS mode resume: task has messages_snapshot from Anthropic API ---
+  if (task.metadata?.messages_snapshot) {
+    const typing = createTypingIndicator(ctx);
+    typing.start();
+
+    try {
+      const resumeState: ResumeState = {
+        taskId: result.taskId,
+        messagesSnapshot: task.metadata.messages_snapshot,
+        assistantContent: task.metadata.assistant_content,
+        userChoice: result.choice,
+        toolUseId: task.metadata.tool_use_id,
+      };
+
+      const response = await processWithAnthropic(
+        task.original_prompt,
+        chatId,
+        ctx,
+        resumeState
+      );
+
+      // processWithAnthropic returns "" if another ask_user was triggered (new task created)
+      if (response) {
+        await saveMessage({
+          chat_id: chatId,
+          role: "assistant",
+          content: response,
+          metadata: { type: "task_resume", taskId: result.taskId },
+        });
+        await processIntents(response);
+        await sendResponse(ctx, response);
+      }
+
+      // Mark the original task as completed (new task was created if another ask_user fired)
+      await updateTask(result.taskId, {
+        status: "completed",
+        result: response ? response.substring(0, 10000) : "Continued in new task",
+      });
+    } catch (err) {
+      console.error("VPS resume error:", err);
+      await ctx.reply("Error resuming task. Please try again.");
+      await updateTask(result.taskId, { status: "failed", result: String(err) });
+    } finally {
+      typing.stop();
+    }
+    return;
+  }
+
+  // --- Mac mode resume: task has session_id from Claude Code subprocess ---
+  if (task.session_id) {
+    const typing = createTypingIndicator(ctx);
+    typing.start();
+
+    try {
+      const claudeResult = await callClaudeSubprocess({
+        prompt: `User responded: ${result.choice}`,
+        outputFormat: "json",
+        resumeSessionId: task.session_id,
+        timeoutMs: 1_800_000,
+        cwd: PROJECT_ROOT,
+      });
+
+      const response = claudeResult.text || "Task completed.";
+
+      await saveMessage({
+        chat_id: chatId,
+        role: "assistant",
+        content: response,
+        metadata: { type: "task_resume", taskId: result.taskId },
+      });
+      await processIntents(response);
+
+      // Check if the resumed response also contains questions
+      const parsed = parseClaudeResponse(response);
+      if (parsed.needsInput && parsed.options.length > 0) {
+        await updateTask(result.taskId, {
+          status: "needs_input",
+          session_id: claudeResult.sessionId || task.session_id,
+          pending_question: parsed.question || undefined,
+          pending_options: parsed.options,
+          current_step: parsed.text.substring(0, 500),
+        });
+        const keyboard = buildTaskKeyboard(result.taskId, parsed.options);
+        await ctx
+          .reply(response, { reply_markup: keyboard, parse_mode: "Markdown" })
+          .catch(() => ctx.reply(response, { reply_markup: keyboard }));
+      } else {
+        await updateTask(result.taskId, {
+          status: "completed",
+          result: response.substring(0, 10000),
+        });
+        await sendResponse(ctx, response);
+      }
+    } catch (err) {
+      console.error("Mac resume error:", err);
+      await ctx.reply("Error resuming task. Please try again.");
+      await updateTask(result.taskId, { status: "failed", result: String(err) });
+    } finally {
+      typing.stop();
+    }
+    return;
+  }
+
+  // --- No resume context: just acknowledge ---
+  await ctx.reply(`Noted: ${result.choice}. Task marked complete.`);
+  await updateTask(result.taskId, { status: "completed" });
+}
+
 // ---------------------------------------------------------------------------
 // 8. callClaude() - Core AI Processing
 // ---------------------------------------------------------------------------
@@ -791,7 +976,28 @@ async function callClaudeAndReply(
     // Process intents (goals, facts, etc.)
     await processIntents(response);
 
-    // Send response
+    // Check if Claude is asking a question that needs inline button response
+    const parsed = parseClaudeResponse(response);
+    if (parsed.needsInput && parsed.options.length > 0) {
+      // Create task for human-in-the-loop
+      const task = await createTask(chatId, userMessage, topicId, "mac");
+      if (task) {
+        await updateTask(task.id, {
+          status: "needs_input",
+          session_id: sessionState.sessionId || undefined,
+          pending_question: parsed.question || undefined,
+          pending_options: parsed.options,
+          current_step: parsed.text.substring(0, 500),
+        });
+        const keyboard = buildTaskKeyboard(task.id, parsed.options);
+        await ctx
+          .reply(response, { reply_markup: keyboard, parse_mode: "Markdown" })
+          .catch(() => ctx.reply(response, { reply_markup: keyboard }));
+        return;
+      }
+    }
+
+    // Normal response (no question or task creation failed)
     await sendResponse(ctx, response);
   } catch (error) {
     console.error("callClaudeAndReply error:", error);
@@ -864,6 +1070,7 @@ console.log(`Voice:       ${isVoiceEnabled() ? "enabled" : "disabled"}`);
 console.log(`Phone:       ${isCallEnabled() ? "enabled" : "disabled"}`);
 console.log(`Transcribe:  ${isTranscriptionEnabled() ? "enabled" : "disabled"}`);
 console.log(`Session:     ${sessionState.sessionId || "new"}`);
+console.log(`HITL:        enabled (inline buttons + task queue)`);
 console.log("=".repeat(50));
 
 await sbLog("info", "bot", "Bot started", {
