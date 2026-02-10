@@ -5,6 +5,53 @@
 
 ---
 
+## Setup Issues
+
+### Bun Not Found After Installation
+
+**Symptoms:** Running `bun install` returns "command not found" after installing Bun.
+
+**Fix:** Bun installs to `~/.bun/bin/` which may not be in your shell's PATH. Either restart your terminal, or run:
+
+```bash
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+```
+
+To make this permanent, add those lines to your `~/.zshrc` (macOS) or `~/.bashrc` (Linux).
+
+---
+
+### Supabase Key Format Changed
+
+**Symptoms:** Claude Code questions the format of your Supabase key, or setup fails with key validation errors.
+
+**Explanation:** Supabase recently renamed their API keys:
+- **"anon public key"** is now called **"Publishable key"** and may start with `sb_publishable_` instead of `eyJ`
+- **"service_role secret key"** is now called **"Secret key"** and may start with `sb_secret_` instead of `eyJ`
+
+**Fix:** Both formats work. Paste whatever your Supabase dashboard shows. If Claude Code questions the format, tell it that Supabase updated their key format and it's correct.
+
+---
+
+### macOS "Background Items" Notification
+
+**Symptoms:** After setting up always-on services, macOS shows a popup saying *"Software from 'Jared Sumner' can run in the background"*.
+
+**Fix:** This is normal. Jared Sumner is the creator of the Bun runtime, which powers the bot services. Click **Allow** to let the services run on schedule. You can manage background items later in System Settings > General > Login Items.
+
+---
+
+### Claude Code Permission Prompts
+
+**Symptoms:** Claude Code asks for permission before running commands during setup.
+
+**Fix:** This is normal — Claude Code asks before executing shell commands or editing files. You can:
+- Select **"Allow for this session"** to approve all similar actions during setup
+- Or approve each action individually
+
+---
+
 ## Common Issues and Fixes
 
 ### Bot Not Responding

@@ -80,7 +80,7 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
     maxTurns,
   } = options;
 
-  const args = ["-p", prompt, "--output-format", outputFormat];
+  const args = ["-p", prompt, "--output-format", outputFormat, "--dangerously-skip-permissions"];
 
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
@@ -173,6 +173,7 @@ export async function runClaudeWithTimeout(
     prompt,
     "--output-format",
     "text",
+    "--dangerously-skip-permissions",
     ...(options?.allowedTools
       ? ["--allowedTools", options.allowedTools.join(",")]
       : []),

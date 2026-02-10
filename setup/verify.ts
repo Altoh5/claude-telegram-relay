@@ -245,7 +245,6 @@ function checkOptionalIntegrations() {
     ["GEMINI_API_KEY", "Gemini (transcription)"],
     ["XAI_API_KEY", "Grok/xAI (AI news)"],
     ["OPENROUTER_API_KEY", "OpenRouter (fallback LLM)"],
-    ["UNIPILE_API_KEY", "Unipile (WhatsApp/LinkedIn)"],
   ];
 
   for (const [key, label] of optional) {

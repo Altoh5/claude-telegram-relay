@@ -6,7 +6,7 @@
 
 - VPS gateway mode (`bun run vps`) — Anthropic Messages API with built-in tools
 - Hybrid mode — VPS forwards to local machine when awake, processes directly when offline
-- 11 built-in tools: Gmail (search/read/send/reply), Calendar, Notion, WhatsApp, phone calls
+- Human-in-the-loop tools: ask user confirmation, phone calls
 - Human-in-the-loop — Claude asks confirmation via inline Telegram buttons before acting
 - Voice on VPS — transcription, TTS replies, and outbound phone calls
 - Auto-deploy via GitHub webhook
@@ -15,8 +15,6 @@
 ### New Files
 - `src/vps-gateway.ts` — VPS entry point (webhook mode)
 - `src/lib/anthropic-processor.ts` — Anthropic API with tool definitions
-- `src/lib/google-auth-vps.ts` — OAuth token refresh for VPS
-- `src/lib/direct-apis.ts` — Direct REST APIs (Gmail, Calendar, Notion)
 - `src/lib/mac-health.ts` — Local machine health checking
 - `src/lib/task-queue.ts` — Human-in-the-loop task management
 - `deploy.sh` — Auto-deploy script
