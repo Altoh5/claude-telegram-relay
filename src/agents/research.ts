@@ -13,7 +13,6 @@ const config: AgentConfig = {
   name: "Research Agent",
   model: "claude-opus-4-5-20251101",
   reasoning: "ReAct",
-  allowedTools: ["WebSearch", "WebFetch", "Read", "Glob", "Grep"],
   personality: "analytical, thorough, citation-focused",
   systemPrompt: `${BASE_CONTEXT}
 

@@ -1,8 +1,12 @@
 /**
- * Go - Smart Check-in
+ * Smart Check-in
  *
- * Runs periodically via launchd. Claude decides IF, HOW (text or call),
- * and WHAT to say based on full context: conversations, goals, memory.
+ * Runs periodically via launchd/PM2. Gathers context from Supabase
+ * (goals, facts, recent messages) and spawns Claude Code to decide
+ * IF, HOW (text or call), and WHAT to say.
+ *
+ * Claude Code has access to whatever MCP servers you've configured,
+ * so it can check your calendar, emails, etc. automatically.
  *
  * Run manually: bun run src/smart-checkin.ts
  * Scheduled: launchd at configurable intervals
@@ -12,13 +16,7 @@ import { readFile, writeFile, readdir } from "fs/promises";
 import { join } from "path";
 import { loadEnv } from "./lib/env";
 import { sendTelegramMessage } from "./lib/telegram";
-import { runClaudeWithTimeout, extractJSON } from "./lib/claude";
-import {
-  getValidAccessToken,
-  isGoogleAuthAvailable,
-  KEYCHAIN_GMAIL,
-  KEYCHAIN_CALENDAR,
-} from "./lib/google-auth";
+import { runClaudeWithTimeout } from "./lib/claude";
 
 // Load environment
 await loadEnv();
@@ -27,6 +25,9 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const CHAT_ID = process.env.TELEGRAM_USER_ID || "";
 const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "UTC";
+
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 
 const STATE_FILE = join(PROJECT_ROOT, "checkin-state.json");
 const MEMORY_FILE = join(PROJECT_ROOT, "memory.json");
@@ -53,16 +54,6 @@ interface Memory {
   completedGoals: { text: string; completedAt: string }[];
 }
 
-interface EmailSummary {
-  totalUnread: number;
-  importantCount: number;
-}
-
-interface CalendarContext {
-  todayEvents: { title: string; time: string }[];
-  upcomingEvents: { title: string; date: string; time: string }[];
-}
-
 // ============================================================
 // STATE MANAGEMENT
 // ============================================================
@@ -87,6 +78,43 @@ async function saveState(state: CheckinState) {
 }
 
 async function loadMemory(): Promise<Memory> {
+  // Try Supabase first, fall back to local file
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+      const headers = {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      };
+
+      const [factsRes, goalsRes] = await Promise.all([
+        fetch(
+          `${SUPABASE_URL}/rest/v1/memory?type=eq.fact&select=content&order=created_at.desc&limit=10`,
+          { headers }
+        ),
+        fetch(
+          `${SUPABASE_URL}/rest/v1/memory?type=eq.goal&select=content,metadata&order=created_at.desc&limit=10`,
+          { headers }
+        ),
+      ]);
+
+      const facts = factsRes.ok
+        ? (await factsRes.json()).map((f: any) => f.content)
+        : [];
+      const goals = goalsRes.ok
+        ? (await goalsRes.json()).map((g: any) => ({
+            text: g.content,
+            deadline: g.metadata?.deadline,
+            createdAt: g.metadata?.createdAt || "",
+          }))
+        : [];
+
+      return { facts, goals, completedGoals: [] };
+    } catch (err) {
+      console.error("Supabase memory fetch failed, trying local:", err);
+    }
+  }
+
+  // Local fallback
   try {
     const content = await readFile(MEMORY_FILE, "utf-8");
     return JSON.parse(content);
@@ -100,6 +128,34 @@ async function loadMemory(): Promise<Memory> {
 // ============================================================
 
 async function getRecentConversations(): Promise<string> {
+  // Try Supabase first
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/messages?select=role,content,created_at&order=created_at.desc&limit=15`,
+        {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+      if (res.ok) {
+        const messages = await res.json();
+        if (messages.length > 0) {
+          return messages
+            .reverse()
+            .map(
+              (m: any) =>
+                `[${m.created_at}] ${m.role}: ${m.content?.substring(0, 500)}`
+            )
+            .join("\n");
+        }
+      }
+    } catch {}
+  }
+
+  // Local fallback: read log files
   let allContent = "";
   try {
     const files = await readdir(HISTORY_DIR);
@@ -122,96 +178,13 @@ async function getRecentConversations(): Promise<string> {
 }
 
 // ============================================================
-// DATA GATHERING (Direct Google APIs — no Claude subprocess)
-// ============================================================
-// WHY: Claude subprocesses take 60-180s to start from launchd because
-// they initialize all MCP servers. Direct API calls are instant (<1s).
-// See docs/architecture.md "Direct API vs Claude Subprocess" for details.
-
-async function checkEmails(): Promise<EmailSummary> {
-  const hasGmail = await isGoogleAuthAvailable(KEYCHAIN_GMAIL);
-  if (!hasGmail) return { totalUnread: 0, importantCount: 0 };
-
-  try {
-    const accessToken = await getValidAccessToken(KEYCHAIN_GMAIL);
-    const headers = { Authorization: `Bearer ${accessToken}` };
-
-    const res = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent("is:unread newer_than:1d")}&maxResults=10`,
-      { headers }
-    );
-    if (!res.ok) throw new Error(`Gmail API: ${res.status}`);
-    const data = (await res.json()) as {
-      messages?: { id: string }[];
-      resultSizeEstimate?: number;
-    };
-    return {
-      totalUnread: data.resultSizeEstimate || (data.messages?.length ?? 0),
-      importantCount: data.messages?.length ?? 0,
-    };
-  } catch (error) {
-    console.error(`Email check error: ${error}`);
-    throw error;
-  }
-}
-
-async function getCalendarEvents(): Promise<CalendarContext> {
-  const hasCalendar = await isGoogleAuthAvailable(KEYCHAIN_CALENDAR);
-  if (!hasCalendar)
-    return { todayEvents: [], upcomingEvents: [] };
-
-  try {
-    const today = new Date().toISOString().split("T")[0];
-    const threeDaysOut = new Date(Date.now() + 3 * 86400000)
-      .toISOString()
-      .split("T")[0];
-
-    const accessToken = await getValidAccessToken(KEYCHAIN_CALENDAR);
-    const params = new URLSearchParams({
-      timeMin: `${today}T00:00:00Z`,
-      timeMax: `${threeDaysOut}T23:59:59Z`,
-      maxResults: "20",
-      singleEvents: "true",
-      orderBy: "startTime",
-    });
-
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (!res.ok) throw new Error(`Calendar API: ${res.status}`);
-    const data = (await res.json()) as { items?: any[] };
-
-    const todayEvents: CalendarContext["todayEvents"] = [];
-    const upcomingEvents: CalendarContext["upcomingEvents"] = [];
-
-    for (const event of data.items || []) {
-      const title = event.summary || "Untitled";
-      const start = event.start?.dateTime || event.start?.date || "";
-      const date = start.split("T")[0] || "";
-      const time = start.includes("T")
-        ? start.split("T")[1]?.substring(0, 5) || ""
-        : "all-day";
-      if (date === today) todayEvents.push({ title, time });
-      else upcomingEvents.push({ title, date, time });
-    }
-    return { todayEvents, upcomingEvents };
-  } catch (error) {
-    console.error(`Calendar check error: ${error}`);
-    throw error;
-  }
-}
-
-// ============================================================
 // DECISION ENGINE
 // ============================================================
 
 async function shouldCheckIn(
   state: CheckinState,
   memory: Memory,
-  recentConvo: string,
-  emailSummary: EmailSummary,
-  calendarContext: CalendarContext
+  recentConvo: string
 ): Promise<{ action: "none" | "text" | "call"; message: string; reason: string }> {
   const now = new Date();
   const hour = parseInt(
@@ -286,18 +259,6 @@ ${state.pendingItems.length > 0 ? state.pendingItems.join("\n") : "None"}
 RECENT CONVERSATIONS:
 ${recentConvo.substring(0, 4000)}
 
-EMAILS:
-${emailSummary.totalUnread > 0 ? `${emailSummary.totalUnread} unread emails` : "No unread emails"}
-
-CALENDAR:
-${(() => {
-  const events = [
-    ...calendarContext.todayEvents.map(e => `TODAY ${e.time}: ${e.title}`),
-    ...calendarContext.upcomingEvents.map(e => `${e.date} ${e.time}: ${e.title}`),
-  ];
-  return events.length > 0 ? events.join("\n") : "No upcoming events";
-})()}
-
 DECISION RULES:
 
 PROACTIVE PRESENCE:
@@ -353,33 +314,12 @@ const state = await loadState();
 const memory = await loadMemory();
 const recentConvo = await getRecentConversations();
 
-// Gather email and calendar data via direct APIs (instant, <1s)
-let emailSummary: EmailSummary = { totalUnread: 0, importantCount: 0 };
-try {
-  emailSummary = await checkEmails();
-  console.log(`📧 Emails: ${emailSummary.totalUnread} unread`);
-  runHealth.push({ step: "Email check", status: "ok", detail: `${emailSummary.totalUnread} unread` });
-} catch (e) {
-  console.error(`❌ Email check failed: ${e}`);
-  runHealth.push({ step: "Email check", status: "fail", detail: String(e) });
-}
-
-let calendarContext: CalendarContext = { todayEvents: [], upcomingEvents: [] };
-try {
-  calendarContext = await getCalendarEvents();
-  console.log(`📅 Calendar: ${calendarContext.todayEvents.length} today, ${calendarContext.upcomingEvents.length} upcoming`);
-  runHealth.push({ step: "Calendar", status: "ok", detail: `${calendarContext.todayEvents.length} today, ${calendarContext.upcomingEvents.length} upcoming` });
-} catch (e) {
-  console.error(`❌ Calendar check failed: ${e}`);
-  runHealth.push({ step: "Calendar", status: "fail", detail: String(e) });
-}
+runHealth.push({ step: "State loaded", status: "ok", detail: `Goals: ${memory.goals.length}, Facts: ${memory.facts.length}` });
 
 const { action, message, reason } = await shouldCheckIn(
   state,
   memory,
-  recentConvo,
-  emailSummary,
-  calendarContext
+  recentConvo
 );
 
 console.log(`🤔 Decision: ${action.toUpperCase()}`);

@@ -14,7 +14,6 @@ const config: AgentConfig = {
   name: "Critic Agent",
   model: "claude-opus-4-5-20251101",
   reasoning: "devils-advocate",
-  allowedTools: ["Read", "WebSearch"],
   personality: "skeptical, thorough, constructively critical",
   systemPrompt: `${BASE_CONTEXT}
 

@@ -14,15 +14,6 @@ const config: AgentConfig = {
   name: "General Agent (Orchestrator)",
   model: "claude-opus-4-5-20251101",
   reasoning: "adaptive",
-  allowedTools: [
-    "Read",
-    "Write",
-    "Glob",
-    "Grep",
-    "WebSearch",
-    "WebFetch",
-    "Bash",
-  ],
   personality: "helpful, direct, context-aware",
   systemPrompt: `${BASE_CONTEXT}
 

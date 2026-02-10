@@ -13,7 +13,6 @@ const config: AgentConfig = {
   name: "Content Agent (CMO)",
   model: "claude-opus-4-5-20251101",
   reasoning: "RoT",
-  allowedTools: ["Read", "WebSearch", "WebFetch"],
   personality: "creative, audience-focused, trend-aware",
   systemPrompt: `${BASE_CONTEXT}
 

@@ -12,7 +12,7 @@ export interface AgentConfig {
   name: string;
   topicId?: number;
   systemPrompt: string;
-  allowedTools: string[];
+  allowedTools?: string[]; // Optional: restrict tools per agent. If omitted, Claude gets full access to all tools, MCP servers, and skills.
   model: string;
   reasoning?: string;
   personality?: string;

@@ -47,12 +47,6 @@ import {
   formatCrossAgentContext,
   getUserProfile,
 } from "./agents";
-import {
-  getValidAccessToken,
-  isGoogleAuthAvailable,
-  KEYCHAIN_GMAIL,
-  KEYCHAIN_CALENDAR,
-} from "./lib/google-auth";
 
 // ---------------------------------------------------------------------------
 // 1. Load Environment
@@ -652,30 +646,12 @@ async function handleDocumentMessage(ctx: Context): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Google Auth Warmup + callClaude() - Core AI Processing
+// 8. callClaude() - Core AI Processing
 // ---------------------------------------------------------------------------
 
 /**
- * Pre-refresh Google OAuth tokens before spawning Claude subprocess.
- * Prevents MCP servers from triggering interactive browser auth on stale tokens.
- */
-async function warmupGoogleAuth(): Promise<void> {
-  try {
-    const checks = [];
-    if (await isGoogleAuthAvailable(KEYCHAIN_GMAIL)) {
-      checks.push(getValidAccessToken(KEYCHAIN_GMAIL));
-    }
-    if (await isGoogleAuthAvailable(KEYCHAIN_CALENDAR)) {
-      checks.push(getValidAccessToken(KEYCHAIN_CALENDAR));
-    }
-    if (checks.length > 0) await Promise.all(checks);
-  } catch (err) {
-    console.warn("Google token pre-refresh failed (non-fatal):", err);
-  }
-}
-
-/**
  * Call Claude Code subprocess with agent config, memory, and conversation context.
+ * Claude Code has access to all configured MCP servers (Calendar, Gmail, Notion, etc.)
  * Falls back to secondary LLMs on error.
  */
 async function callClaude(
@@ -684,9 +660,6 @@ async function callClaude(
   agentName: string = "general",
   topicId?: number
 ): Promise<string> {
-  // Pre-refresh Google OAuth tokens so MCP servers don't trigger browser auth
-  await warmupGoogleAuth();
-
   const agentConfig = getAgentConfig(agentName);
   const userProfile = await getUserProfile();
 
@@ -754,10 +727,12 @@ These tags will be parsed automatically. Include them naturally in your response
   const fullPrompt = sections.join("\n\n---\n\n");
 
   // Call Claude subprocess
+  // When allowedTools is omitted, Claude Code gets full access to all tools,
+  // MCP servers, skills, and hooks configured in your Claude Code settings.
   const result = await callClaudeSubprocess({
     prompt: fullPrompt,
     outputFormat: "json",
-    allowedTools: agentConfig?.allowedTools,
+    ...(agentConfig?.allowedTools ? { allowedTools: agentConfig.allowedTools } : {}),
     resumeSessionId: sessionState.sessionId || undefined,
     timeoutMs: 1_800_000, // 30 minutes
     cwd: PROJECT_ROOT,

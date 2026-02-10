@@ -25,16 +25,7 @@ const config: AgentConfig = {
   name: "My Custom Agent",
   model: "claude-opus-4-5-20251101",
   reasoning: "adaptive",
-  allowedTools: [
-    "Read",
-    "WebSearch",
-    "WebFetch",
-    // Add tools your agent needs:
-    // "Bash",
-    // "Write",
-    // "Glob",
-    // "Grep",
-  ],
+  // allowedTools: ["Read", "WebSearch"],  // Optional: restrict tools. Omit for full Claude Code access.
   personality: "describe your agent's communication style",
   systemPrompt: `${BASE_CONTEXT}
 

@@ -1,19 +1,20 @@
 /**
- * Anthropic API Processor — Direct API replacement for Claude subprocess
+ * Anthropic API Processor — Direct API for VPS mode
  *
  * Uses Anthropic Messages API with client-side tool definitions.
- * Eliminates 60-180s subprocess startup → <1s initialization.
+ * VPS mode processes messages when the local machine is offline.
  *
- * Tools: Gmail (search, get, send, reply), Calendar (list events),
- *        Notion (query tasks, search), WhatsApp (find chat, send),
- *        Phone Call, Ask User (human-in-the-loop)
+ * Tools: Ask User (human-in-the-loop), Phone Call
+ *
+ * For external service access (Gmail, Calendar, Notion, etc.), students
+ * connect MCP servers on their local machine. VPS mode uses Supabase
+ * context (memory, goals, conversation history) for awareness.
  *
  * All tool descriptions and system prompt are generalized via env vars.
  * Configure USER_NAME, USER_EMAIL, USER_TIMEZONE, etc. in .env.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import * as directApis from "./direct-apis";
 import * as supabase from "./supabase";
 import { initiatePhoneCall } from "./voice";
 import { buildTaskKeyboard } from "./task-queue";
@@ -79,127 +80,7 @@ function getClient(): Anthropic {
 // ============================================================
 
 function buildToolDefinitions(): Anthropic.Tool[] {
-  const userEmail = process.env.USER_EMAIL || "your email";
-  const calendarId = process.env.GOOGLE_CALENDAR_ID || "primary";
-
   const tools: Anthropic.Tool[] = [
-    {
-      name: "gmail_search",
-      description: `Search emails in Gmail (${userEmail}). Use Gmail search syntax like 'is:unread', 'from:someone@example.com', 'subject:hello', 'newer_than:7d'.`,
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          query: {
-            type: "string",
-            description: "Gmail search query (same syntax as Gmail search box)",
-          },
-          maxResults: {
-            type: "number",
-            description: "Maximum results to return (default: 10)",
-          },
-        },
-        required: ["query"],
-      },
-    },
-    {
-      name: "gmail_get",
-      description:
-        "Get the full content of a specific email by its message ID. Use after gmail_search to read an email.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          messageId: {
-            type: "string",
-            description: "The Gmail message ID",
-          },
-        },
-        required: ["messageId"],
-      },
-    },
-    {
-      name: "gmail_send",
-      description: `Send a new email from ${userEmail}. Only for NEW threads. Use gmail_reply for existing threads.`,
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          to: { type: "string", description: "Recipient email address" },
-          subject: { type: "string", description: "Email subject" },
-          body: { type: "string", description: "Email body (plain text)" },
-        },
-        required: ["to", "subject", "body"],
-      },
-    },
-    {
-      name: "gmail_reply",
-      description:
-        "Reply to an existing email thread (reply-all). ALWAYS use this instead of gmail_send for ongoing conversations.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          messageId: {
-            type: "string",
-            description:
-              "The message ID to reply to (last message in the thread)",
-          },
-          body: { type: "string", description: "Reply body (plain text)" },
-        },
-        required: ["messageId", "body"],
-      },
-    },
-    {
-      name: "calendar_list_events",
-      description: `List calendar events from ${calendarId} calendar. Returns upcoming events.`,
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          calendarId: {
-            type: "string",
-            description: `Calendar ID (default: '${calendarId}')`,
-          },
-          timeMin: {
-            type: "string",
-            description: "Start time in ISO 8601 format (default: now)",
-          },
-          timeMax: {
-            type: "string",
-            description:
-              "End time in ISO 8601 format (default: 7 days from now)",
-          },
-        },
-        required: [],
-      },
-    },
-    {
-      name: "notion_query_tasks",
-      description:
-        "Query tasks from the Notion tasks database. Can filter by status.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          statusFilter: {
-            type: "string",
-            description:
-              'Filter by status (e.g. "To Do", "In Progress", "Done"). Leave empty for all non-done tasks.',
-          },
-        },
-        required: [],
-      },
-    },
-    {
-      name: "notion_search",
-      description:
-        "Search across all Notion pages and databases by text query.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          query: {
-            type: "string",
-            description: "Search query text",
-          },
-        },
-        required: ["query"],
-      },
-    },
     {
       name: "phone_call",
       description:
@@ -217,44 +98,9 @@ function buildToolDefinitions(): Anthropic.Tool[] {
       },
     },
     {
-      name: "whatsapp_find_chat",
-      description:
-        "Find a WhatsApp chat by contact name or phone number. Returns matching chats with their IDs. Use this before whatsapp_send to get the chat ID.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          query: {
-            type: "string",
-            description:
-              "Name or phone number to search for (e.g. 'John Smith', '+49123456789')",
-          },
-        },
-        required: ["query"],
-      },
-    },
-    {
-      name: "whatsapp_send",
-      description:
-        "Send a WhatsApp message to a specific chat. Use whatsapp_find_chat first to get the chat ID.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          chatId: {
-            type: "string",
-            description: "The chat ID from whatsapp_find_chat",
-          },
-          message: {
-            type: "string",
-            description: "The message text to send",
-          },
-        },
-        required: ["chatId", "message"],
-      },
-    },
-    {
       name: "ask_user",
       description:
-        "Ask the user a question and wait for their response before continuing. Use this when you need confirmation before taking a significant action (sending emails, making changes, etc.) or when you need the user to choose between options. The conversation will pause until the user responds via Telegram buttons.",
+        "Ask the user a question and wait for their response before continuing. Use this when you need confirmation before taking a significant action or when you need the user to choose between options. The conversation will pause until the user responds via Telegram buttons.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -291,24 +137,6 @@ function buildToolDefinitions(): Anthropic.Tool[] {
   // Only include tools that have their dependencies configured
   return tools.filter((tool) => {
     switch (tool.name) {
-      case "gmail_search":
-      case "gmail_get":
-      case "gmail_send":
-      case "gmail_reply":
-        return !!(
-          process.env.GMAIL_REFRESH_TOKEN || process.env.GOOGLE_ACCESS_TOKEN
-        );
-      case "calendar_list_events":
-        return !!(
-          process.env.WORKSPACE_REFRESH_TOKEN ||
-          process.env.GOOGLE_ACCESS_TOKEN
-        );
-      case "notion_query_tasks":
-      case "notion_search":
-        return !!process.env.NOTION_TOKEN;
-      case "whatsapp_find_chat":
-      case "whatsapp_send":
-        return !!process.env.UNIPILE_API_KEY;
       case "phone_call":
         return !!(
           process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_AGENT_ID
@@ -335,51 +163,6 @@ async function executeTool(
 ): Promise<string> {
   try {
     switch (name) {
-      case "gmail_search":
-        return JSON.stringify(
-          await directApis.gmailSearch(input.query, input.maxResults)
-        );
-
-      case "gmail_get":
-        return JSON.stringify(await directApis.gmailGet(input.messageId));
-
-      case "gmail_send":
-        return JSON.stringify(
-          await directApis.gmailSend(input.to, input.subject, input.body)
-        );
-
-      case "gmail_reply":
-        return JSON.stringify(
-          await directApis.gmailReply(input.messageId, input.body)
-        );
-
-      case "calendar_list_events":
-        return JSON.stringify(
-          await directApis.calendarListEvents(
-            input.calendarId,
-            input.timeMin,
-            input.timeMax
-          )
-        );
-
-      case "notion_query_tasks":
-        return JSON.stringify(
-          await directApis.notionQueryTasks(input.statusFilter)
-        );
-
-      case "notion_search":
-        return JSON.stringify(await directApis.notionSearch(input.query));
-
-      case "whatsapp_find_chat":
-        return JSON.stringify(
-          await directApis.whatsappFindChat(input.query)
-        );
-
-      case "whatsapp_send":
-        return JSON.stringify(
-          await directApis.whatsappSend(input.chatId, input.message)
-        );
-
       case "phone_call": {
         const result = await initiatePhoneCall(input.context);
         if (result.success && result.conversationId && onCallInitiated) {
@@ -452,8 +235,6 @@ function compressMessages(
 function buildSystemPrompt(): string {
   const userName = process.env.USER_NAME || "User";
   const userTimezone = process.env.USER_TIMEZONE || "UTC";
-  const userEmail = process.env.USER_EMAIL || "";
-  const calendarId = process.env.GOOGLE_CALENDAR_ID || "primary";
   const botName = process.env.BOT_NAME || "Go";
 
   const now = new Date();
@@ -473,26 +254,27 @@ function buildSystemPrompt(): string {
 Current time: ${localTime} (${userTimezone})
 Processing node: VPS (local machine may be offline)
 
-TOOLS MAPPING (CRITICAL):
-${userEmail ? `- gmail_search, gmail_get, gmail_send, gmail_reply → ${userEmail}` : ""}
-${calendarId ? `- calendar_list_events → ${calendarId} calendar` : ""}
-- notion_query_tasks, notion_search → Notion workspace
-- whatsapp_find_chat, whatsapp_send → WhatsApp via Unipile
-- ALWAYS use gmail_reply for existing threads. NEVER use gmail_send for replies.
-- For WhatsApp: ALWAYS use whatsapp_find_chat first, then whatsapp_send with the chat ID.
+AVAILABLE TOOLS:
+- ask_user: Ask the user a question via inline buttons. Use BEFORE any irreversible action.
+${process.env.ELEVENLABS_API_KEY ? "- phone_call: Initiate a voice call via ElevenLabs" : ""}
+
+NOTE: External service integrations (Gmail, Calendar, Notion, etc.) are available
+on the local machine via MCP servers. When the local machine is offline, you can
+still have conversations, answer questions, and use your knowledge. For tasks that
+require external service access, let the user know you'll handle it when the local
+machine is back online, or use ask_user to confirm actions.
 
 HUMAN-IN-THE-LOOP (CRITICAL):
-- Use ask_user tool BEFORE sending emails, making calls, or taking irreversible actions
+- Use ask_user tool BEFORE taking irreversible actions
 - ask_user pauses the conversation and sends buttons to Telegram
 - The user will tap a button, and the conversation resumes with their choice
-- Always provide clear options (e.g. "Send this email?" with Yes/No)
+- Always provide clear options (e.g. "Should I proceed?" with Yes/No)
 
 IMPORTANT BEHAVIORS:
 - Keep responses concise (Telegram-friendly, max 2-3 paragraphs)
 - Use ask_user tool for confirmations instead of just asking in text
 - When user sends a short reply (like "1", "yes", "no"), check conversation context
-- Use tools proactively when the question requires external data
-- For email searches, default to "is:unread newer_than:7d" unless specified otherwise
+- Be helpful and proactive with what you CAN do (reasoning, planning, advice)
 
 INTENT DETECTION - Include at END of response when relevant:
 - [GOAL: goal text | DEADLINE: optional] — for goals/tasks

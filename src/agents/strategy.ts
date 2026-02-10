@@ -13,7 +13,6 @@ const config: AgentConfig = {
   name: "Strategy Agent (CEO)",
   model: "claude-opus-4-5-20251101",
   reasoning: "ToT",
-  allowedTools: ["Read", "WebSearch", "WebFetch"],
   personality: "visionary, contrarian, leverage-focused",
   systemPrompt: `${BASE_CONTEXT}
 

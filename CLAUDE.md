@@ -172,10 +172,6 @@ Daily summary with goals, calendar, and optionally AI news.
 - OpenRouter: cloud fallback (API key)
 - Ollama: local fallback (install + run)
 
-### AI News in Briefing (Grok/xAI)
-- Real-time AI news from X/Twitter
-- Requires: xAI API key
-
 ### Tell me:
 "Set up [integration name]" with your API keys, or "Skip integrations"
 
@@ -184,51 +180,58 @@ Daily summary with goals, calendar, and optionally AI news.
 ## Phase 9: VPS Deployment (Optional, ~30 min)
 
 ### What This Does
-Deploy the bot to a cloud VPS so it runs 24/7 without depending on your local machine. The VPS uses the Anthropic API directly (no Claude Code CLI needed) and supports three deployment modes:
+Deploy the bot to a cloud VPS so it runs 24/7 without depending on your local machine.
 
 | Mode | How It Works | Cost |
 |------|-------------|------|
 | **Local Only** | Runs on your desktop, uses Claude Code CLI | Free with Claude subscription |
-| **VPS Only** | Runs on a cloud server, uses Anthropic API directly | VPS (~$5/mo) + API tokens |
-| **Hybrid** (recommended) | VPS always on, forwards to local when awake | VPS cost + subscription |
+| **VPS** (recommended for 24/7) | Same `bot.ts` on VPS with Claude Code CLI + `ANTHROPIC_API_KEY` | VPS (~$5/mo) + API tokens |
+| **Hybrid** | VPS always on, forwards to local when awake to save on API tokens | VPS cost + subscription |
 
-### VPS Architecture
-The VPS gateway (`src/vps-gateway.ts`) runs in webhook mode and processes messages directly through the Anthropic Messages API with built-in tools:
+### How VPS Works — Same Code, Full Power
 
-- **Gmail** — search, read, send, reply (via Google OAuth refresh tokens)
-- **Calendar** — list events (via Google Workspace refresh tokens)
-- **Notion** — query tasks, search pages (via Notion API token)
-- **WhatsApp** — find chats, send messages (via Unipile)
-- **Phone Calls** — outbound calls via ElevenLabs + Twilio
-- **Human-in-the-Loop** — Claude asks for confirmation via inline buttons before taking actions
+The key insight: **Claude Code CLI works with an `ANTHROPIC_API_KEY` environment variable.** When set, it uses the Anthropic API (pay-per-token) instead of requiring a browser-based subscription login. But you still get ALL Claude Code features:
+
+- **MCP servers** — Gmail, Calendar, Notion, whatever you've configured
+- **Skills** — Your custom Claude Code skills (presentations, research, etc.)
+- **Hooks** — Pre/post tool execution hooks
+- **CLAUDE.md** — Project instructions loaded automatically
+- **Built-in tools** — WebSearch, Read, Write, Bash, etc.
+
+This means: **clone the repo on VPS, install Claude Code, set your API key, and run `bun run start`.** Same experience as local. One codebase everywhere.
+
+### VPS Gateway (Optional Speed Optimization)
+
+For faster responses, the VPS gateway (`src/vps-gateway.ts`) uses the Anthropic Messages API directly — no Claude Code overhead. Responds in 2-5s instead of 10-60s, but with limited capabilities (Supabase context only, no MCP servers or skills). Use this if speed matters more than tool access.
+
+### Hybrid Mode
+
+VPS catches messages 24/7. When your local machine is awake, forward messages there — local uses Claude Code with your subscription (free), keeping API costs down. When your machine sleeps, VPS handles it with its own Claude Code + API key.
 
 ### What you need:
 1. **A VPS** — Any provider works. [Hostinger](https://hostinger.com?REFERRALCODE=1GODA06) is recommended (promo code **GODAGO** for discount)
 2. **Anthropic API key** — From [console.anthropic.com](https://console.anthropic.com)
-3. **Domain or IP** — For Telegram webhook URL
+3. **Claude Code CLI** — Installed on your VPS (`npm install -g @anthropic-ai/claude-code`)
 
 ### What Claude Code does:
 - Walks you through provisioning and hardening the VPS (SSH keys, UFW, fail2ban)
-- Installs Bun and deploys the bot
-- Configures Telegram webhook (`https://your-domain/telegram`)
-- Sets up `.env` with API keys and refresh tokens
+- Installs Bun and Claude Code CLI
+- Clones your repo from GitHub
+- Sets up `.env` with `ANTHROPIC_API_KEY` + Supabase credentials
+- Configures MCP servers on VPS (same ones you use locally)
 - Configures PM2 for process management
 - Sets up GitHub webhook for auto-deploy (optional)
-- For **hybrid mode**: configures Cloudflare Tunnel on your local machine + health check endpoints
 
 ### VPS .env setup:
 ```bash
-# Required for VPS
+# Required for VPS — Claude Code uses this instead of subscription
 ANTHROPIC_API_KEY=sk-ant-api03-your_key_here
 
-# Google APIs (export from your Mac with: bun run setup/export-tokens.ts)
-GMAIL_REFRESH_TOKEN=your_gmail_refresh_token
-WORKSPACE_REFRESH_TOKEN=your_workspace_refresh_token
-
-# Hybrid mode (optional)
-MAC_HEALTH_URL=https://your-tunnel.example.com/health
-MAC_PROCESS_URL=https://your-tunnel.example.com/process
-GATEWAY_SECRET=your_shared_secret
+# Same credentials as local
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_USER_ID=your_user_id
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_key
 ```
 
 ### Tell me:
@@ -248,6 +251,32 @@ GATEWAY_SECRET=your_shared_secret
 
 ---
 
+## Giving Claude "Hands" — MCP Servers & Tool Access
+
+Claude Code on its own is a brain — it can think and reason, but it can't interact
+with the outside world. **MCP servers** and **direct APIs** are what give it "hands"
+to actually do things:
+
+```
+Claude Code (brain)
+  │
+  ├── MCP Server: Gmail        → read, send, reply to emails
+  ├── MCP Server: Calendar     → check schedule, create events
+  ├── MCP Server: Notion       → query tasks, update databases
+  ├── MCP Server: Supabase     → persistent memory, goals, facts
+  ├── MCP Server: [your tools] → whatever you connect
+  │
+  └── Built-in Tools           → web search, file read, code execution
+```
+
+**How to connect MCP servers:** Follow the setup guides for each MCP server you want.
+Once configured in your Claude Code settings, the bot automatically has access to them
+because it spawns Claude Code subprocesses that inherit your MCP configuration.
+
+**Local mode:** Claude Code CLI uses your MCP servers directly.
+**VPS mode:** Uses Anthropic API with Supabase context. External service access
+happens when your local machine handles the message (hybrid mode).
+
 ## Project Structure
 
 ```
@@ -261,10 +290,7 @@ src/
     env.ts               # Environment loader
     telegram.ts          # Telegram helpers
     claude.ts            # Claude Code subprocess (local mode)
-    anthropic-processor.ts  # Direct Anthropic API with tools (VPS mode)
-    google-auth.ts       # Google OAuth (cross-platform: keychain/file)
-    google-auth-vps.ts   # Google OAuth token refresh for VPS
-    direct-apis.ts       # Direct REST API calls (Gmail, Calendar, Notion)
+    anthropic-processor.ts  # Anthropic API processor (VPS mode)
     mac-health.ts        # Local machine health checking (hybrid mode)
     task-queue.ts        # Human-in-the-loop task management
     supabase.ts          # Database client + async tasks + heartbeat

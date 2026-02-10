@@ -7,23 +7,21 @@ An always-on Telegram agent powered by Claude with multi-agent routing, proactiv
 ## What It Does
 
 ```
-                          ┌── Local Machine (Claude Code CLI, subscription)
+                          ┌── Local (Claude Code + subscription = free)
 You ──▶ Telegram ──▶ Bot ─┤
-                          └── VPS (Anthropic API, pay-per-token)
-                                  │
-                                  ├── Gmail (search, send, reply)
-                                  ├── Calendar (list events)
-                                  ├── Notion (query tasks, search)
-                                  ├── WhatsApp (find chat, send)
-                                  ├── Phone Calls (ElevenLabs + Twilio)
-                                  └── Human-in-the-Loop (ask before acting)
+                          └── VPS  (Claude Code + API key = pay-per-token)
+                                │
+                                ├── Same code, same features everywhere:
+                                │   MCP Servers, Skills, Hooks, CLAUDE.md
+                                │
+                                └── Supabase (shared memory, goals, history)
 ```
 
 - **Relay**: Send messages on Telegram, get Claude responses back
 - **Multi-Agent**: Route messages to specialized agents via Telegram forum topics
 - **Memory**: Persistent facts, goals, and conversation history via Supabase
 - **Proactive**: Smart check-ins that know when to reach out (and when not to)
-- **Briefings**: Daily morning summary with goals, calendar, and AI news
+- **Briefings**: Daily morning summary with goals and whatever context your MCP servers provide
 - **Voice**: Text-to-speech replies, voice transcription, and phone calls
 - **Human-in-the-Loop**: Claude asks for confirmation via inline buttons before taking actions
 - **Hybrid Mode**: VPS catches messages 24/7, forwards to your local machine when it's awake
@@ -34,16 +32,22 @@ You ──▶ Telegram ──▶ Bot ─┤
 | Mode | How It Works | Cost |
 |------|-------------|------|
 | **Local Only** | Runs on your desktop, uses Claude Code CLI | Free with Claude subscription ($20/mo) |
-| **VPS Only** | Runs on a cloud server, uses Anthropic API directly | VPS (~$5/mo) + API tokens (~$3-15/1M tokens) |
-| **Hybrid** (recommended) | VPS always on, forwards to local when awake | VPS cost + subscription (API only when local is off) |
+| **VPS** (recommended for 24/7) | Same code on VPS, Claude Code CLI + API key | VPS (~$5/mo) + API tokens |
+| **Hybrid** | VPS always on, forwards to local when awake to save on API tokens | VPS cost + subscription |
+
+### Same Code, Full Power — Everywhere
+
+Claude Code CLI works with an `ANTHROPIC_API_KEY` environment variable. When set, it uses the Anthropic API (pay-per-token) instead of a subscription login. But you still get **all** Claude Code features: MCP servers, skills, hooks, CLAUDE.md, built-in tools.
+
+This means: clone the repo on your VPS, install Claude Code, set your API key, and run `bun run start`. Same experience as your laptop. One codebase everywhere.
 
 ### Why Hybrid?
 
 Your laptop sleeps. Your VPS doesn't. With hybrid mode:
 - Messages are always processed, even at 3am
-- When your local machine is awake, it handles everything (free with subscription)
-- When it sleeps, VPS takes over with direct Anthropic API (pay-per-token)
-- You get the best of both: always-on reliability + subscription savings
+- When your local machine is awake, it handles everything for free with subscription
+- When it sleeps, VPS takes over with API key (pay-per-token)
+- Both have full Claude Code power — MCP servers, skills, hooks, everything
 
 ## Quick Start
 
@@ -75,7 +79,7 @@ Claude Code reads the `CLAUDE.md` file and walks you through a guided conversati
 3. Personalize your profile and agents
 4. Test the bot
 5. Configure always-on services
-6. Set up optional integrations (voice, AI news, fallback LLMs)
+6. Set up optional integrations (voice, fallback LLMs)
 7. Deploy to VPS (optional)
 
 ## Tech Stack
@@ -91,9 +95,8 @@ Claude Code reads the `CLAUDE.md` file and walks you through a guided conversati
 | Voice (opt.) | [ElevenLabs](https://elevenlabs.io) |
 | Phone Calls (opt.) | ElevenLabs + [Twilio](https://twilio.com) |
 | Transcription (opt.) | [Google Gemini](https://ai.google.dev) |
-| WhatsApp (opt.) | [Unipile](https://unipile.com) |
-| AI News (opt.) | [Grok/xAI](https://x.ai) |
 | Fallback LLM (opt.) | [OpenRouter](https://openrouter.ai) / [Ollama](https://ollama.ai) |
+| External Tools | Your MCP servers (Gmail, Calendar, Notion, etc.) |
 
 ## Architecture
 
@@ -112,35 +115,37 @@ Claude Code reads the `CLAUDE.md` file and walks you through a guided conversati
                     └──────────────┘
 ```
 
-### Hybrid Mode (Recommended)
+### VPS Mode (same code as local)
 ```
-┌───────────┐     ┌─────────────────────────────────────────────┐
-│ Telegram  │     │  VPS Gateway (always on, webhook mode)      │
-│           │────▶│                                              │
-│           │◀────│  Is local machine alive?                     │
-└───────────┘     │  ├── YES → forward to local (free)          │
-                  │  └── NO  → process with Anthropic API       │
-                  │           ├── Gmail tools                    │
-                  │           ├── Calendar tools                 │
-                  │           ├── Notion tools                   │
-                  │           ├── WhatsApp tools                 │
-                  │           ├── Phone call tool                │
-                  │           └── ask_user (human-in-the-loop)   │
-                  │                                              │
-                  │  Endpoints:                                  │
-                  │  /telegram    — Telegram webhook             │
-                  │  /health      — Health check                 │
-                  │  /context     — Voice agent context          │
-                  │  /webhook/elevenlabs — Post-call transcript  │
-                  │  /deploy      — GitHub auto-deploy           │
-                  └──────────────────┬──────────────────────────┘
+┌─────────────┐     ┌──────────────┐     ┌─────────────────────┐
+│  Telegram    │────▶│  Gobot       │────▶│  Claude Code CLI    │
+│  (grammY)   │◀────│  (polling)   │◀────│  + ANTHROPIC_API_KEY │
+└─────────────┘     └──────┬───────┘     │                     │
+                           │              │  ✅ MCP Servers      │
+                    ┌──────┴───────┐     │  ✅ Skills           │
+                    │  Supabase    │     │  ✅ Hooks            │
+                    │  - Messages  │     │  ✅ CLAUDE.md        │
+                    │  - Memory    │     │  ✅ Built-in Tools   │
+                    │  - Tasks     │     └─────────────────────┘
+                    └──────────────┘
+```
+
+### Hybrid Mode
+```
+┌───────────┐     ┌──────────────────────────────────────────┐
+│ Telegram  │     │  VPS (always on, Claude Code + API key)  │
+│           │────▶│                                           │
+│           │◀────│  Is local machine alive?                  │
+└───────────┘     │  ├── YES → forward to local (free)       │
+                  │  └── NO  → process on VPS (API tokens)   │
+                  │                                           │
+                  │  Both have full Claude Code power:        │
+                  │  MCP servers, skills, hooks, tools        │
+                  └──────────────────┬───────────────────────┘
                                      │
                               ┌──────┴───────┐
                               │  Supabase    │
-                              │  - Messages  │
-                              │  - Memory    │
-                              │  - Tasks     │
-                              │  - Heartbeat │
+                              │  (shared)    │
                               └──────────────┘
 ```
 

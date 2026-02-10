@@ -13,7 +13,6 @@ const config: AgentConfig = {
   name: "Finance Agent (CFO)",
   model: "claude-opus-4-5-20251101",
   reasoning: "CoT",
-  allowedTools: ["Read", "WebSearch"],
   personality: "analytical, conservative, numbers-focused",
   systemPrompt: `${BASE_CONTEXT}
 

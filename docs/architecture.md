@@ -46,10 +46,10 @@
 |  |  API   |  |Code   |  |  (Postgres)  |  |  APIs   |            |
 |  |        |  |CLI    |  |              |  | ElevenL.|            |
 |  +--------+  +-------+  +--------------+  | Gemini  |            |
-|                                            | xAI     |            |
-|  +-----------------+                       | OpenRtr |            |
-|  | com.go.watchdog |                       | Ollama  |            |
-|  | (hourly)        |                       +---------+            |
+|                                            | OpenRtr |            |
+|  +-----------------+                       | Ollama  |            |
+|  | com.go.watchdog |                       +---------+            |
+|  | (hourly)        |                                              |
 |  +-----------------+                                              |
 +-------------------------------------------------------------------+
 ```
@@ -83,10 +83,10 @@ All processes import from `src/lib/`:
 src/lib/
   env.ts          -- Used by ALL processes (loads .env)
   telegram.ts     -- Used by ALL processes (sends messages)
-  claude.ts       -- Used by bot.ts and smart-checkin.ts
-  google-auth.ts  -- Used by smart-checkin.ts and morning-briefing.ts
-  supabase.ts     -- Used by bot.ts and morning-briefing.ts
+  claude.ts       -- Used by bot.ts, smart-checkin.ts, morning-briefing.ts
+  supabase.ts     -- Used by bot.ts, smart-checkin.ts, morning-briefing.ts
   memory.ts       -- Used by bot.ts (intent processing)
+  task-queue.ts   -- Used by bot.ts (human-in-the-loop)
   voice.ts        -- Used by bot.ts only
   transcribe.ts   -- Used by bot.ts only
   fallback-llm.ts -- Used by bot.ts only
@@ -94,75 +94,120 @@ src/lib/
 
 ---
 
-## Direct API vs Claude Subprocess (Critical Pattern)
+## MCP Servers = Claude's "Hands" (Key Concept)
 
-This is one of the most important architectural lessons in this system.
+Claude Code on its own is a brain — it can think and reason, but it can't
+interact with the outside world. **MCP servers** are what give it "hands"
+to actually do things:
 
-### The Problem
+```
+Claude Code (brain)
+  │
+  ├── MCP Server: Gmail        → read, send, reply to emails
+  ├── MCP Server: Calendar     → check schedule, create events
+  ├── MCP Server: Notion       → query tasks, update databases
+  ├── MCP Server: Supabase     → persistent memory, goals, facts
+  ├── MCP Server: [your tools] → whatever you connect
+  │
+  └── Built-in Tools           → web search, file read, code execution
+```
 
-Claude Code subprocesses (`claude -p "..."`) initialize **all configured MCP
-servers** on startup. If you have 5-13 MCP servers configured globally, each
-subprocess spawns 5-13 child processes before it can do any work.
+**How it works:** When the bot spawns a Claude Code subprocess (`claude -p "..."`),
+that subprocess inherits your MCP configuration. Whatever MCP servers you've
+set up in your Claude Code settings, the bot automatically has access to them.
 
-From an interactive terminal, this takes 5-15 seconds -- annoying but tolerable.
-From **launchd** (background scheduler), it takes **60-180 seconds** and
-frequently **times out entirely**.
+### Supabase for Data, Claude for Decisions
 
-### The Rule
-
-**Use direct REST API calls for data fetching. Reserve Claude subprocesses for
-reasoning/decisions only.**
+Background scripts (smart check-ins, morning briefings) need to be fast and
+reliable. They use a two-tier approach:
 
 | Task | Approach | Speed |
 |------|----------|-------|
-| Fetch calendar events | Direct Google Calendar REST API | <1s |
-| Check unread emails | Direct Gmail REST API | <1s |
-| Query Notion database | Direct Notion REST API | <1s |
-| Fetch Supabase data | Direct REST API / SDK | <1s |
-| Make a decision | Claude subprocess (no MCP tools) | 5-15s |
+| Fetch goals, facts | Supabase REST API directly | <1s |
+| Get conversation history | Supabase REST API directly | <1s |
+| Make a decision | Claude subprocess | 5-15s |
+| Gather daily context | Claude subprocess (uses your MCPs) | 10-60s |
 | Process user message | Claude subprocess (with tools) | 10-60s |
 
-### How It Works
-
-Google OAuth tokens are stored by the MCP servers when you first authenticate.
-On **macOS**, tokens go into the Keychain. On **Windows/Linux**, tokens are
-stored in `config/.google-tokens.json`. The `src/lib/google-auth.ts` module
-detects the platform and reads tokens from the right location:
-
-```typescript
-import { getValidAccessToken, KEYCHAIN_CALENDAR } from "./lib/google-auth";
-
-// Instant -- reads token from keychain (macOS) or file (Win/Linux), auto-refreshes if expired
-const token = await getValidAccessToken(KEYCHAIN_CALENDAR);
-
-// Direct API call -- no subprocess, no MCP server
-const res = await fetch(
-  `https://www.googleapis.com/calendar/v3/calendars/primary/events?...`,
-  { headers: { Authorization: `Bearer ${token}` } }
-);
-```
-
-Token refresh happens automatically via a cloud function that holds the OAuth
-client secret. You never need to handle refresh manually.
-
-### When to Use Each Pattern
-
-**Direct API** (preferred for background scripts):
-- Reading data from external services (Gmail, Calendar, Notion)
-- Any operation that doesn't need AI reasoning
-- Scheduled/background scripts (launchd, cron)
-
-**Claude subprocess** (necessary for AI):
-- Decision-making ("should I check in?")
-- Natural language processing
-- Complex reasoning with tool use
-- The main bot relay (needs Claude for conversation)
+**Why not Claude for everything?** Claude Code subprocesses initialize all
+configured MCP servers on startup. With many servers, this can take 10-60+
+seconds. For simple data reads (goals, facts, messages), hitting Supabase
+directly is instant and avoids the overhead.
 
 ### Key Files
 
-- `src/lib/google-auth.ts` -- OAuth token management (cross-platform: keychain/file + auto-refresh)
-- `src/smart-checkin.ts` -- Uses direct APIs for data, Claude only for decisions
-- `src/morning-briefing.ts` -- Uses direct Calendar API for events
+- `src/smart-checkin.ts` -- Supabase for data, Claude subprocess for decisions only
+- `src/morning-briefing.ts` -- Supabase for goals, Claude subprocess to gather context via your MCPs
+- `src/lib/claude.ts` -- Claude Code subprocess spawner
+
+---
+
+## Same Code on VPS — How It Works
+
+Claude Code CLI accepts an `ANTHROPIC_API_KEY` environment variable. When set,
+it uses the Anthropic API directly (pay-per-token) instead of requiring a
+browser-based subscription login. But it still loads **all** Claude Code features:
+
+```
+Local Machine                        VPS
+┌────────────────────┐              ┌────────────────────┐
+│ Claude Code CLI    │              │ Claude Code CLI    │
+│ + subscription     │              │ + ANTHROPIC_API_KEY│
+│                    │              │                    │
+│ ✅ MCP Servers     │              │ ✅ MCP Servers     │
+│ ✅ Skills          │              │ ✅ Skills          │
+│ ✅ Hooks           │              │ ✅ Hooks           │
+│ ✅ CLAUDE.md       │              │ ✅ CLAUDE.md       │
+│ ✅ Built-in Tools  │              │ ✅ Built-in Tools  │
+│                    │              │                    │
+│ Cost: $0/message   │              │ Cost: ~$0.01/msg   │
+└────────────────────┘              └────────────────────┘
+         │                                   │
+         └──────────┬────────────────────────┘
+                    │
+             ┌──────┴───────┐
+             │  Supabase    │
+             │  (shared)    │
+             └──────────────┘
+```
+
+**Same `bot.ts`, same `bun run start`, same everything.** The only difference
+is the billing model. Clone the repo on VPS, install Claude Code, set your API
+key, and it works identically.
+
+### VPS Gateway (Optional Speed Optimization)
+
+The `src/vps-gateway.ts` + `src/lib/anthropic-processor.ts` path uses the raw
+Anthropic Messages API without Claude Code. This is faster (2-5s vs 10-60s per
+message) but has limited capabilities — no MCP servers, no skills, no hooks.
+Only Supabase context + `ask_user` + `phone_call` tools.
+
+Use the gateway only if response speed is more important than tool access.
+
+### Agent Tool Access
+
+Agents no longer restrict which tools Claude can use. By default, every agent
+gets full access to all Claude Code capabilities — MCP servers, skills, hooks,
+built-in tools. If you want to restrict a specific agent, you can optionally
+add `allowedTools` to its config:
+
+```typescript
+// Full access (default — no allowedTools field)
+const config: AgentConfig = {
+  name: "Research Agent",
+  model: "claude-opus-4-5-20251101",
+  reasoning: "ReAct",
+  personality: "analytical, thorough",
+  systemPrompt: "..."
+};
+
+// Restricted access (optional)
+const config: AgentConfig = {
+  name: "Restricted Agent",
+  allowedTools: ["Read", "WebSearch"],  // Only these tools available
+  ...
+};
+```
 
 ---
 
@@ -392,7 +437,7 @@ go-telegram-bot/
       voice.ts                  # ElevenLabs TTS + calls (214 lines)
       transcribe.ts             # Gemini transcription (78 lines)
       fallback-llm.ts           # OpenRouter + Ollama chain (89 lines)
-      google-auth.ts            # Google OAuth (cross-platform: keychain/file)
+      task-queue.ts             # Human-in-the-loop task management
 
     agents/
       base.ts                   # AgentConfig interface, topic map, cross-agent (156 lines)
