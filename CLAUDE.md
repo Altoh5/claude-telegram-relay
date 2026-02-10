@@ -48,11 +48,11 @@ Claude Code will ask for permission before running commands or editing files. Wh
 1. Open Telegram and message [@BotFather](https://t.me/BotFather)
 2. Send `/newbot` and follow the prompts to create your bot
 3. Copy the bot token (looks like `123456789:ABCdefGhIjKlMnOpQrStUvWxYz`)
-4. Get your Telegram user ID (pick one method):
-   - **Option A:** Message [@userinfobot](https://t.me/userinfobot) on Telegram — send it any message (like "hi") and it replies with your user ID
-   - **Option B:** Message [@getmyid_bot](https://t.me/getmyid_bot) — same thing, send any message to get your ID
-   - **Option C:** Search for your bot by username on Telegram, send it a message, then check the terminal logs — the user ID will appear in the incoming message data
-   - Your user ID is a number like `123456789` (not your username)
+4. Get your Telegram user ID:
+   - Click this exact link: **[@userinfobot](https://t.me/userinfobot)** (make sure it says "userinfobot", not "usinfobot" or similar)
+   - Send it any message (like "hi") — it immediately replies with your numeric user ID
+   - Your user ID is a number like `123456789` (this is NOT your username)
+   - **Warning:** There are copycat bots with similar names (like "@usinfobot"). Make sure you open the link above — the correct bot replies instantly with your ID, no menus or buttons
 
 ### What Claude Code does:
 - Creates `.env` from `.env.example` if it doesn't exist
