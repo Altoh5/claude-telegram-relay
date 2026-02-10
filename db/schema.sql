@@ -3,6 +3,15 @@
 -- ============================================================
 -- Run this in your Supabase SQL editor to set up the database.
 -- Supabase Dashboard → SQL Editor → New Query → Paste & Run
+--
+-- IMPORTANT: This script is SAFE for existing databases.
+-- All statements use IF NOT EXISTS — they will NOT drop or
+-- overwrite existing tables or data. If you have an existing
+-- Supabase project, only missing tables will be created.
+--
+-- DO NOT manually drop tables to "fix" schema conflicts.
+-- If you have existing data you want to keep, create a
+-- separate Supabase project for the bot instead.
 -- ============================================================
 
 -- Messages table (conversation history)

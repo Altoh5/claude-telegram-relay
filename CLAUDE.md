@@ -80,6 +80,8 @@ Claude Code will ask for permission before running commands or editing files. Wh
 - Opens `db/schema.sql` and runs it in your Supabase SQL editor (you paste it)
 - Runs `bun run setup/test-supabase.ts` to verify connectivity
 
+> **WARNING — Existing Supabase data:** If you're using an existing Supabase project that already has data, **do NOT drop or delete any existing tables**. The schema uses `CREATE TABLE IF NOT EXISTS` which safely skips tables that already exist. If Claude Code suggests dropping, restructuring, or recreating tables to resolve a conflict, **say no** — your existing data will be permanently deleted. Instead, create a new separate Supabase project for the bot, or manually add only the missing tables.
+
 ### Tell me:
 "Here are my Supabase keys: URL=[URL], anon=[KEY], service_role=[KEY]"
 
