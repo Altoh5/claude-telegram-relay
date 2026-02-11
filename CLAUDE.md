@@ -3,6 +3,39 @@
 > Claude Code reads this file automatically. Follow the setup phases below.
 > Each phase is designed to be completed through conversation with Claude Code.
 
+## Repository & Git Workflow
+
+**Source of truth:** `autonomee/gobot` (GitHub organization repo)
+
+| Repo | Role | Status |
+|------|------|--------|
+| `autonomee/gobot` | Main repo — all work happens here | Active |
+| `godagoo/gobot` | Personal archive (was the original) | Archived, read-only |
+
+### How to make changes (Goda):
+```bash
+cd ~/development/gobot
+# Remote is already set to autonomee/gobot
+git pull origin master
+# make changes...
+git add <files>
+git commit -m "description"
+git push origin master
+```
+
+### How community members contribute:
+1. Clone: `git clone https://github.com/autonomee/gobot.git`
+2. Create a branch: `git checkout -b fix/my-fix`
+3. Push branch: `git push origin fix/my-fix`
+4. Open PR on GitHub against `master`
+5. Goda reviews and merges
+
+### Access:
+- **Autonomee Community team** (21 members) has **Write** access
+- Members can push branches and create PRs
+- Members **cannot** fork to personal accounts (org setting)
+- Only admins (Goda, Sjotie) can merge to `master`
+
 ## What This Sets Up
 
 An always-on Telegram agent that:
