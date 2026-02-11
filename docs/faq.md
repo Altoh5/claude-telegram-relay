@@ -120,4 +120,4 @@ This happens when the Claude subprocess runs without full permissions. The bot n
 
 - [Architecture Deep Dive](./architecture.md)
 - [Troubleshooting Guide](./troubleshooting.md)
-- [AI Productivity Hub Community](https://skool.com/ai-productivity-hub)
+- [Autonomee Community](https://skool.com/autonomee)

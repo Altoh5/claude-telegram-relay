@@ -2,7 +2,7 @@
 
 An always-on Telegram agent powered by Claude with multi-agent routing, proactive check-ins, persistent memory, voice calls, and morning briefings. Supports three deployment modes: local desktop, cloud VPS, or hybrid (recommended).
 
-**Created by [Goda Go](https://youtube.com/@GodaGo)** | [AI Productivity Hub Community](https://skool.com/ai-productivity-hub)
+**Created by [Goda Go](https://youtube.com/@GodaGo)** | [Autonomee Community](https://skool.com/autonomee)
 
 ## What It Does
 
@@ -63,7 +63,7 @@ Your laptop sleeps. Your VPS doesn't. With hybrid mode:
 
 ```bash
 # Clone the repo
-git clone https://github.com/GodaGo/gobot.git
+git clone https://github.com/autonomee/gobot.git
 cd gobot
 
 # Install dependencies
@@ -152,7 +152,7 @@ Claude Code reads the `CLAUDE.md` file and walks you through a guided conversati
 
 ## Learn to Build This
 
-Step-by-step video walkthroughs for every module are available in the [AI Productivity Hub](https://skool.com/ai-productivity-hub) community on Skool.
+Step-by-step video walkthroughs for every module are available in the [Autonomee](https://skool.com/autonomee) community on Skool.
 
 Also in this repo:
 - [FAQ](docs/faq.md)
@@ -189,7 +189,7 @@ Need a VPS? I recommend [Hostinger](https://hostinger.com?REFERRALCODE=1GODA06) 
 
 ## Community
 
-Join the [AI Productivity Hub](https://skool.com/ai-productivity-hub) on Skool for:
+Join the [Autonomee](https://skool.com/autonomee) community on Skool for:
 - Step-by-step video walkthroughs of every module
 - Help with setup and customization
 - Share your bot builds and integrations
