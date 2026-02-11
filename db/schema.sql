@@ -191,34 +191,38 @@ CREATE POLICY "Anon update access" ON node_heartbeat
 -- OPTIONAL: Semantic Search Function
 -- ============================================================
 -- Requires pgvector extension and embeddings stored in messages.embedding
--- Uncomment if you set up the store-telegram-message edge function
+-- Run this after deploying the store-telegram-message edge function
 
--- CREATE OR REPLACE FUNCTION match_messages(
---   query_embedding VECTOR(1536),
---   match_threshold FLOAT DEFAULT 0.7,
---   match_count INT DEFAULT 5
--- )
--- RETURNS TABLE (
---   id BIGINT,
---   content TEXT,
---   role TEXT,
---   created_at TIMESTAMPTZ,
---   similarity FLOAT
--- )
--- LANGUAGE plpgsql
--- AS $$
--- BEGIN
---   RETURN QUERY
---   SELECT
---     m.id,
---     m.content,
---     m.role,
---     m.created_at,
---     1 - (m.embedding <=> query_embedding) AS similarity
---   FROM messages m
---   WHERE m.embedding IS NOT NULL
---     AND 1 - (m.embedding <=> query_embedding) > match_threshold
---   ORDER BY m.embedding <=> query_embedding
---   LIMIT match_count;
--- END;
--- $$;
+CREATE OR REPLACE FUNCTION match_messages(
+  query_embedding VECTOR(1536),
+  filter_chat_id TEXT DEFAULT NULL,
+  match_threshold FLOAT DEFAULT 0.7,
+  match_count INT DEFAULT 5
+)
+RETURNS TABLE (
+  id BIGINT,
+  content TEXT,
+  role TEXT,
+  chat_id TEXT,
+  created_at TIMESTAMPTZ,
+  similarity FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    m.id,
+    m.content,
+    m.role,
+    m.chat_id,
+    m.created_at,
+    1 - (m.embedding <=> query_embedding) AS similarity
+  FROM messages m
+  WHERE m.embedding IS NOT NULL
+    AND (filter_chat_id IS NULL OR m.chat_id = filter_chat_id)
+    AND 1 - (m.embedding <=> query_embedding) > match_threshold
+  ORDER BY m.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;

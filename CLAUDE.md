@@ -89,6 +89,37 @@ Claude Code will ask for permission before running commands or editing files. Wh
 
 ---
 
+## Phase 2.5: Semantic Search (Optional, ~5 min)
+
+Enable AI-powered memory search. Without this, the bot still works — it just uses basic text matching instead of understanding meaning.
+
+### What you need:
+1. An OpenAI API key from [platform.openai.com](https://platform.openai.com)
+2. Supabase CLI installed (`npm install -g supabase`)
+
+### What Claude Code does:
+- Saves your OpenAI key as a Supabase secret
+- Deploys two edge functions (store-telegram-message, search-memory)
+- Runs the match_messages SQL function in your database
+- Verifies semantic search works
+
+### Setup steps:
+1. Add your OpenAI key to Supabase secrets:
+   ```bash
+   supabase secrets set OPENAI_API_KEY=sk-your-key-here
+   ```
+2. Deploy the edge functions:
+   ```bash
+   supabase functions deploy store-telegram-message
+   supabase functions deploy search-memory
+   ```
+3. Run the `match_messages` function in SQL Editor (at the bottom of `db/schema.sql`)
+
+### Tell me:
+"Set up semantic search" with your OpenAI API key, or "Skip" to use basic text search.
+
+---
+
 ## Phase 3: Personalization (Required, ~5 min)
 
 ### What Claude Code does:
