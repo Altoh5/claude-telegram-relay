@@ -110,8 +110,9 @@ bot.use(async (ctx, next) => {
 
 interface LocalResponse {
   success: boolean;
-  response?: string;
+  response?: string | null;
   error?: string;
+  async?: boolean; // true when local returned 202 (async handoff)
 }
 
 async function forwardToLocal(
@@ -126,7 +127,7 @@ async function forwardToLocal(
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60_000);
+    const timeout = setTimeout(() => controller.abort(), 10_000); // 10s — expect 202 almost instantly
 
     const payload: Record<string, any> = { text, chatId, threadId };
     if (photoFileId) payload.photoFileId = photoFileId;
@@ -142,10 +143,17 @@ async function forwardToLocal(
     });
     clearTimeout(timeout);
 
+    // 202 = local accepted, will process and send to Telegram in background
+    if (res.status === 202) {
+      console.log(`[HYBRID] Async handoff to local for chatId=${chatId}`);
+      return { success: true, response: null, async: true };
+    }
+
     if (!res.ok) {
       return { success: false, error: `Local returned ${res.status}` };
     }
 
+    // 200 = synchronous response (backwards compatible)
     const data = (await res.json()) as Record<string, any>;
     return {
       success: true,
@@ -341,7 +349,11 @@ async function executeCallTask(
       // Forward to local machine for Claude Code processing
       console.log("Routing call task to local machine...");
       const localResult = await forwardToLocal(taskDescription, chatId);
-      if (localResult.success && localResult.response) {
+      if (localResult.async) {
+        // Local accepted async — it handles processing + Telegram response
+        console.log(`[HYBRID] Async handoff for call task, chatId=${chatId}`);
+        return;
+      } else if (localResult.success && localResult.response) {
         response = localResult.response;
       } else {
         console.log(
@@ -574,7 +586,11 @@ bot.on("message:text", async (ctx) => {
       console.log("Routing to local machine...");
       const localResult = await forwardToLocal(text, chatId, threadId);
 
-      if (localResult.success && localResult.response) {
+      if (localResult.async) {
+        // Local accepted async — it handles processing + Telegram response
+        clearInterval(typingInterval);
+        return;
+      } else if (localResult.success && localResult.response) {
         response = localResult.response;
         processedBy = "local";
       } else {
@@ -659,7 +675,10 @@ bot.on("message:photo", async (ctx) => {
         console.log("Forwarding photo to local machine...");
         const localResult = await forwardToLocal(caption, chatId, threadId, largest.file_id);
 
-        if (localResult.success && localResult.response) {
+        if (localResult.async) {
+          // Local accepted async — it handles processing + Telegram response
+          return;
+        } else if (localResult.success && localResult.response) {
           response = localResult.response;
           processedBy = "local";
         } else {
@@ -803,7 +822,11 @@ bot.on("message:voice", async (ctx) => {
         const voiceText = `[Voice message transcription]: ${transcription}`;
         if (isMacAlive()) {
           const localResult = await forwardToLocal(voiceText, chatId, threadId);
-          if (localResult.success && localResult.response) {
+          if (localResult.async) {
+            // Local accepted async — it handles processing + Telegram response
+            clearInterval(typingInterval);
+            return;
+          } else if (localResult.success && localResult.response) {
             response = localResult.response;
             processedBy = "local";
           } else {

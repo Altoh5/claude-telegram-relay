@@ -1327,6 +1327,152 @@ function extractUserName(profile: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// 9b. Async /process Background Handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Send a long response directly via bot.api (no Context needed).
+ * Handles Telegram's 4096 char limit by chunking at paragraph boundaries.
+ * Mirrors the logic in lib/telegram.ts sendResponse().
+ */
+async function sendDirectMessage(
+  chatId: string | number,
+  text: string,
+  threadId?: number
+): Promise<void> {
+  // Convert standard markdown bold (**bold**) to Telegram markdown bold (*bold*)
+  text = text.replace(/\*\*(.+?)\*\*/g, "*$1*");
+
+  const MAX_LENGTH = 4000;
+  const opts: Record<string, any> = {};
+  if (threadId) opts.message_thread_id = threadId;
+
+  if (text.length <= MAX_LENGTH) {
+    await bot.api
+      .sendMessage(chatId, text, { parse_mode: "Markdown", ...opts })
+      .catch(() => bot.api.sendMessage(chatId, text, opts));
+    return;
+  }
+
+  // Split at paragraph boundaries
+  const chunks: string[] = [];
+  let current = "";
+  for (const paragraph of text.split("\n\n")) {
+    if ((current + "\n\n" + paragraph).length > MAX_LENGTH) {
+      if (current) chunks.push(current);
+      current = paragraph;
+    } else {
+      current = current ? current + "\n\n" + paragraph : paragraph;
+    }
+  }
+  if (current) chunks.push(current);
+
+  for (const chunk of chunks) {
+    await bot.api
+      .sendMessage(chatId, chunk, { parse_mode: "Markdown", ...opts })
+      .catch(() => bot.api.sendMessage(chatId, chunk, opts));
+  }
+}
+
+/**
+ * Process a /process request in the background.
+ * Sends typing indicator, calls Claude, and sends the response
+ * directly to Telegram. Fire-and-forget from the HTTP handler.
+ */
+async function processInBackground(
+  text: string | undefined,
+  chatId: string | undefined,
+  threadId: number | undefined,
+  photoFileId: string | undefined
+): Promise<void> {
+  const targetChatId = chatId || "";
+  if (!targetChatId) {
+    console.error("/process background: no chatId provided");
+    return;
+  }
+
+  // Send typing indicator
+  await bot.api.sendChatAction(targetChatId, "typing").catch(() => {});
+
+  // Keep typing indicator alive during processing
+  const typingInterval = setInterval(() => {
+    bot.api.sendChatAction(targetChatId, "typing").catch(() => {});
+  }, 4000);
+
+  try {
+    let response: string;
+
+    if (photoFileId) {
+      // VPS forwarded a photo — download from Telegram and process
+      const file = await fetch(
+        `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${photoFileId}`
+      ).then((r) => r.json()) as any;
+
+      const filePath = file?.result?.file_path;
+      if (!filePath) {
+        await sendDirectMessage(targetChatId, "Could not download the photo from Telegram.", threadId);
+        return;
+      }
+
+      const uploadsDir = join(PROJECT_ROOT, "uploads");
+      await mkdir(uploadsDir, { recursive: true });
+
+      const ext = filePath.split(".").pop() || "jpg";
+      const localPath = join(uploadsDir, `photo_${Date.now()}.${ext}`);
+      const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+      const dlRes = await fetch(fileUrl);
+      const buffer = Buffer.from(await dlRes.arrayBuffer());
+      await writeFile(localPath, buffer);
+
+      // Upload to asset store
+      const asset = await uploadAssetQuick(localPath, {
+        userCaption: text || undefined,
+        channel: "telegram",
+        telegramFileId: photoFileId,
+      });
+
+      const caption = text || "User sent a photo. Describe and respond to it.";
+      const assetNote = asset ? `\n(asset: ${asset.id})` : "";
+
+      response = await callClaude(
+        `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`,
+        targetChatId,
+        "general",
+        threadId
+      );
+
+      // Parse and update asset description
+      if (asset) {
+        const parsed = parseAssetDescTag(response);
+        if (parsed) {
+          updateAssetDescription(asset.id, parsed.description, parsed.tags).catch(() => {});
+        } else {
+          const sentences = response.match(/[^.!?]+[.!?]+/g);
+          if (sentences) {
+            updateAssetDescription(asset.id, sentences.slice(0, 2).join(" ").trim()).catch(() => {});
+          }
+        }
+      }
+
+      response = stripAssetDescTag(response);
+    } else {
+      // Text message
+      response = await callClaude(text || "", targetChatId, "general", threadId);
+    }
+
+    // Send response directly to Telegram
+    await sendDirectMessage(targetChatId, response, threadId);
+    console.log(`/process completed for chat ${targetChatId} (${response.length} chars)`);
+  } catch (err) {
+    console.error("/process background processing error:", err);
+    const errorMsg = "Sorry, something went wrong processing your message on the local machine.";
+    await sendDirectMessage(targetChatId, errorMsg, threadId).catch(() => {});
+  } finally {
+    clearInterval(typingInterval);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 10. Health Check HTTP Server
 // ---------------------------------------------------------------------------
 
@@ -1351,7 +1497,7 @@ const healthServer = Bun.serve({
       );
     }
 
-    // Process endpoint — VPS forwards messages here
+    // Process endpoint — VPS forwards messages here (async: returns 202 immediately)
     if (url.pathname === "/process" && req.method === "POST") {
       // Auth check
       if (GATEWAY_SECRET) {
@@ -1361,74 +1507,21 @@ const healthServer = Bun.serve({
         }
       }
 
+      let body: Record<string, any>;
       try {
-        const body = (await req.json()) as Record<string, any>;
-        const { text, chatId, threadId, photoFileId } = body;
-
-        let response: string;
-
-        if (photoFileId) {
-          // VPS forwarded a photo — download from Telegram and process
-          const file = await fetch(
-            `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${photoFileId}`
-          ).then((r) => r.json()) as any;
-
-          const filePath = file?.result?.file_path;
-          if (!filePath) {
-            return Response.json({ error: "Could not get file path" }, { status: 400 });
-          }
-
-          const uploadsDir = join(PROJECT_ROOT, "uploads");
-          await mkdir(uploadsDir, { recursive: true });
-
-          const ext = filePath.split(".").pop() || "jpg";
-          const localPath = join(uploadsDir, `photo_${Date.now()}.${ext}`);
-          const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
-          const dlRes = await fetch(fileUrl);
-          const buffer = Buffer.from(await dlRes.arrayBuffer());
-          await writeFile(localPath, buffer);
-
-          // Upload to asset store
-          const asset = await uploadAssetQuick(localPath, {
-            userCaption: text || undefined,
-            channel: "telegram",
-            telegramFileId: photoFileId,
-          });
-
-          const caption = text || "User sent a photo. Describe and respond to it.";
-          const assetNote = asset ? `\n(asset: ${asset.id})` : "";
-
-          response = await callClaude(
-            `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`,
-            chatId || "",
-            "general",
-            threadId
-          );
-
-          // Parse and update asset description
-          if (asset) {
-            const parsed = parseAssetDescTag(response);
-            if (parsed) {
-              updateAssetDescription(asset.id, parsed.description, parsed.tags).catch(() => {});
-            } else {
-              const sentences = response.match(/[^.!?]+[.!?]+/g);
-              if (sentences) {
-                updateAssetDescription(asset.id, sentences.slice(0, 2).join(" ").trim()).catch(() => {});
-              }
-            }
-          }
-
-          response = stripAssetDescTag(response);
-        } else {
-          // Text message
-          response = await callClaude(text || "", chatId || "", "general", threadId);
-        }
-
-        return Response.json({ response });
+        body = (await req.json()) as Record<string, any>;
       } catch (err: any) {
-        console.error("/process error:", err);
-        return Response.json({ error: err.message }, { status: 500 });
+        return Response.json({ error: "Invalid JSON body" }, { status: 400 });
       }
+
+      const { text, chatId, threadId, photoFileId } = body;
+
+      // Return 202 immediately — process in background
+      processInBackground(text, chatId, threadId, photoFileId).catch((err) => {
+        console.error("/process background error:", err);
+      });
+
+      return Response.json({ accepted: true }, { status: 202 });
     }
 
     return new Response("Not Found", { status: 404 });
