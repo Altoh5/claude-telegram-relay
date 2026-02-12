@@ -21,12 +21,31 @@ You ──▶ Telegram ──▶ Bot ─┤
 - **Multi-Agent**: Route messages to specialized agents via Telegram forum topics
 - **Memory**: Persistent facts, goals, and conversation history via Supabase
 - **Image Storage**: Photos stored persistently with AI-generated descriptions, tags, and semantic search
+- **Smart Routing**: Messages auto-classified by complexity — Haiku (fast), Sonnet (medium), Opus (powerful)
+- **Streaming Progress**: Complex tasks show real-time tool usage and progress updates in Telegram
+- **Call-to-Task**: Phone calls auto-detect actionable tasks and execute them with live progress updates
 - **Proactive**: Smart check-ins that know when to reach out (and when not to)
 - **Briefings**: Daily morning summary with goals and whatever context your MCP servers provide
 - **Voice**: Text-to-speech replies, voice transcription, and phone calls
 - **Human-in-the-Loop**: Claude asks for confirmation via inline buttons before taking actions
 - **Hybrid Mode**: VPS catches messages 24/7, forwards to your local machine when it's awake
 - **Auto-Deploy**: Push to GitHub, VPS pulls and restarts automatically
+
+## What's New
+
+### v2.3.0 — Call-to-Task Auto-Execution
+When you end a phone call with the bot, it detects actionable tasks in the transcript (e.g. "create a presentation", "research X") and automatically starts executing them with live progress updates in Telegram. Works on both Mac and VPS.
+
+### v2.2.0 — Persistent Image Storage
+Photos sent to the bot are stored in Supabase Storage with AI-generated descriptions, tags, and optional semantic search. Images survive restarts and can be recalled later.
+
+### v2.1.0 — Smart Routing + Streaming Progress
+Messages auto-classified by complexity (Haiku/Sonnet/Opus). Complex tasks show real-time progress in Telegram — which tools are being used, Claude's initial plan. Simple messages respond instantly.
+
+### v2.0.0 — VPS Gateway + Hybrid Mode
+Always-on VPS processing with Anthropic API, hybrid forwarding to local machine, human-in-the-loop confirmations, and auto-deploy via GitHub webhook.
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ## Deployment Modes
 
@@ -158,6 +177,7 @@ Claude Code reads the `CLAUDE.md` file and walks you through a guided conversati
 Step-by-step video walkthroughs for every module are available in the [Autonomee](https://skool.com/autonomee) community on Skool.
 
 Also in this repo:
+- [Changelog](CHANGELOG.md)
 - [FAQ](docs/faq.md)
 - [Architecture Deep Dive](docs/architecture.md)
 - [Troubleshooting](docs/troubleshooting.md)
