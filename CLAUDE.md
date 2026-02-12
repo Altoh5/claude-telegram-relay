@@ -48,6 +48,7 @@ An always-on Telegram agent that:
 - Proactively checks in with smart context awareness
 - Sends morning briefings with your goals and whatever context your MCP servers provide
 - Persists memory (facts, goals, conversation history) via Supabase
+- Stores images persistently in Supabase Storage with AI-generated descriptions and semantic search
 - Survives reboots via launchd (macOS) or PM2 + scheduler (Windows/Linux)
 - Falls back to OpenRouter/Ollama when Claude is unavailable
 - Optional: voice replies, phone calls, audio transcription
@@ -206,6 +207,8 @@ Based on the scan, tell the user which phases are already done and which remain.
 - Runs `bun run setup/test-supabase.ts` to verify connectivity
 
 > **WARNING — Existing Supabase data:** If you're using an existing Supabase project that already has data, **do NOT drop or delete any existing tables**. The schema uses `CREATE TABLE IF NOT EXISTS` which safely skips tables that already exist. If Claude Code suggests dropping, restructuring, or recreating tables to resolve a conflict, **say no** — your existing data will be permanently deleted. Instead, create a new separate Supabase project for the bot, or manually add only the missing tables.
+
+> **Upgrading from a previous version?** Just re-run `db/schema.sql` — all statements use `IF NOT EXISTS` and are safe to re-run. New tables (like `assets`) will be created without touching existing data. After running the schema, create a Storage bucket named `gobot-assets` in your Supabase Dashboard (Settings → Storage → New Bucket → Name: "gobot-assets" → Make public).
 
 ### Tell me:
 "Here are my Supabase keys: URL=[URL], anon=[KEY], service_role=[KEY]"
@@ -486,6 +489,7 @@ src/
     model-router.ts      # Complexity classifier + tiered model selection
     mac-health.ts        # Local machine health checking (hybrid mode)
     task-queue.ts        # Human-in-the-loop task management
+    asset-store.ts       # Persistent image/file storage with AI descriptions
     supabase.ts          # Database client + async tasks + heartbeat
     memory.ts            # Facts, goals, intents
     fallback-llm.ts      # Backup LLM chain
