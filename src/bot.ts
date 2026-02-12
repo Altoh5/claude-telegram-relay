@@ -532,16 +532,21 @@ async function handleVoiceMessage(ctx: Context): Promise<void> {
       metadata: { type: "voice", originalFile: localPath },
     });
 
-    // Process with Claude
+    // Process with Claude (uses same complexity-aware routing as text messages)
     const topicId = (ctx.message as any)?.message_thread_id as number | undefined;
     const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
 
-    const claudeResponse = await callClaude(
-      `[Voice message transcription]: ${transcript}`,
-      chatId,
-      agentName,
-      topicId
-    );
+    const voicePrompt = `[Voice message transcription]: ${transcript}`;
+    const tier = classifyComplexity(voicePrompt);
+    let claudeResponse: string;
+
+    if (tier !== "haiku") {
+      // Complex task → streaming subprocess with live progress
+      claudeResponse = await callClaudeWithProgress(ctx, voicePrompt, chatId, agentName, topicId);
+    } else {
+      // Simple task → standard subprocess (fast, no progress needed)
+      claudeResponse = await callClaude(voicePrompt, chatId, agentName, topicId);
+    }
 
     // Persist bot response
     await saveMessage({
@@ -625,17 +630,22 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
       metadata: { type: "photo", filePath: localPath, assetId: asset?.id },
     });
 
-    // Process with Claude (include image path + asset ID in prompt)
+    // Process with Claude (uses same complexity-aware routing as text messages)
     const topicId = (ctx.message as any)?.message_thread_id as number | undefined;
     const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
 
     const assetNote = asset ? `\n(asset: ${asset.id})` : "";
-    const claudeResponse = await callClaude(
-      `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`,
-      chatId,
-      agentName,
-      topicId
-    );
+    const photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
+    const tier = classifyComplexity(caption);
+    let claudeResponse: string;
+
+    if (tier !== "haiku") {
+      // Complex task → streaming subprocess with live progress
+      claudeResponse = await callClaudeWithProgress(ctx, photoPrompt, chatId, agentName, topicId);
+    } else {
+      // Simple task → standard subprocess (fast, no progress needed)
+      claudeResponse = await callClaude(photoPrompt, chatId, agentName, topicId);
+    }
 
     // Parse [ASSET_DESC] tag from response and update asset
     if (asset) {
@@ -724,16 +734,19 @@ async function handleDocumentMessage(ctx: Context): Promise<void> {
       metadata: { type: "document", filePath: localPath, fileName },
     });
 
-    // Process with Claude
+    // Process with Claude (uses same complexity-aware routing as text messages)
     const topicId = (ctx.message as any)?.message_thread_id as number | undefined;
     const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
 
-    const claudeResponse = await callClaude(
-      `[User sent a document saved at: ${localPath}, filename: ${fileName}]\n\n${caption}`,
-      chatId,
-      agentName,
-      topicId
-    );
+    const docPrompt = `[User sent a document saved at: ${localPath}, filename: ${fileName}]\n\n${caption}`;
+    const tier = classifyComplexity(caption);
+    let claudeResponse: string;
+
+    if (tier !== "haiku") {
+      claudeResponse = await callClaudeWithProgress(ctx, docPrompt, chatId, agentName, topicId);
+    } else {
+      claudeResponse = await callClaude(docPrompt, chatId, agentName, topicId);
+    }
 
     // Persist bot response
     await saveMessage({

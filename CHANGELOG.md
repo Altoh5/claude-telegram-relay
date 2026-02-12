@@ -10,6 +10,7 @@
 - **VPS photo support** — VPS gateway now handles photos: forwards to Mac when online, processes with Haiku vision when offline.
 - **Hybrid photo forwarding** — `/process` endpoint on Mac now accepts `photoFileId` from VPS for local processing with Claude Code.
 - **Markdown bold fix** — `**bold**` text now correctly renders as bold in Telegram (converted to `*bold*`).
+- **Streaming progress for all message types** — Voice messages, photos, and documents now get the same live progress updates as text messages. Complex tasks show real-time tool usage regardless of how you send them.
 
 ### New Files
 - `src/lib/asset-store.ts` — Upload, describe, search, and manage persistent image/file assets
