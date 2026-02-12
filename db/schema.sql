@@ -94,6 +94,26 @@ CREATE TABLE IF NOT EXISTS node_heartbeat (
   metadata JSONB DEFAULT '{}'::jsonb
 );
 
+-- Assets table (persistent image/file storage with AI descriptions)
+CREATE TABLE IF NOT EXISTS assets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  storage_path TEXT NOT NULL,
+  public_url TEXT,
+  original_filename TEXT,
+  file_type TEXT NOT NULL,  -- 'image', 'document', 'audio'
+  mime_type TEXT,
+  file_size_bytes INTEGER,
+  description TEXT NOT NULL,
+  user_caption TEXT,
+  conversation_context TEXT,
+  related_project TEXT,
+  tags TEXT[] DEFAULT '{}',
+  channel TEXT DEFAULT 'telegram',
+  metadata JSONB DEFAULT '{}',
+  embedding VECTOR(1536)
+);
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
@@ -117,6 +137,10 @@ CREATE INDEX IF NOT EXISTS idx_async_tasks_chat_id ON async_tasks (chat_id);
 CREATE INDEX IF NOT EXISTS idx_async_tasks_status ON async_tasks (status);
 CREATE INDEX IF NOT EXISTS idx_async_tasks_updated_at ON async_tasks (updated_at DESC);
 
+-- Assets: fast lookup by type and time
+CREATE INDEX IF NOT EXISTS idx_assets_file_type ON assets (file_type);
+CREATE INDEX IF NOT EXISTS idx_assets_created_at ON assets (created_at DESC);
+
 -- ============================================================
 -- ROW LEVEL SECURITY (Optional but recommended)
 -- ============================================================
@@ -128,6 +152,7 @@ ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE call_transcripts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE async_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE node_heartbeat ENABLE ROW LEVEL SECURITY;
+ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role full access (your bot uses service role key)
 CREATE POLICY "Service role full access" ON messages
@@ -146,6 +171,9 @@ CREATE POLICY "Service role full access" ON async_tasks
   FOR ALL USING (auth.role() = 'service_role');
 
 CREATE POLICY "Service role full access" ON node_heartbeat
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role full access" ON assets
   FOR ALL USING (auth.role() = 'service_role');
 
 -- Allow anon key read access (for dashboard, if you build one)
@@ -176,6 +204,12 @@ CREATE POLICY "Anon insert access" ON node_heartbeat
 
 CREATE POLICY "Anon update access" ON node_heartbeat
   FOR UPDATE USING (auth.role() = 'anon');
+
+CREATE POLICY "Anon read access" ON assets
+  FOR SELECT USING (auth.role() = 'anon');
+
+CREATE POLICY "Anon insert access" ON assets
+  FOR INSERT WITH CHECK (auth.role() = 'anon');
 
 -- ============================================================
 -- MIGRATION: If upgrading from an older schema
@@ -229,3 +263,51 @@ BEGIN
   LIMIT match_count;
 END;
 $$;
+
+-- ============================================================
+-- OPTIONAL: Asset Semantic Search Function
+-- ============================================================
+-- Requires pgvector extension and embeddings stored in assets.embedding
+
+CREATE OR REPLACE FUNCTION match_assets(
+  query_embedding VECTOR(1536),
+  match_threshold FLOAT DEFAULT 0.7,
+  match_count INT DEFAULT 5
+)
+RETURNS TABLE (
+  id UUID,
+  description TEXT,
+  tags TEXT[],
+  file_type TEXT,
+  public_url TEXT,
+  created_at TIMESTAMPTZ,
+  similarity FLOAT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    a.id,
+    a.description,
+    a.tags,
+    a.file_type,
+    a.public_url,
+    a.created_at,
+    1 - (a.embedding <=> query_embedding) AS similarity
+  FROM assets a
+  WHERE a.embedding IS NOT NULL
+    AND 1 - (a.embedding <=> query_embedding) > match_threshold
+  ORDER BY a.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
+-- ============================================================
+-- MIGRATION v2: Asset Storage (2026-02)
+-- ============================================================
+-- If upgrading from a previous version, just run this entire file again.
+-- All CREATE TABLE IF NOT EXISTS statements are safe to re-run.
+-- New: assets table for persistent image/file storage
+-- Action needed: Create a Storage bucket named "gobot-assets" in Supabase Dashboard
+-- (Settings → Storage → New Bucket → Name: "gobot-assets" → Make public)

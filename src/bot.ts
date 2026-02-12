@@ -31,6 +31,7 @@ import {
   listGoals,
   listFacts,
 } from "./lib/memory";
+import { uploadAssetQuick, updateAssetDescription, parseAssetDescTag, stripAssetDescTag } from "./lib/asset-store";
 import { callFallbackLLM } from "./lib/fallback-llm";
 import { textToSpeech, initiatePhoneCall, isVoiceEnabled, isCallEnabled, waitForTranscript } from "./lib/voice";
 import { transcribeAudio, isTranscriptionEnabled } from "./lib/transcribe";
@@ -90,6 +91,7 @@ const PROJECT_ROOT = process.cwd();
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const TIMEZONE = process.env.USER_TIMEZONE || "UTC";
 const HEALTH_PORT = parseInt(process.env.HEALTH_PORT || "3000", 10);
+const GATEWAY_SECRET = process.env.GATEWAY_SECRET || "";
 
 if (!BOT_TOKEN) {
   console.error("FATAL: TELEGRAM_BOT_TOKEN is required. Set it in .env");
@@ -594,6 +596,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
       return;
     }
 
+    // Download photo locally (Claude Code reads from filesystem)
     const uploadsDir = join(PROJECT_ROOT, "uploads");
     await mkdir(uploadsDir, { recursive: true });
 
@@ -606,35 +609,66 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
 
     const caption = ctx.message?.caption || "User sent a photo. Describe and respond to it.";
 
+    // Upload to Supabase Storage with placeholder (async, don't block)
+    const asset = await uploadAssetQuick(localPath, {
+      userCaption: caption,
+      channel: "telegram",
+      telegramFileId: largest.file_id,
+      originalFilename: `photo_${Date.now()}.${ext}`,
+    });
+
     // Persist user message
     await saveMessage({
       chat_id: chatId,
       role: "user",
       content: `[Photo] ${caption}`,
-      metadata: { type: "photo", filePath: localPath },
+      metadata: { type: "photo", filePath: localPath, assetId: asset?.id },
     });
 
-    // Process with Claude (include image path in prompt)
+    // Process with Claude (include image path + asset ID in prompt)
     const topicId = (ctx.message as any)?.message_thread_id as number | undefined;
     const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
 
+    const assetNote = asset ? `\n(asset: ${asset.id})` : "";
     const claudeResponse = await callClaude(
-      `[User sent an image saved at: ${localPath}]\n\n${caption}`,
+      `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`,
       chatId,
       agentName,
       topicId
     );
 
+    // Parse [ASSET_DESC] tag from response and update asset
+    if (asset) {
+      const parsed = parseAssetDescTag(claudeResponse);
+      if (parsed) {
+        updateAssetDescription(asset.id, parsed.description, parsed.tags).catch(
+          (err) => console.error("Asset desc update error:", err)
+        );
+      } else {
+        // Fallback: extract first 2 sentences from response
+        const sentences = claudeResponse.match(/[^.!?]+[.!?]+/g);
+        if (sentences && sentences.length > 0) {
+          const fallbackDesc = sentences.slice(0, 2).join(" ").trim();
+          updateAssetDescription(asset.id, fallbackDesc).catch(
+            (err) => console.error("Asset desc update error:", err)
+          );
+        }
+      }
+    }
+
+    // Strip [ASSET_DESC] tag before sending to user
+    const cleanResponse = stripAssetDescTag(claudeResponse);
+
     // Persist bot response
     await saveMessage({
       chat_id: chatId,
       role: "assistant",
-      content: claudeResponse,
-      metadata: { type: "photo_reply" },
+      content: cleanResponse,
+      metadata: { type: "photo_reply", assetId: asset?.id },
     });
 
-    await processIntents(claudeResponse);
-    await sendResponse(ctx, claudeResponse);
+    await processIntents(cleanResponse);
+    await sendResponse(ctx, cleanResponse);
   } catch (error) {
     console.error("Photo processing error:", error);
     await ctx.reply("Sorry, I couldn't process that image. Please try again.");
@@ -988,6 +1022,13 @@ If you learn a fact worth remembering, include: [REMEMBER: fact]
 If the user wants to forget a stored fact, include: [FORGET: partial match]
 These tags will be parsed automatically. Include them naturally in your response.`);
 
+  // Image cataloguing instructions
+  sections.push(`## IMAGE CATALOGUING
+When you analyze an image, include this tag at the END of your response:
+[ASSET_DESC: concise 1-2 sentence description | tag1, tag2, tag3]
+This is used for search/recall of images later. Be descriptive but concise.
+Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | birthday, invitation, kids]`);
+
   // The actual user message
   sections.push(`## USER MESSAGE\n${userMessage}`);
 
@@ -1147,6 +1188,11 @@ If the user wants to cancel/abandon a goal, include: [CANCEL: partial match]
 If you learn a fact worth remembering, include: [REMEMBER: fact]
 If the user wants to forget a stored fact, include: [FORGET: partial match]
 These tags will be parsed automatically. Include them naturally in your response.`);
+  sections.push(`## IMAGE CATALOGUING
+When you analyze an image, include this tag at the END of your response:
+[ASSET_DESC: concise 1-2 sentence description | tag1, tag2, tag3]
+This is used for search/recall of images later. Be descriptive but concise.
+Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | birthday, invitation, kids]`);
   sections.push(`## USER MESSAGE\n${userMessage}`);
 
   const fullPrompt = sections.join("\n\n---\n\n");
@@ -1256,7 +1302,7 @@ function extractUserName(profile: string): string {
 
 const healthServer = Bun.serve({
   port: HEALTH_PORT,
-  fetch(req) {
+  async fetch(req) {
     const url = new URL(req.url);
 
     if (url.pathname === "/health" || url.pathname === "/") {
@@ -1273,6 +1319,86 @@ const healthServer = Bun.serve({
           headers: { "Content-Type": "application/json" },
         }
       );
+    }
+
+    // Process endpoint — VPS forwards messages here
+    if (url.pathname === "/process" && req.method === "POST") {
+      // Auth check
+      if (GATEWAY_SECRET) {
+        const auth = req.headers.get("authorization") || "";
+        if (auth !== `Bearer ${GATEWAY_SECRET}`) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+      }
+
+      try {
+        const body = (await req.json()) as Record<string, any>;
+        const { text, chatId, threadId, photoFileId } = body;
+
+        let response: string;
+
+        if (photoFileId) {
+          // VPS forwarded a photo — download from Telegram and process
+          const file = await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${photoFileId}`
+          ).then((r) => r.json()) as any;
+
+          const filePath = file?.result?.file_path;
+          if (!filePath) {
+            return Response.json({ error: "Could not get file path" }, { status: 400 });
+          }
+
+          const uploadsDir = join(PROJECT_ROOT, "uploads");
+          await mkdir(uploadsDir, { recursive: true });
+
+          const ext = filePath.split(".").pop() || "jpg";
+          const localPath = join(uploadsDir, `photo_${Date.now()}.${ext}`);
+          const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+          const dlRes = await fetch(fileUrl);
+          const buffer = Buffer.from(await dlRes.arrayBuffer());
+          await writeFile(localPath, buffer);
+
+          // Upload to asset store
+          const asset = await uploadAssetQuick(localPath, {
+            userCaption: text || undefined,
+            channel: "telegram",
+            telegramFileId: photoFileId,
+          });
+
+          const caption = text || "User sent a photo. Describe and respond to it.";
+          const assetNote = asset ? `\n(asset: ${asset.id})` : "";
+
+          response = await callClaude(
+            `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`,
+            chatId || "",
+            "general",
+            threadId
+          );
+
+          // Parse and update asset description
+          if (asset) {
+            const parsed = parseAssetDescTag(response);
+            if (parsed) {
+              updateAssetDescription(asset.id, parsed.description, parsed.tags).catch(() => {});
+            } else {
+              const sentences = response.match(/[^.!?]+[.!?]+/g);
+              if (sentences) {
+                updateAssetDescription(asset.id, sentences.slice(0, 2).join(" ").trim()).catch(() => {});
+              }
+            }
+          }
+
+          response = stripAssetDescTag(response);
+        } else {
+          // Text message
+          response = await callClaude(text || "", chatId || "", "general", threadId);
+        }
+
+        return Response.json({ response });
+      } catch (err: any) {
+        console.error("/process error:", err);
+        return Response.json({ error: err.message }, { status: 500 });
+      }
     }
 
     return new Response("Not Found", { status: 404 });

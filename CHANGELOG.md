@@ -1,5 +1,40 @@
 # Gobot Changelog
 
+## v2.2.0 — 2026-02-12
+
+**Persistent Image Storage + Formatting Fixes**
+
+- **Persistent image storage** — Photos sent to the bot are now stored in Supabase Storage with AI-generated descriptions, tags, and optional semantic search via embeddings. Images survive restarts and can be recalled later.
+- **Image cataloguing** — Claude automatically generates a structured description and tags for each image using the `[ASSET_DESC]` tag format, stored in the `assets` table.
+- **Semantic image search** — With an OpenAI API key, images get vector embeddings for similarity search via the `match_assets` RPC function.
+- **VPS photo support** — VPS gateway now handles photos: forwards to Mac when online, processes with Haiku vision when offline.
+- **Hybrid photo forwarding** — `/process` endpoint on Mac now accepts `photoFileId` from VPS for local processing with Claude Code.
+- **Markdown bold fix** — `**bold**` text now correctly renders as bold in Telegram (converted to `*bold*`).
+
+### New Files
+- `src/lib/asset-store.ts` — Upload, describe, search, and manage persistent image/file assets
+
+### Updated
+- `db/schema.sql` — Added `assets` table with pgvector embeddings, indexes, RLS policies, and `match_assets` RPC
+- `src/bot.ts` — Restructured photo handler with asset persistence, added IMAGE CATALOGUING prompt, expanded `/process` endpoint for photo forwarding
+- `src/vps-gateway.ts` — Added `message:photo` handler (Mac-forward + VPS-fallback), bold conversion in `sendResponse()`
+- `src/lib/telegram.ts` — Added `**bold**` → `*bold*` conversion in `sendResponse()`
+- `.env.example` — Added note about embedding use of `OPENAI_API_KEY`
+- `CLAUDE.md` — Documented image persistence, upgrade instructions, project structure update
+
+### Upgrade Instructions
+1. `git pull && bun install`
+2. Re-run `db/schema.sql` in Supabase SQL editor (safe — uses `IF NOT EXISTS`)
+3. Create a Storage bucket named `gobot-assets` in Supabase Dashboard (Settings → Storage → New Bucket → public)
+4. Optional: Set `OPENAI_API_KEY` in `.env` for semantic image search
+
+### Compatibility
+- Fully backward compatible. No config changes required.
+- Photos work without `OPENAI_API_KEY` — semantic search is optional.
+- Existing Supabase data is untouched.
+
+---
+
 ## v2.1.0 — 2026-02-12
 
 **Smart Routing + Streaming Progress + Agent SDK**

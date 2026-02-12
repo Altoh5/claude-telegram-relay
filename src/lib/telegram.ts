@@ -111,6 +111,9 @@ export async function sendResponse(
   wantsVoice?: boolean,
   voiceFn?: (text: string) => Promise<Buffer | null>
 ): Promise<void> {
+  // Convert standard markdown bold (**bold**) to Telegram markdown bold (*bold*)
+  text = text.replace(/\*\*(.+?)\*\*/g, "*$1*");
+
   // Send voice if requested and voice function provided
   if (wantsVoice && voiceFn) {
     const audioBuffer = await voiceFn(text);

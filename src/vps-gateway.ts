@@ -39,6 +39,13 @@ import {
   getCallTranscript,
 } from "./lib/voice";
 import { transcribeAudioBuffer } from "./lib/transcribe";
+import {
+  uploadAssetFromBuffer,
+  updateAssetDescription,
+  describeImageFromBuffer,
+  parseAssetDescTag,
+  stripAssetDescTag,
+} from "./lib/asset-store";
 import * as supabase from "./lib/supabase";
 
 // ============================================================
@@ -109,7 +116,8 @@ interface LocalResponse {
 async function forwardToLocal(
   text: string,
   chatId: string,
-  threadId?: number
+  threadId?: number,
+  photoFileId?: string
 ): Promise<LocalResponse> {
   if (!MAC_PROCESS_URL) {
     return { success: false, error: "MAC_PROCESS_URL not configured" };
@@ -119,13 +127,16 @@ async function forwardToLocal(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60_000);
 
+    const payload: Record<string, any> = { text, chatId, threadId };
+    if (photoFileId) payload.photoFileId = photoFileId;
+
     const res = await fetch(MAC_PROCESS_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${GATEWAY_SECRET}`,
       },
-      body: JSON.stringify({ text, chatId, threadId }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -150,6 +161,9 @@ async function forwardToLocal(
 
 async function sendResponse(ctx: Context, text: string): Promise<void> {
   if (!text) return; // Empty = handled elsewhere (e.g. ask_user buttons)
+
+  // Convert standard markdown bold (**bold**) to Telegram markdown bold (*bold*)
+  text = text.replace(/\*\*(.+?)\*\*/g, "*$1*");
 
   const MAX_LENGTH = 4096;
 
@@ -422,6 +436,150 @@ bot.on("message:text", async (ctx) => {
 
   await sendResponse(ctx, response);
 });
+
+// ============================================================
+// PHOTO MESSAGE HANDLER
+// ============================================================
+
+bot.on("message:photo", async (ctx) => {
+  console.log("Photo message received");
+  await ctx.replyWithChatAction("typing").catch(() => {});
+
+  const chatId = ctx.chat.id.toString();
+  const threadId = ctx.message.message_thread_id;
+  const caption = ctx.message.caption || "User sent a photo. Describe and respond to it.";
+
+  // Get highest resolution photo
+  const photos = ctx.message.photo;
+  if (!photos || photos.length === 0) {
+    await ctx.reply("Could not process photo.");
+    return;
+  }
+  const largest = photos[photos.length - 1];
+
+  // Fire-and-forget: don't block Grammy's update loop
+  (async () => {
+    const typingInterval = setInterval(() => {
+      ctx.replyWithChatAction("typing").catch(() => {});
+    }, 4000);
+
+    try {
+      // Log incoming message
+      await supabase
+        .saveMessage({
+          chat_id: chatId,
+          role: "user",
+          content: `[Photo] ${caption}`,
+          metadata: {
+            telegram_user_id: ctx.from?.id,
+            telegram_chat_id: ctx.chat.id,
+            thread_id: threadId,
+            processed_by: NODE_ID,
+          },
+        })
+        .catch(() => {});
+
+      let response: string;
+      let processedBy = NODE_ID;
+
+      if (isMacAlive()) {
+        // Path A: Forward photo file_id to Mac for processing
+        console.log("Forwarding photo to local machine...");
+        const localResult = await forwardToLocal(caption, chatId, threadId, largest.file_id);
+
+        if (localResult.success && localResult.response) {
+          response = localResult.response;
+          processedBy = "local";
+        } else {
+          console.log(`Photo forwarding failed (${localResult.error}), processing on VPS...`);
+          response = await processPhotoOnVPS(largest.file_id, caption, chatId, ctx);
+        }
+      } else {
+        // Path B: Process photo on VPS
+        console.log("Local machine down, processing photo on VPS...");
+        response = await processPhotoOnVPS(largest.file_id, caption, chatId, ctx);
+      }
+
+      if (response) {
+        await supabase
+          .saveMessage({
+            chat_id: chatId,
+            role: "assistant",
+            content: response,
+            metadata: {
+              telegram_chat_id: ctx.chat.id,
+              thread_id: threadId,
+              processed_by: processedBy,
+            },
+          })
+          .catch(() => {});
+      }
+
+      await sendResponse(ctx, response);
+    } catch (err) {
+      console.error("Photo handler error:", err);
+      await ctx.reply("Sorry, I couldn't process that image.").catch(() => {});
+    } finally {
+      clearInterval(typingInterval);
+    }
+  })();
+});
+
+/**
+ * Process a photo on VPS using Haiku vision + asset storage.
+ */
+async function processPhotoOnVPS(
+  fileId: string,
+  caption: string,
+  chatId: string,
+  ctx: Context
+): Promise<string> {
+  // Download photo from Telegram API to buffer
+  const file = await ctx.api.getFile(fileId);
+  const filePath = file.file_path;
+  if (!filePath) return "Could not download photo.";
+
+  const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+  const dlRes = await fetch(fileUrl);
+  const buffer = Buffer.from(await dlRes.arrayBuffer());
+
+  const ext = filePath.split(".").pop() || "jpg";
+  const filename = `photo_${Date.now()}.${ext}`;
+
+  // Get description via Haiku vision
+  const visionResult = await describeImageFromBuffer(buffer, filename, caption);
+
+  // Upload to Supabase Storage
+  const asset = await uploadAssetFromBuffer(buffer, filename, {
+    description: visionResult.description,
+    tags: visionResult.tags,
+    suggestedProject: visionResult.suggestedProject,
+    userCaption: caption,
+    channel: "telegram",
+    telegramFileId: fileId,
+  });
+
+  // Build prompt with image description for text processing
+  const imageContext = `[Image description: ${visionResult.description}]${
+    visionResult.tags.length > 0 ? `\n[Tags: ${visionResult.tags.join(", ")}]` : ""
+  }${asset ? `\n(asset: ${asset.id})` : ""}`;
+
+  const response = await processOnVPS(
+    `${imageContext}\n\nUser says: ${caption}`,
+    chatId,
+    ctx
+  );
+
+  // Parse [ASSET_DESC] from response, update asset
+  if (asset) {
+    const parsed = parseAssetDescTag(response);
+    if (parsed) {
+      updateAssetDescription(asset.id, parsed.description, parsed.tags).catch(() => {});
+    }
+  }
+
+  return stripAssetDescTag(response);
+}
 
 // ============================================================
 // VOICE MESSAGE HANDLER
