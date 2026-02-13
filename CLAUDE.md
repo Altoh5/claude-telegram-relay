@@ -46,7 +46,7 @@ An always-on Telegram agent that:
 - **Extensible via MCP**: Connect any MCP servers you use (email, calendar, project management, etc.)
 - **Human-in-the-loop**: Claude asks for confirmation via inline buttons before taking actions
 - Proactively checks in with smart context awareness
-- Sends morning briefings with your goals and whatever context your MCP servers provide
+- Sends morning briefings with pluggable data sources (goals, calendar, email, news, tasks)
 - Persists memory (facts, goals, conversation history) via Supabase
 - Stores images persistently in Supabase Storage with AI-generated descriptions and semantic search
 - Survives reboots via launchd (macOS) or PM2 + scheduler (Windows/Linux)
@@ -305,6 +305,59 @@ Daily summary with goals and context from your configured MCP servers.
 
 ---
 
+## Phase 6.5: Data Sources (Optional, ~5 min)
+
+### What This Does
+Morning briefings pull live data from connected services. Each source auto-enables when its env vars are set — no config files needed.
+
+### Available Sources
+
+| Source | Env Vars Needed | What It Shows |
+|--------|----------------|---------------|
+| **Goals** | _(always on)_ | Active goals from Supabase/local |
+| **AI News** | `XAI_API_KEY` | Top AI news via xAI Grok API |
+| **Gmail** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` | Unread email count + top subjects |
+| **Calendar** | _(same Google OAuth)_ | Today's events with times |
+| **Notion Tasks** | `NOTION_TOKEN`, `NOTION_DATABASE_ID` | Due and overdue tasks |
+
+### Google OAuth Setup (Gmail + Calendar)
+Run the interactive setup script:
+```bash
+bun run setup/setup-google-oauth.ts
+```
+This opens your browser, authorizes Gmail + Calendar read access, and saves the tokens to `.env`.
+
+**Prerequisites:** A Google Cloud project with Gmail API and Calendar API enabled. The script walks you through it.
+
+### xAI Grok (AI News)
+1. Get an API key from [x.ai](https://x.ai)
+2. Add to `.env`: `XAI_API_KEY=your_key`
+
+### Notion Tasks
+1. Create a [Notion integration](https://www.notion.so/my-integrations)
+2. Share your tasks database with the integration
+3. Add to `.env`:
+   ```
+   NOTION_TOKEN=your_integration_token
+   NOTION_DATABASE_ID=your_tasks_database_id
+   ```
+Your Notion database needs `Due` (date) and `Status` (status with "Done") properties.
+
+### Custom Sources
+Copy the template and implement your own:
+```bash
+cp src/lib/data-sources/sources/custom.example.ts src/lib/data-sources/sources/my-source.ts
+```
+Then import it in `src/lib/data-sources/sources/index.ts`.
+
+### VPS / Hybrid Note
+Data sources use direct REST APIs — no MCP servers needed. They work on VPS, local, and hybrid mode equally.
+
+### Tell me:
+"Set up data sources" or list which ones you want, or "Skip"
+
+---
+
 ## Phase 7: Always-On (Required after Phase 5, ~5 min)
 
 ### What Claude Code does:
@@ -493,6 +546,17 @@ src/
     supabase.ts          # Database client + async tasks + heartbeat
     memory.ts            # Facts, goals, intents
     fallback-llm.ts      # Backup LLM chain
+    data-sources/        # Pluggable morning briefing data
+      types.ts           # DataSource interface
+      registry.ts        # Register, discover, fetch all
+      google-auth.ts     # Google OAuth token refresh
+      sources/           # Individual data sources
+        goals.ts         # Supabase goals (built-in)
+        grok-news.ts     # AI news via xAI Grok
+        gmail.ts         # Unread emails
+        calendar.ts      # Today's events
+        notion-tasks.ts  # Due/overdue tasks
+        custom.example.ts # Template for custom sources
     voice.ts             # ElevenLabs TTS/calls/context
     transcribe.ts        # Gemini transcription (file + buffer)
   agents/                # Multi-agent system
@@ -518,6 +582,7 @@ setup/
   verify.ts              # Full health check
   test-telegram.ts       # Telegram connectivity test
   test-supabase.ts       # Supabase connectivity test
+  setup-google-oauth.ts  # Google OAuth token setup (Gmail + Calendar)
   uninstall.ts           # Clean removal (cross-platform)
 launchd/
   templates/             # Plist templates for services (macOS)

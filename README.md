@@ -25,13 +25,16 @@ You ──▶ Telegram ──▶ Bot ─┤
 - **Streaming Progress**: Complex tasks show real-time tool usage and progress updates in Telegram
 - **Call-to-Task**: Phone calls auto-detect actionable tasks and execute them with live progress updates
 - **Proactive**: Smart check-ins that know when to reach out (and when not to)
-- **Briefings**: Daily morning summary with goals and whatever context your MCP servers provide
+- **Briefings**: Daily morning summary with pluggable data sources (goals, calendar, email, news, tasks)
 - **Voice**: Text-to-speech replies, voice transcription, and phone calls
 - **Human-in-the-Loop**: Claude asks for confirmation via inline buttons before taking actions
 - **Hybrid Mode**: VPS catches messages 24/7, forwards to your local machine when it's awake
 - **Auto-Deploy**: Push to GitHub, VPS pulls and restarts automatically
 
 ## What's New
+
+### v2.4.0 — Pluggable Data Sources for Morning Briefings
+Morning briefings now use direct REST APIs instead of a Claude subprocess (~3s vs ~90s). Sources auto-enable from env vars — no config files. Built-in: Goals, Gmail, Calendar, Notion Tasks, AI News (Grok). Add your own with the custom source template. Works on local, VPS, and hybrid equally.
 
 ### v2.3.0 — Call-to-Task Auto-Execution
 When you end a phone call with the bot, it detects actionable tasks in the transcript (e.g. "create a presentation", "research X") and automatically starts executing them with live progress updates in Telegram. Works on both Mac and VPS.
@@ -200,6 +203,7 @@ bun run watchdog           # Run health check
 bun run setup              # Install dependencies
 bun run setup:launchd      # Configure launchd services (macOS)
 bun run setup:services     # Configure services (Windows/Linux)
+bun run setup:google       # Set up Google OAuth (Gmail + Calendar)
 bun run setup:verify       # Full health check
 bun run test:telegram      # Test Telegram connectivity
 bun run test:supabase      # Test Supabase connectivity
