@@ -14,10 +14,17 @@
 import { spawn } from "bun";
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
+import { createClient } from "@supabase/supabase-js";
+import "dotenv/config";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const CHAT_ID = process.env.TELEGRAM_USER_ID || "";
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
+
+const supabase = createClient(
+  process.env.SUPABASE_URL || "",
+  process.env.SUPABASE_ANON_KEY || ""
+);
 const STATE_FILE =
   process.env.CHECKIN_STATE_FILE || "/tmp/checkin-state.json";
 
@@ -53,22 +60,38 @@ async function saveState(state: CheckinState): Promise<void> {
 // ============================================================
 
 async function getGoals(): Promise<string[]> {
-  // Load from your persistence layer
-  // Example: Supabase, JSON file, etc.
-  return ["Finish video edit by 5pm", "Review PR"];
+  const { data: goals } = await supabase.rpc("get_active_goals");
+  if (!goals || goals.length === 0) return [];
+  return goals.slice(0, 5).map((g: any) => {
+    const deadline = g.deadline
+      ? ` (due ${new Date(g.deadline).toLocaleDateString()})`
+      : "";
+    return `${g.content}${deadline}`;
+  });
 }
 
 async function getCalendarContext(): Promise<string> {
-  // What's coming up today?
-  return "Next event: Team call in 2 hours";
+  return "Calendar not connected";
 }
 
 async function getLastActivity(): Promise<string> {
+  const { data: recent } = await supabase.rpc("get_recent_messages", {
+    limit_count: 1,
+  });
+
+  if (recent && recent.length > 0) {
+    const lastMsg = new Date(recent[0].created_at);
+    const now = new Date();
+    const hoursSince =
+      (now.getTime() - lastMsg.getTime()) / (1000 * 60 * 60);
+    return `Last message: ${hoursSince.toFixed(1)} hours ago`;
+  }
+
+  // Fall back to local state
   const state = await loadState();
   const lastMsg = new Date(state.lastMessageTime);
   const now = new Date();
   const hoursSince = (now.getTime() - lastMsg.getTime()) / (1000 * 60 * 60);
-
   return `Last message: ${hoursSince.toFixed(1)} hours ago`;
 }
 
