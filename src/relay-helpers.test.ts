@@ -1,5 +1,15 @@
 import { describe, it, expect, mock } from "bun:test";
-import { buildPrompt, sendResponse } from "./relay-helpers.ts";
+import {
+  buildPrompt,
+  sendResponse,
+  extractSessionId,
+  saveMessage,
+  isAuthorizedUser,
+} from "./relay-helpers.ts";
+
+// ============================================================
+// buildPrompt
+// ============================================================
 
 describe("buildPrompt", () => {
   const baseOptions = {
@@ -85,6 +95,10 @@ describe("buildPrompt", () => {
   });
 });
 
+// ============================================================
+// sendResponse
+// ============================================================
+
 describe("sendResponse", () => {
   function mockCtx() {
     const replies: string[] = [];
@@ -105,11 +119,9 @@ describe("sendResponse", () => {
 
   it("splits a long message into multiple chunks", async () => {
     const ctx = mockCtx();
-    // Create a message longer than 4000 chars
     const longMessage = "A".repeat(4500);
     await sendResponse(ctx as any, longMessage);
     expect(ctx.reply).toHaveBeenCalledTimes(2);
-    // All content should be preserved
     expect(ctx.replies.join("").length).toBe(4500);
   });
 
@@ -167,5 +179,124 @@ describe("sendResponse", () => {
     await sendResponse(ctx as any, "");
     expect(ctx.reply).toHaveBeenCalledTimes(1);
     expect(ctx.replies[0]).toBe("");
+  });
+});
+
+// ============================================================
+// extractSessionId
+// ============================================================
+
+describe("extractSessionId", () => {
+  it("extracts a valid session ID", () => {
+    const output = "Some output\nSession ID: abc123-def456-789\nMore output";
+    expect(extractSessionId(output)).toBe("abc123-def456-789");
+  });
+
+  it("extracts a UUID-style session ID", () => {
+    const output = "Session ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    expect(extractSessionId(output)).toBe("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+  });
+
+  it("returns null when no session ID is present", () => {
+    expect(extractSessionId("No session here")).toBeNull();
+    expect(extractSessionId("")).toBeNull();
+  });
+
+  it("is case-insensitive", () => {
+    const output = "session id: abc123-def456";
+    expect(extractSessionId(output)).toBe("abc123-def456");
+  });
+
+  it("extracts only the first match", () => {
+    const output = "Session ID: aaa111-bbb222\nSession ID: ccc333-ddd444";
+    expect(extractSessionId(output)).toBe("aaa111-bbb222");
+  });
+});
+
+// ============================================================
+// saveMessage
+// ============================================================
+
+describe("saveMessage", () => {
+  function mockSupabase() {
+    const inserted: any[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        insert: mock(async (data: any) => {
+          inserted.push({ table, data });
+          return { error: null };
+        }),
+      }),
+    };
+    return { client, inserted };
+  }
+
+  it("does nothing when supabase is null", async () => {
+    await saveMessage(null, "user", "hello");
+    // No error thrown
+  });
+
+  it("inserts a message with correct fields", async () => {
+    const sb = mockSupabase();
+    await saveMessage(sb.client, "user", "hello world");
+    expect(sb.inserted).toHaveLength(1);
+    expect(sb.inserted[0].table).toBe("messages");
+    expect(sb.inserted[0].data).toEqual({
+      role: "user",
+      content: "hello world",
+      channel: "telegram",
+      metadata: {},
+    });
+  });
+
+  it("includes metadata when provided", async () => {
+    const sb = mockSupabase();
+    await saveMessage(sb.client, "assistant", "reply", { source: "voice" });
+    expect(sb.inserted[0].data.metadata).toEqual({ source: "voice" });
+  });
+
+  it("saves assistant messages", async () => {
+    const sb = mockSupabase();
+    await saveMessage(sb.client, "assistant", "I can help with that");
+    expect(sb.inserted[0].data.role).toBe("assistant");
+    expect(sb.inserted[0].data.content).toBe("I can help with that");
+  });
+
+  it("does not throw on supabase error", async () => {
+    const client: any = {
+      from: () => ({
+        insert: async () => {
+          throw new Error("connection failed");
+        },
+      }),
+    };
+    // Should not throw
+    await saveMessage(client, "user", "test");
+  });
+});
+
+// ============================================================
+// isAuthorizedUser
+// ============================================================
+
+describe("isAuthorizedUser", () => {
+  it("returns true when no allowed user ID is set", () => {
+    expect(isAuthorizedUser("12345", "")).toBe(true);
+  });
+
+  it("returns true when user ID matches", () => {
+    expect(isAuthorizedUser("12345", "12345")).toBe(true);
+  });
+
+  it("returns false when user ID does not match", () => {
+    expect(isAuthorizedUser("99999", "12345")).toBe(false);
+  });
+
+  it("returns false when user ID is undefined", () => {
+    expect(isAuthorizedUser(undefined, "12345")).toBe(false);
+  });
+
+  it("returns true when both are empty (no restriction)", () => {
+    expect(isAuthorizedUser("any-id", "")).toBe(true);
   });
 });

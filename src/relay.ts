@@ -18,7 +18,14 @@ import {
   getMemoryContext,
   getRelevantContext,
 } from "./memory.ts";
-import { buildPrompt, sendResponse } from "./relay-helpers.ts";
+import {
+  buildPrompt,
+  sendResponse,
+  extractSessionId,
+  saveMessage,
+  isAuthorizedUser,
+  type SessionState,
+} from "./relay-helpers.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -38,11 +45,6 @@ const UPLOADS_DIR = join(RELAY_DIR, "uploads");
 
 // Session tracking for conversation continuity
 const SESSION_FILE = join(RELAY_DIR, "session.json");
-
-interface SessionState {
-  sessionId: string | null;
-  lastActivity: string;
-}
 
 // ============================================================
 // SESSION MANAGEMENT
@@ -137,23 +139,6 @@ const supabase: SupabaseClient | null =
     ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY)
     : null;
 
-async function saveMessage(
-  role: string,
-  content: string,
-  metadata?: Record<string, unknown>
-): Promise<void> {
-  if (!supabase) return;
-  try {
-    await supabase.from("messages").insert({
-      role,
-      content,
-      channel: "telegram",
-      metadata: metadata || {},
-    });
-  } catch (error) {
-    console.error("Supabase save error:", error);
-  }
-}
 
 // Acquire lock
 if (!(await acquireLock())) {
@@ -170,8 +155,7 @@ const bot = new Bot(BOT_TOKEN);
 bot.use(async (ctx, next) => {
   const userId = ctx.from?.id.toString();
 
-  // If ALLOWED_USER_ID is set, enforce it
-  if (ALLOWED_USER_ID && userId !== ALLOWED_USER_ID) {
+  if (!isAuthorizedUser(userId, ALLOWED_USER_ID)) {
     console.log(`Unauthorized: ${userId}`);
     await ctx.reply("This bot is private.");
     return;
@@ -221,9 +205,9 @@ async function callClaude(
     }
 
     // Extract session ID from output if present (for --resume)
-    const sessionMatch = output.match(/Session ID: ([a-f0-9-]+)/i);
-    if (sessionMatch) {
-      session.sessionId = sessionMatch[1];
+    const newSessionId = extractSessionId(output);
+    if (newSessionId) {
+      session.sessionId = newSessionId;
       session.lastActivity = new Date().toISOString();
       await saveSession(session);
     }
@@ -246,7 +230,7 @@ bot.on("message:text", async (ctx) => {
 
   await ctx.replyWithChatAction("typing");
 
-  await saveMessage("user", text);
+  await saveMessage(supabase, "user", text);
 
   // Gather context: semantic search + facts/goals
   const [relevantContext, memoryContext] = await Promise.all([
@@ -260,7 +244,7 @@ bot.on("message:text", async (ctx) => {
   // Parse and save any memory intents, strip tags from response
   const response = await processMemoryIntents(supabase, rawResponse);
 
-  await saveMessage("assistant", response);
+  await saveMessage(supabase, "assistant", response);
   await sendResponse(ctx, response);
 });
 
@@ -290,7 +274,7 @@ bot.on("message:voice", async (ctx) => {
       return;
     }
 
-    await saveMessage("user", `[Voice ${voice.duration}s]: ${transcription}`);
+    await saveMessage(supabase, "user", `[Voice ${voice.duration}s]: ${transcription}`);
 
     const [relevantContext, memoryContext] = await Promise.all([
       getRelevantContext(supabase, transcription),
@@ -305,7 +289,7 @@ bot.on("message:voice", async (ctx) => {
     const rawResponse = await callClaude(enrichedPrompt, { resume: true });
     const claudeResponse = await processMemoryIntents(supabase, rawResponse);
 
-    await saveMessage("assistant", claudeResponse);
+    await saveMessage(supabase, "assistant", claudeResponse);
     await sendResponse(ctx, claudeResponse);
   } catch (error) {
     console.error("Voice error:", error);
@@ -338,7 +322,7 @@ bot.on("message:photo", async (ctx) => {
     const caption = ctx.message.caption || "Analyze this image.";
     const prompt = `[Image: ${filePath}]\n\n${caption}`;
 
-    await saveMessage("user", `[Image]: ${caption}`);
+    await saveMessage(supabase, "user", `[Image]: ${caption}`);
 
     const claudeResponse = await callClaude(prompt, { resume: true });
 
@@ -346,7 +330,7 @@ bot.on("message:photo", async (ctx) => {
     await unlink(filePath).catch(() => {});
 
     const cleanResponse = await processMemoryIntents(supabase, claudeResponse);
-    await saveMessage("assistant", cleanResponse);
+    await saveMessage(supabase, "assistant", cleanResponse);
     await sendResponse(ctx, cleanResponse);
   } catch (error) {
     console.error("Image error:", error);
@@ -375,14 +359,14 @@ bot.on("message:document", async (ctx) => {
     const caption = ctx.message.caption || `Analyze: ${doc.file_name}`;
     const prompt = `[File: ${filePath}]\n\n${caption}`;
 
-    await saveMessage("user", `[Document: ${doc.file_name}]: ${caption}`);
+    await saveMessage(supabase, "user", `[Document: ${doc.file_name}]: ${caption}`);
 
     const claudeResponse = await callClaude(prompt, { resume: true });
 
     await unlink(filePath).catch(() => {});
 
     const cleanResponse = await processMemoryIntents(supabase, claudeResponse);
-    await saveMessage("assistant", cleanResponse);
+    await saveMessage(supabase, "assistant", cleanResponse);
     await sendResponse(ctx, cleanResponse);
   } catch (error) {
     console.error("Document error:", error);

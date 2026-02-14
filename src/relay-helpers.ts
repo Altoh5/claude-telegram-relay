@@ -2,6 +2,53 @@
  * Extracted helpers from relay.ts for testability.
  */
 import type { Context } from "grammy";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+export interface SessionState {
+  sessionId: string | null;
+  lastActivity: string;
+}
+
+/**
+ * Extract a session ID from Claude CLI output if present.
+ */
+export function extractSessionId(output: string): string | null {
+  const match = output.match(/Session ID: ([a-f0-9-]+)/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Save a message to Supabase. No-op if supabase is null.
+ */
+export async function saveMessage(
+  supabase: SupabaseClient | null,
+  role: string,
+  content: string,
+  metadata?: Record<string, unknown>
+): Promise<void> {
+  if (!supabase) return;
+  try {
+    await supabase.from("messages").insert({
+      role,
+      content,
+      channel: "telegram",
+      metadata: metadata || {},
+    });
+  } catch (error) {
+    console.error("Supabase save error:", error);
+  }
+}
+
+/**
+ * Check if a user is authorized.
+ */
+export function isAuthorizedUser(
+  userId: string | undefined,
+  allowedUserId: string
+): boolean {
+  if (!allowedUserId) return true; // No restriction set
+  return userId === allowedUserId;
+}
 
 export function buildPrompt(
   userMessage: string,
