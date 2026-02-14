@@ -18,6 +18,7 @@ import {
   getMemoryContext,
   getRelevantContext,
 } from "./memory.ts";
+import { buildPrompt, sendResponse } from "./relay-helpers.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -253,7 +254,7 @@ bot.on("message:text", async (ctx) => {
     getMemoryContext(supabase),
   ]);
 
-  const enrichedPrompt = buildPrompt(text, relevantContext, memoryContext);
+  const enrichedPrompt = makePrompt(text, relevantContext, memoryContext);
   const rawResponse = await callClaude(enrichedPrompt, { resume: true });
 
   // Parse and save any memory intents, strip tags from response
@@ -296,7 +297,7 @@ bot.on("message:voice", async (ctx) => {
       getMemoryContext(supabase),
     ]);
 
-    const enrichedPrompt = buildPrompt(
+    const enrichedPrompt = makePrompt(
       `[Voice message transcribed]: ${transcription}`,
       relevantContext,
       memoryContext
@@ -404,13 +405,8 @@ try {
 const USER_NAME = process.env.USER_NAME || "";
 const USER_TIMEZONE = process.env.USER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-function buildPrompt(
-  userMessage: string,
-  relevantContext?: string,
-  memoryContext?: string
-): string {
-  const now = new Date();
-  const timeStr = now.toLocaleString("en-US", {
+function getTimeStr(): string {
+  return new Date().toLocaleString("en-US", {
     timeZone: USER_TIMEZONE,
     weekday: "long",
     year: "numeric",
@@ -419,63 +415,20 @@ function buildPrompt(
     hour: "2-digit",
     minute: "2-digit",
   });
-
-  const parts = [
-    "You are a personal AI assistant responding via Telegram. Keep responses concise and conversational.",
-  ];
-
-  if (USER_NAME) parts.push(`You are speaking with ${USER_NAME}.`);
-  parts.push(`Current time: ${timeStr}`);
-  if (profileContext) parts.push(`\nProfile:\n${profileContext}`);
-  if (memoryContext) parts.push(`\n${memoryContext}`);
-  if (relevantContext) parts.push(`\n${relevantContext}`);
-
-  parts.push(
-    "\nMEMORY MANAGEMENT:" +
-      "\nWhen the user shares something worth remembering, sets goals, or completes goals, " +
-      "include these tags in your response (they are processed automatically and hidden from the user):" +
-      "\n[REMEMBER: fact to store]" +
-      "\n[GOAL: goal text | DEADLINE: optional date]" +
-      "\n[DONE: search text for completed goal]"
-  );
-
-  parts.push(`\nUser: ${userMessage}`);
-
-  return parts.join("\n");
 }
 
-async function sendResponse(ctx: Context, response: string): Promise<void> {
-  // Telegram has a 4096 character limit
-  const MAX_LENGTH = 4000;
-
-  if (response.length <= MAX_LENGTH) {
-    await ctx.reply(response);
-    return;
-  }
-
-  // Split long responses
-  const chunks = [];
-  let remaining = response;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= MAX_LENGTH) {
-      chunks.push(remaining);
-      break;
-    }
-
-    // Try to split at a natural boundary
-    let splitIndex = remaining.lastIndexOf("\n\n", MAX_LENGTH);
-    if (splitIndex === -1) splitIndex = remaining.lastIndexOf("\n", MAX_LENGTH);
-    if (splitIndex === -1) splitIndex = remaining.lastIndexOf(" ", MAX_LENGTH);
-    if (splitIndex === -1) splitIndex = MAX_LENGTH;
-
-    chunks.push(remaining.substring(0, splitIndex));
-    remaining = remaining.substring(splitIndex).trim();
-  }
-
-  for (const chunk of chunks) {
-    await ctx.reply(chunk);
-  }
+function makePrompt(
+  userMessage: string,
+  relevantContext?: string,
+  memoryContext?: string
+): string {
+  return buildPrompt(userMessage, {
+    userName: USER_NAME,
+    timeStr: getTimeStr(),
+    profileContext,
+    memoryContext,
+    relevantContext,
+  });
 }
 
 // ============================================================
