@@ -48,7 +48,8 @@ export async function textToSpeech(text: string): Promise<Buffer | null> {
     );
 
     if (!response.ok) {
-      console.error(`ElevenLabs TTS error: ${response.status}`);
+      const errText = await response.text().catch(() => "");
+      console.error(`ElevenLabs TTS error: ${response.status} ${errText}`);
       return null;
     }
 

@@ -35,6 +35,7 @@ export { default as financeAgent } from "./finance";
 export { default as strategyAgent } from "./strategy";
 export { default as generalAgent } from "./general";
 export { default as criticAgent } from "./critic";
+export { default as marketingAgent } from "./marketing";
 
 // Quick reference
 export const AGENTS = {
@@ -47,6 +48,8 @@ export const AGENTS = {
   strategy:
     "Strategy Agent (CEO) - Major decisions, long-term vision (ToT reasoning)",
   general: "General Agent - Default assistant, cross-agent orchestration",
+  marketing:
+    "Marketing Agent (Copywriter) - Direct response copy, landing pages, emails, headlines (RoT reasoning)",
   critic:
     "Critic Agent - Devil's advocate, stress-testing (internal, not topic-bound)",
 };

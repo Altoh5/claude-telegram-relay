@@ -422,6 +422,17 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     }
   }
 
+  // ----- Marketing / Copywriting Mode -----
+
+  if (lowerText.startsWith("/copy ") || lowerText.startsWith("/copy\n") ||
+      lowerText.startsWith("/marketing ") || lowerText.startsWith("/marketing\n")) {
+    const brief = text.replace(/^\/(copy|marketing)\s*/i, "").trim();
+    if (brief) {
+      await callClaudeAndReply(ctx, chatId, brief, "marketing", topicId);
+      return;
+    }
+  }
+
   // ----- Critic Mode -----
 
   if (lowerText.startsWith("/critic ") || lowerText.startsWith("/critic\n")) {
