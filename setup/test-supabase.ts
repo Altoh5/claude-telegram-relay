@@ -1,118 +1,212 @@
 /**
- * Claude Telegram Relay — Test Supabase Connection
+ * Go Telegram Bot - Supabase Connectivity Test
  *
- * Verifies Supabase URL and anon key are valid, and checks if
- * required tables exist.
+ * Isolated test that verifies Supabase connection,
+ * table existence, and read/write access.
  *
  * Usage: bun run setup/test-supabase.ts
  */
 
 import { join, dirname } from "path";
+import { loadEnv } from "../src/lib/env";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 const PROJECT_ROOT = dirname(import.meta.dir);
 
-// Colors
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
-const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
+const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
-const PASS = green("✓");
-const FAIL = red("✗");
-const WARN = yellow("!");
+const PASS = green("\u2713");
+const FAIL = red("\u2717");
+const WARN = yellow("~");
 
-// Load .env manually
-async function loadEnv(): Promise<Record<string, string>> {
-  const envPath = join(PROJECT_ROOT, ".env");
-  try {
-    const content = await Bun.file(envPath).text();
-    const vars: Record<string, string> = {};
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq === -1) continue;
-      vars[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
-    }
-    return vars;
-  } catch {
-    return {};
-  }
+function getHeaders(key: string): Record<string, string> {
+  return {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+    Prefer: "return=representation",
+  };
 }
 
-const REQUIRED_TABLES = ["messages", "memory", "logs"];
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
 async function main() {
   console.log("");
-  console.log(bold("  Supabase Connection Test"));
-  console.log("");
+  console.log(bold("  Go Telegram Bot - Supabase Test"));
+  console.log(dim("  ================================"));
 
-  const env = await loadEnv();
-  const url = env.SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const key = env.SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+  // Load environment
+  await loadEnv(join(PROJECT_ROOT, ".env"));
 
-  // Check URL
-  if (!url || url === "your_project_url") {
-    console.log(`  ${FAIL} SUPABASE_URL not set in .env`);
-    console.log(`      ${dim("Get it from Supabase > Project Settings > API")}`);
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const keyType = process.env.SUPABASE_SERVICE_ROLE_KEY ? "service_role" : "anon";
+
+  // Check credentials
+  if (!url || url.includes("your_")) {
+    console.log(`\n  ${FAIL} SUPABASE_URL is not set in .env`);
     process.exit(1);
   }
-  console.log(`  ${PASS} Supabase URL: ${url}`);
-
-  // Check key
-  if (!key || key === "your_anon_key") {
-    console.log(`  ${FAIL} SUPABASE_ANON_KEY not set in .env`);
-    console.log(`      ${dim("Get it from Supabase > Project Settings > API")}`);
+  if (!key || key.includes("your_")) {
+    console.log(`\n  ${FAIL} SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY) is not set in .env`);
     process.exit(1);
   }
-  console.log(`  ${PASS} Anon key found`);
 
-  // Test connection by querying each required table
-  console.log(`\n  Testing connection...`);
+  console.log(`\n  ${PASS} URL: ${url}`);
+  console.log(`  ${PASS} Key type: ${keyType}`);
 
-  let allTablesExist = true;
+  const headers = getHeaders(key);
 
-  for (const table of REQUIRED_TABLES) {
-    try {
-      const res = await fetch(`${url}/rest/v1/${table}?select=*&limit=1`, {
-        headers: {
-          apikey: key,
-          Authorization: `Bearer ${key}`,
-        },
-      });
+  // ---------------------------------------------------------------------------
+  // Test 1: Connection + messages table
+  // ---------------------------------------------------------------------------
+  console.log(`\n${cyan("  [1/3] Testing messages table...")}`);
 
-      if (res.status === 200) {
-        console.log(`  ${PASS} Table "${table}" exists`);
-      } else if (res.status === 404 || res.status === 406) {
-        console.log(`  ${FAIL} Table "${table}" not found`);
-        allTablesExist = false;
+  try {
+    const response = await fetch(
+      `${url}/rest/v1/messages?select=id&limit=1&order=created_at.desc`,
+      { headers }
+    );
+
+    if (response.ok) {
+      // Get count
+      const countResponse = await fetch(
+        `${url}/rest/v1/messages?select=id`,
+        {
+          headers: {
+            ...headers,
+            Prefer: "count=exact",
+            "Range-Unit": "items",
+            Range: "0-0",
+          },
+        }
+      );
+      const contentRange = countResponse.headers.get("content-range");
+      const total = contentRange ? contentRange.split("/")[1] : "unknown";
+      console.log(`  ${PASS} messages table: accessible (${total} rows)`);
+    } else if (response.status === 404 || response.status === 406) {
+      console.log(`  ${FAIL} messages table: not found`);
+      console.log(`    Run the Supabase migrations to create required tables.`);
+    } else {
+      const body = await response.text();
+      console.log(`  ${FAIL} messages table: HTTP ${response.status}`);
+      console.log(`    ${body.slice(0, 200)}`);
+    }
+  } catch (err: any) {
+    console.log(`  ${FAIL} Connection error: ${err.message}`);
+    console.log(`    Check that SUPABASE_URL is correct and the project is running.`);
+    process.exit(1);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Test 2: memory table
+  // ---------------------------------------------------------------------------
+  console.log(`\n${cyan("  [2/3] Testing memory table...")}`);
+
+  try {
+    const response = await fetch(
+      `${url}/rest/v1/memory?select=id&limit=1`,
+      { headers }
+    );
+
+    if (response.ok) {
+      console.log(`  ${PASS} memory table: accessible`);
+    } else {
+      console.log(`  ${WARN} memory table: HTTP ${response.status} ${dim("(memory features may not work)")}`);
+    }
+  } catch (err: any) {
+    console.log(`  ${WARN} memory table: ${err.message}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Test 3: Write access (insert + delete test row in memory)
+  // ---------------------------------------------------------------------------
+  console.log(`\n${cyan("  [3/3] Testing write access...")}`);
+
+  const testContent = `__setup_test_${Date.now()}`;
+  let insertedId: string | null = null;
+
+  // Insert
+  try {
+    const response = await fetch(`${url}/rest/v1/memory`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: "fact",
+        content: testContent,
+      }),
+    });
+
+    if (response.ok) {
+      const rows = (await response.json()) as Array<{ id: string }>;
+      if (rows && rows.length > 0) {
+        insertedId = rows[0].id;
+        console.log(`  ${PASS} Insert: OK ${dim(`(test row id: ${insertedId})`)}`);
       } else {
-        const body = await res.text();
-        console.log(`  ${FAIL} Table "${table}": ${res.status} ${body.slice(0, 100)}`);
-        allTablesExist = false;
+        console.log(`  ${PASS} Insert: OK ${dim("(no id returned)")}`);
+      }
+    } else {
+      const body = await response.text();
+      console.log(`  ${FAIL} Insert: HTTP ${response.status}`);
+      console.log(`    ${body.slice(0, 200)}`);
+      if (response.status === 403) {
+        console.log(`    ${yellow("Tip: Use SUPABASE_SERVICE_ROLE_KEY for full access (bypasses RLS)")}`);
+      }
+    }
+  } catch (err: any) {
+    console.log(`  ${FAIL} Insert error: ${err.message}`);
+  }
+
+  // Delete test row
+  if (insertedId) {
+    try {
+      const response = await fetch(
+        `${url}/rest/v1/memory?id=eq.${insertedId}`,
+        {
+          method: "DELETE",
+          headers,
+        }
+      );
+
+      if (response.ok) {
+        console.log(`  ${PASS} Delete: OK ${dim("(test row cleaned up)")}`);
+      } else {
+        console.log(`  ${WARN} Delete: HTTP ${response.status} ${dim("(test row may remain)")}`);
       }
     } catch (err: any) {
-      console.log(`  ${FAIL} Could not reach Supabase`);
-      console.log(`      ${dim(err.message)}`);
-      process.exit(1);
+      console.log(`  ${WARN} Delete error: ${err.message} ${dim("(test row may remain)")}`);
+    }
+  } else {
+    // Try to clean up by content match in case insert worked but id wasn't returned
+    try {
+      await fetch(
+        `${url}/rest/v1/memory?content=eq.${encodeURIComponent(testContent)}`,
+        {
+          method: "DELETE",
+          headers,
+        }
+      );
+    } catch {
+      // Best effort cleanup
     }
   }
 
-  if (!allTablesExist) {
-    console.log(`\n  ${WARN} Some tables are missing. Run the schema in your Supabase SQL Editor:`);
-    console.log(`      ${dim("1. Open your Supabase dashboard > SQL Editor")}`);
-    console.log(`      ${dim("2. Paste contents of db/schema.sql")}`);
-    console.log(`      ${dim("3. Click Run")}`);
-    console.log(`      ${dim("4. Re-run this test")}`);
-  } else {
-    console.log(`\n  ${green("All good!")} Supabase is configured correctly.`);
-  }
-
+  // Summary
+  console.log(`\n${bold("  Connection Status:")} ${green("Supabase is reachable")}`);
   console.log("");
 }
 
 main().catch((err) => {
-  console.error(`\n  ${red("Error:")} ${err.message}`);
+  console.error(`\n  ${red("Fatal error:")} ${err.message}`);
   process.exit(1);
 });

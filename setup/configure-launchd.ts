@@ -1,24 +1,48 @@
 /**
- * Claude Telegram Relay — Configure launchd (macOS)
+ * Go Telegram Bot - launchd Configuration
  *
- * Generates and loads launchd plist files with correct paths
- * for the current user and project location.
+ * Generates plist files from templates, replaces placeholders,
+ * installs to ~/Library/LaunchAgents, and loads services.
  *
- * Usage: bun run setup/configure-launchd.ts [--service relay|checkin|briefing|all]
+ * Usage:
+ *   bun run setup/configure-launchd.ts --service telegram-relay
+ *   bun run setup/configure-launchd.ts --service all
+ *
+ * Services: telegram-relay, smart-checkin, morning-briefing, watchdog, all
  */
 
-import { writeFile, readFile } from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
-import { homedir } from "os";
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
 
 const PROJECT_ROOT = dirname(import.meta.dir);
-const HOME = homedir();
-const USERNAME = HOME.split("/").pop() || "user";
-const LAUNCH_AGENTS = join(HOME, "Library", "LaunchAgents");
-const LOGS_DIR = join(PROJECT_ROOT, "logs");
+const LAUNCHD_DIR = join(PROJECT_ROOT, "launchd");
+const LAUNCH_AGENTS_DIR = join(process.env.HOME!, "Library", "LaunchAgents");
 
-// Colors
+const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog"] as const;
+type ServiceName = (typeof SERVICES)[number];
+
+interface ScheduleInterval {
+  hour?: number;
+  minute?: number;
+}
+
+interface ScheduleConfig {
+  morning_briefing?: {
+    hour: number;
+    minute: number;
+    enabled: boolean;
+  };
+  check_in_intervals?: ScheduleInterval[];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
@@ -26,219 +50,256 @@ const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
-const PASS = green("✓");
-const FAIL = red("✗");
+const PASS = green("\u2713");
+const FAIL = red("\u2717");
 
-// Find bun path
-async function findBun(): Promise<string> {
-  const candidates = [
-    join(HOME, ".bun", "bin", "bun"),
-    "/usr/local/bin/bun",
-    "/opt/homebrew/bin/bun",
-  ];
-  for (const p of candidates) {
-    if (existsSync(p)) return p;
+async function runCommand(
+  cmd: string[]
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  try {
+    const proc = Bun.spawn(cmd, {
+      cwd: PROJECT_ROOT,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const code = await proc.exited;
+    return { ok: code === 0, stdout: stdout.trim(), stderr: stderr.trim() };
+  } catch {
+    return { ok: false, stdout: "", stderr: "Command not found" };
   }
-  // Fallback: which bun
-  const proc = Bun.spawn(["which", "bun"], { stdout: "pipe" });
-  const out = await new Response(proc.stdout).text();
-  return out.trim() || "bun";
 }
 
-function generatePlist(opts: {
-  label: string;
-  script: string;
-  keepAlive: boolean;
-  calendarIntervals?: { Hour: number; Minute: number }[];
-}): string {
-  const bunPath = findBunSync;
+async function resolvePath(cmd: string): Promise<string> {
+  const result = await runCommand(["which", cmd]);
+  return result.ok ? result.stdout : "";
+}
 
-  let scheduling = "";
-  if (opts.calendarIntervals) {
-    scheduling = `
-    <key>StartCalendarInterval</key>
-    <array>${opts.calendarIntervals
-      .map(
-        (ci) => `
-        <dict>
-            <key>Hour</key>
-            <integer>${ci.Hour}</integer>
-            <key>Minute</key>
-            <integer>${ci.Minute}</integer>
-        </dict>`
-      )
-      .join("")}
-    </array>`;
+function loadSchedule(): ScheduleConfig {
+  const schedulePath = join(PROJECT_ROOT, "config", "schedule.json");
+  const examplePath = join(PROJECT_ROOT, "config", "schedule.example.json");
+
+  if (existsSync(schedulePath)) {
+    try {
+      return JSON.parse(readFileSync(schedulePath, "utf-8"));
+    } catch {
+      console.log(`  ${yellow("!")} Could not parse config/schedule.json, using defaults`);
+    }
   }
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${opts.label}</string>
+  if (existsSync(examplePath)) {
+    try {
+      return JSON.parse(readFileSync(examplePath, "utf-8"));
+    } catch {
+      // fall through to defaults
+    }
+  }
 
-    <key>ProgramArguments</key>
-    <array>
-        <string>${bunPath}</string>
-        <string>run</string>
-        <string>${opts.script}</string>
-    </array>
-
-    <key>WorkingDirectory</key>
-    <string>${PROJECT_ROOT}</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>${HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin</string>
-        <key>HOME</key>
-        <string>${HOME}</string>
-    </dict>
-${opts.keepAlive ? `
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>KeepAlive</key>
-    <true/>
-
-    <key>ThrottleInterval</key>
-    <integer>10</integer>
-` : ""}${scheduling}
-    <key>StandardOutPath</key>
-    <string>${LOGS_DIR}/${opts.label}.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>${LOGS_DIR}/${opts.label}.error.log</string>
-</dict>
-</plist>`;
-}
-
-let findBunSync = "";
-
-interface ServiceConfig {
-  label: string;
-  script: string;
-  keepAlive: boolean;
-  calendarIntervals?: { Hour: number; Minute: number }[];
-  description: string;
-}
-
-const SERVICES: Record<string, ServiceConfig> = {
-  relay: {
-    label: "com.claude.telegram-relay",
-    script: "src/relay.ts",
-    keepAlive: true,
-    description: "Main bot (always running, restarts on crash)",
-  },
-  checkin: {
-    label: "com.claude.smart-checkin",
-    script: "examples/smart-checkin.ts",
-    keepAlive: false,
-    calendarIntervals: [
-      { Hour: 9, Minute: 0 },
-      { Hour: 10, Minute: 30 },
-      { Hour: 12, Minute: 0 },
-      { Hour: 14, Minute: 0 },
-      { Hour: 16, Minute: 0 },
-      { Hour: 18, Minute: 0 },
+  // Defaults
+  return {
+    morning_briefing: { hour: 9, minute: 0, enabled: true },
+    check_in_intervals: [
+      { hour: 10, minute: 30 },
+      { hour: 12, minute: 30 },
+      { hour: 14, minute: 30 },
+      { hour: 16, minute: 30 },
+      { hour: 18, minute: 30 },
     ],
-    description: "Smart check-ins (runs during work hours)",
-  },
-  briefing: {
-    label: "com.claude.morning-briefing",
-    script: "examples/morning-briefing.ts",
-    keepAlive: false,
-    calendarIntervals: [{ Hour: 9, Minute: 0 }],
-    description: "Morning briefing (daily at 9am)",
-  },
-};
+  };
+}
 
-async function installService(name: string, config: ServiceConfig): Promise<boolean> {
-  const plistPath = join(LAUNCH_AGENTS, `${config.label}.plist`);
+function generateCalendarIntervalsXml(intervals: ScheduleInterval[]): string {
+  return intervals
+    .map((interval) => {
+      const parts: string[] = [];
+      if (interval.hour !== undefined) {
+        parts.push(`            <key>Hour</key>\n            <integer>${interval.hour}</integer>`);
+      }
+      if (interval.minute !== undefined) {
+        parts.push(
+          `            <key>Minute</key>\n            <integer>${interval.minute}</integer>`
+        );
+      }
+      return `        <dict>\n${parts.join("\n")}\n        </dict>`;
+    })
+    .join("\n");
+}
 
-  // Generate plist
-  const content = generatePlist(config);
-  await writeFile(plistPath, content);
-  console.log(`  ${PASS} Generated ${config.label}.plist`);
+// ---------------------------------------------------------------------------
+// Service Configuration
+// ---------------------------------------------------------------------------
 
-  // Unload if already loaded
-  const unload = Bun.spawn(["launchctl", "unload", plistPath], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  await unload.exited;
+async function configureService(service: ServiceName): Promise<boolean> {
+  const templatePath = join(LAUNCHD_DIR, `com.go.${service}.plist.template`);
+  const plistName = `com.go.${service}.plist`;
+  const plistPath = join(LAUNCH_AGENTS_DIR, plistName);
 
-  // Load
-  const load = Bun.spawn(["launchctl", "load", plistPath], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const loadErr = await new Response(load.stderr).text();
-  const loadCode = await load.exited;
+  console.log(`\n  ${bold(service)}`);
 
-  if (loadCode !== 0) {
-    console.log(`  ${FAIL} Failed to load: ${loadErr.trim()}`);
+  // Check template exists
+  if (!existsSync(templatePath)) {
+    console.log(`  ${FAIL} Template not found: launchd/com.go.${service}.plist.template`);
     return false;
   }
 
-  console.log(`  ${PASS} Loaded — ${config.description}`);
+  // Resolve paths
+  const bunPath = await resolvePath("bun");
+  if (!bunPath) {
+    console.log(`  ${FAIL} Could not find bun in PATH`);
+    return false;
+  }
+
+  const claudePath = await resolvePath("claude");
+  const bunDir = dirname(bunPath);
+  const claudeDir = claudePath ? dirname(claudePath) : "/usr/local/bin";
+  const home = process.env.HOME!;
+
+  // Load schedule config
+  const schedule = loadSchedule();
+
+  // Read template
+  let content = readFileSync(templatePath, "utf-8");
+
+  // Replace common placeholders
+  content = content.replace(/\{\{BUN_PATH\}\}/g, bunPath);
+  content = content.replace(/\{\{HOME\}\}/g, home);
+  content = content.replace(/\{\{PROJECT_ROOT\}\}/g, PROJECT_ROOT);
+  content = content.replace(/\{\{BUN_DIR\}\}/g, bunDir);
+  content = content.replace(/\{\{CLAUDE_DIR\}\}/g, claudeDir);
+
+  // Service-specific placeholders
+  if (service === "smart-checkin") {
+    const intervals = schedule.check_in_intervals || [
+      { hour: 10, minute: 30 },
+      { hour: 12, minute: 30 },
+      { hour: 14, minute: 30 },
+      { hour: 16, minute: 30 },
+      { hour: 18, minute: 30 },
+    ];
+    const xml = generateCalendarIntervalsXml(intervals);
+    content = content.replace(/\{\{CALENDAR_INTERVALS\}\}/g, xml);
+    console.log(`    Schedule: ${intervals.length} check-in intervals`);
+  }
+
+  if (service === "morning-briefing") {
+    const briefing = schedule.morning_briefing || { hour: 9, minute: 0 };
+    content = content.replace(/\{\{BRIEFING_HOUR\}\}/g, String(briefing.hour));
+    content = content.replace(/\{\{BRIEFING_MINUTE\}\}/g, String(briefing.minute));
+    console.log(
+      `    Schedule: ${String(briefing.hour).padStart(2, "0")}:${String(briefing.minute).padStart(2, "0")} daily`
+    );
+  }
+
+  // Unload existing if present
+  if (existsSync(plistPath)) {
+    console.log(`    Unloading existing service...`);
+    await runCommand(["launchctl", "unload", plistPath]);
+  }
+
+  // Ensure LaunchAgents directory exists
+  if (!existsSync(LAUNCH_AGENTS_DIR)) {
+    mkdirSync(LAUNCH_AGENTS_DIR, { recursive: true });
+  }
+
+  // Write plist
+  writeFileSync(plistPath, content, "utf-8");
+  console.log(`  ${PASS} Written: ${dim(plistPath)}`);
+
+  // Load service
+  const loadResult = await runCommand(["launchctl", "load", plistPath]);
+  if (loadResult.ok) {
+    console.log(`  ${PASS} Loaded: com.go.${service}`);
+  } else {
+    console.log(`  ${FAIL} Load failed: ${loadResult.stderr}`);
+    return false;
+  }
+
+  // Check status
+  const listResult = await runCommand(["launchctl", "list"]);
+  if (listResult.ok && listResult.stdout.includes(`com.go.${service}`)) {
+    console.log(`  ${PASS} Status: running`);
+  } else {
+    console.log(`  ${yellow("!")} Status: loaded but not yet running ${dim("(may start on schedule)")}`);
+  }
+
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
 async function main() {
+  console.log("");
+  console.log(bold("  Go Telegram Bot - launchd Configuration"));
+  console.log(dim("  ========================================"));
+
   if (process.platform !== "darwin") {
-    console.log(`\n  ${FAIL} This script is for macOS only.`);
-    console.log(`      ${dim("On Linux/Windows, use: bun run setup/configure-services.ts")}`);
+    console.log(`\n  ${red("launchd is macOS-only.")}`);
+    console.log(`  On Windows/Linux, use: ${cyan("bun run setup/configure-services.ts --service all")}`);
     process.exit(1);
   }
-
-  findBunSync = await findBun();
 
   // Parse --service flag
   const args = process.argv.slice(2);
   const serviceIdx = args.indexOf("--service");
-  const serviceArg = serviceIdx !== -1 ? args[serviceIdx + 1] : "relay";
+  const serviceArg = serviceIdx !== -1 ? args[serviceIdx + 1] : undefined;
 
-  const toInstall = serviceArg === "all" ? Object.keys(SERVICES) : [serviceArg];
-
-  console.log("");
-  console.log(bold("  Configure launchd Services"));
-  console.log(dim(`  Bun: ${findBunSync}`));
-  console.log(dim(`  Project: ${PROJECT_ROOT}`));
-  console.log("");
-
-  // Ensure logs directory exists
-  if (!existsSync(LOGS_DIR)) {
-    const { mkdirSync } = await import("fs");
-    mkdirSync(LOGS_DIR, { recursive: true });
-  }
-
-  let allOk = true;
-  for (const name of toInstall) {
-    const config = SERVICES[name];
-    if (!config) {
-      console.log(`  ${FAIL} Unknown service: ${name}`);
-      console.log(`      ${dim("Available: relay, checkin, briefing, all")}`);
-      allOk = false;
-      continue;
+  if (!serviceArg) {
+    console.log(`\n  ${red("Missing --service flag")}`);
+    console.log(`\n  Usage:`);
+    console.log(`    bun run setup/configure-launchd.ts --service telegram-relay`);
+    console.log(`    bun run setup/configure-launchd.ts --service all`);
+    console.log(`\n  Available services:`);
+    for (const s of SERVICES) {
+      console.log(`    - ${s}`);
     }
-    const ok = await installService(name, config);
-    if (!ok) allOk = false;
+    console.log(`    - all`);
+    process.exit(1);
   }
 
-  console.log("");
-  if (allOk) {
-    console.log(`  ${green("Done!")} Services are running.`);
-    console.log("");
-    console.log(`  ${dim("Check status:")}  launchctl list | grep com.claude`);
-    console.log(`  ${dim("View logs:")}     tail -f ${LOGS_DIR}/com.claude.telegram-relay.log`);
-    console.log(`  ${dim("Stop all:")}      bun run setup/configure-launchd.ts --unload`);
+  // Determine which services to configure
+  let targets: ServiceName[];
+  if (serviceArg === "all") {
+    targets = [...SERVICES];
+  } else if (SERVICES.includes(serviceArg as ServiceName)) {
+    targets = [serviceArg as ServiceName];
+  } else {
+    console.log(`\n  ${red(`Unknown service: ${serviceArg}`)}`);
+    console.log(`  Valid options: ${SERVICES.join(", ")}, all`);
+    process.exit(1);
   }
+
+  console.log(
+    `\n  Configuring ${targets.length} service${targets.length > 1 ? "s" : ""}: ${cyan(targets.join(", "))}`
+  );
+  console.log(`  Project root: ${dim(PROJECT_ROOT)}`);
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const service of targets) {
+    const ok = await configureService(service);
+    if (ok) successCount++;
+    else failCount++;
+  }
+
+  // Summary
+  console.log(`\n${bold("  Summary:")}`);
+  console.log(`  ${PASS} ${successCount} service${successCount !== 1 ? "s" : ""} configured`);
+  if (failCount > 0) {
+    console.log(`  ${FAIL} ${failCount} service${failCount !== 1 ? "s" : ""} failed`);
+  }
+
+  console.log(`\n  Useful commands:`);
+  console.log(`    Check status:  ${cyan("launchctl list | grep com.go")}`);
+  console.log(`    View logs:     ${cyan(`tail -f ${PROJECT_ROOT}/logs/*.log`)}`);
+  console.log(`    Unload all:    ${cyan("bun run uninstall")}`);
   console.log("");
 }
 
 main().catch((err) => {
-  console.error(`\n  ${red("Error:")} ${err.message}`);
+  console.error(`\n  ${red("Fatal error:")} ${err.message}`);
   process.exit(1);
 });

@@ -1,25 +1,40 @@
 {
   "name": "claude-telegram-relay",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Always-on AI Telegram agent powered by Claude with multi-agent routing, proactive check-ins, and persistent memory",
   "type": "module",
   "scripts": {
     "test": "bun test src/",
-    "start": "bun run src/relay.ts",
-    "dev": "bun run --watch src/relay.ts",
+    "start": "bun run src/bot.ts",
+    "dev": "bun run --watch src/bot.ts",
+    "vps": "bun run src/vps-gateway.ts",
+    "checkin": "bun run src/smart-checkin.ts",
+    "briefing": "bun run src/morning-briefing.ts",
+    "watchdog": "bun run src/watchdog.ts",
     "setup": "bun run setup/install.ts",
+    "setup:launchd": "bun run setup/configure-launchd.ts",
+    "setup:services": "bun run setup/configure-services.ts",
+    "setup:verify": "bun run setup/verify.ts",
+    "setup:google": "bun run setup/setup-google-oauth.ts",
     "test:telegram": "bun run setup/test-telegram.ts",
     "test:supabase": "bun run setup/test-supabase.ts",
     "test:voice": "bun run setup/test-voice.ts",
-    "setup:launchd": "bun run setup/configure-launchd.ts",
-    "setup:services": "bun run setup/configure-services.ts",
-    "setup:verify": "bun run setup/verify.ts"
+    "uninstall": "bun run setup/uninstall.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
-    "grammy": "^1.21.1",
-    "groq-sdk": "^0.8.0"
+    "@anthropic-ai/claude-agent-sdk": "^0.1.54",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "grammy": "^1.35.0",
+    "groq-sdk": "^0.8.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  }
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "license": "MIT"
 }

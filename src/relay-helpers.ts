@@ -61,7 +61,7 @@ export function buildPrompt(
   }
 ): string {
   const parts = [
-    "You are a personal AI assistant responding via Telegram. Keep responses concise and conversational.",
+    "You are a personal AI assistant responding via Telegram. Keep responses concise and conversational. You have web access — use WebSearch and WebFetch tools to look up current information when needed.",
   ];
 
   if (options.userName) parts.push(`You are speaking with ${options.userName}.`);
