@@ -1,5 +1,51 @@
 # Gobot Changelog
 
+## v2.5.0 — 2026-02-16
+
+**Reliability & VPS Hardening**
+
+Six bugs fixed that were discovered in production, plus VPS documentation improvements.
+
+### Bug Fixes
+- **ElevenLabs voice calls fail on empty context** — `buildVoiceAgentContext()` and `initiatePhoneCall()` now provide fallback text when Supabase returns empty memory, chat history, or goals. Previously, ElevenLabs received empty dynamic variables and the agent had no context.
+- **Call transcripts sent twice** — Added `processedCallIds` dedup set. Both the polling loop and webhook handler now check before processing, so only the first one to complete sends the summary.
+- **Morning briefing sent twice** — Added dedup check using `lastBriefingDate` in `checkin-state.json`. If a briefing was already sent today (e.g. after sleep/wake catch-up), it skips.
+- **Phantom DONE/CANCEL tags** — Intent detection now requires minimum 5 characters for `[DONE:]` and `[CANCEL:]` tags, preventing vague matches. All intent processing is logged for visibility.
+- **Bot promises to fix itself** — Added LIMITATIONS section to both system prompts (direct API + Agent SDK) explicitly telling Claude it cannot modify its own code, restart services, or debug itself.
+- **AI news hallucinated** — Grok news source: temperature set to 0, search mode forced to `"on"`, system prompt requires source links. Response is now validated for search citations — if none found, returns "quiet day" instead of hallucinated news.
+
+### Improvements
+- **API budget default raised to $15** — `.env.example` now recommends $15 and includes budget guidance ($5 light / $15 moderate / $50+ heavy).
+- **deploy.sh is PM2-aware** — Checks for PM2 and uses `pm2 restart` when available, falls back to `nohup` otherwise. No more conflict between PM2 process management and deploy script.
+- **DONE tag instructions tightened** — System prompt now instructs Claude to only use `[DONE:]` when the user explicitly states completion, and to use the full goal text.
+- **Added `gobot-master/` to .gitignore** — Prevents accidental commits of stale directory copies.
+
+### Documentation
+- **VPS Hardening section** in `docs/troubleshooting.md`:
+  - fail2ban lockout recovery (how to unban via hosting panel)
+  - SSH key best practices (no passphrase for server keys, IdentitiesOnly)
+  - UFW firewall rules for the bot
+  - API budget guidance with cost tiers
+
+### Updated Files
+- `src/lib/voice.ts` — Fallback context + logging for empty Supabase data
+- `src/vps-gateway.ts` — `processedCallIds` dedup for polling + webhook
+- `src/morning-briefing.ts` — Dedup check via `checkin-state.json`
+- `src/lib/memory.ts` — Min 5-char requirement + logging for DONE/CANCEL tags
+- `src/lib/anthropic-processor.ts` — LIMITATIONS section in system prompt, tightened DONE instructions
+- `src/lib/agent-session.ts` — LIMITATIONS section in Agent SDK system prompt
+- `src/lib/data-sources/sources/grok-news.ts` — Temp 0, search forced on, citation validation
+- `.env.example` — Budget raised to $15, added usage guidance
+- `deploy.sh` — PM2-aware restart
+- `docs/troubleshooting.md` — VPS hardening section
+- `.gitignore` — Added `gobot-master/`
+
+### Compatibility
+- Fully backward compatible. No config changes required.
+- Existing `.env` files with `DAILY_API_BUDGET=5.00` continue to work (the change is only in `.env.example` for new setups).
+
+---
+
 ## v2.3.0 — 2026-02-12
 
 **Call-to-Task Auto-Execution**

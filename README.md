@@ -33,6 +33,9 @@ You ──▶ Telegram ──▶ Bot ─┤
 
 ## What's New
 
+### v2.5.0 — Reliability & VPS Hardening
+Fixed 6 bugs discovered in production: ElevenLabs voice calls no longer fail on empty context, call transcripts are deduped (no more double messages), morning briefings can't send twice, AI news is validated against search results, the bot can no longer promise to fix itself, and intent detection is less trigger-happy. Also added VPS hardening docs (fail2ban recovery, SSH key management, budget guidance) and raised the default API budget to $15.
+
 ### v2.4.0 — Pluggable Data Sources for Morning Briefings
 Morning briefings now use direct REST APIs instead of a Claude subprocess (~3s vs ~90s). Sources auto-enable from env vars — no config files. Built-in: Goals, Gmail, Calendar, Notion Tasks, AI News (Grok). Add your own with the custom source template. Works on local, VPS, and hybrid equally.
 
