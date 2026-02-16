@@ -33,6 +33,9 @@ You ──▶ Telegram ──▶ Bot ─┤
 
 ## What's New
 
+### v2.5.1 — Fallback Fixes
+Billing errors ("credit balance too low", "add funds") now properly trigger the fallback chain instead of being sent as bot responses. Fallback tag now shows which backend answered (`via ollama` or `via openrouter`). New `FALLBACK_OFFLINE_ONLY=true` env var skips OpenRouter entirely for fully offline operation.
+
 ### v2.5.0 — Reliability & VPS Hardening
 Fixed 6 bugs discovered in production: ElevenLabs voice calls no longer fail on empty context, call transcripts are deduped (no more double messages), morning briefings can't send twice, AI news is validated against search results, the bot can no longer promise to fix itself, and intent detection is less trigger-happy. Also added VPS hardening docs (fail2ban recovery, SSH key management, budget guidance) and raised the default API budget to $15.
 

@@ -1,5 +1,30 @@
 # Gobot Changelog
 
+## v2.5.1 — 2026-02-16
+
+**Fallback Fixes**
+
+Fixed two bugs in the fallback LLM chain that caused billing errors to leak through to users instead of triggering the Ollama/OpenRouter fallback, and added offline-only fallback mode.
+
+### Bug Fixes
+- **Billing errors bypass fallback** — `isClaudeErrorResponse()` now catches `credit balance`, `add funds`, `billing`, `insufficient_quota`, and `payment_required` errors. Previously these were passed through as bot responses instead of triggering the fallback chain.
+- **Fallback source ambiguity** — The `_(responded via fallback)_` tag now shows which backend actually answered: `_(responded via ollama)_` or `_(responded via openrouter)_`.
+
+### New Features
+- **`FALLBACK_OFFLINE_ONLY` env var** — Set to `true` to skip OpenRouter and go straight to Ollama for fully offline operation. Useful when you want the fallback chain to be 100% local with no paid API calls.
+
+### Updated Files
+- `src/lib/claude.ts` — Added 5 billing-related error patterns to `isClaudeErrorResponse()`
+- `src/lib/fallback-llm.ts` — Added `FALLBACK_OFFLINE_ONLY` support, source indicator, exported `FallbackResult` type
+- `src/bot.ts` — Removed duplicate `_(responded via fallback)_` tag (now handled by `callFallbackLLM` itself)
+- `.env.example` — Documented `FALLBACK_OFFLINE_ONLY` option
+
+### Compatibility
+- Fully backward compatible. No config changes required.
+- Existing setups without `FALLBACK_OFFLINE_ONLY` behave exactly as before (OpenRouter first, then Ollama).
+
+---
+
 ## v2.5.0 — 2026-02-16
 
 **Reliability & VPS Hardening**
