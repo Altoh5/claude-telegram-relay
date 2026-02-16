@@ -1091,7 +1091,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
 
     try {
       const fallbackResponse = await callFallbackLLM(userMessage);
-      return `${fallbackResponse}\n\n_(responded via fallback)_`;
+      return fallbackResponse;
     } catch (fallbackError) {
       console.error("Fallback LLM also failed:", fallbackError);
       return "I'm having trouble processing right now. Please try again in a moment.";
@@ -1298,7 +1298,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
 
     try {
       const fallbackResponse = await callFallbackLLM(userMessage);
-      return `${fallbackResponse}\n\n_(responded via fallback)_`;
+      return fallbackResponse;
     } catch (fallbackError) {
       console.error("Fallback LLM also failed:", fallbackError);
       return "I'm having trouble processing right now. Please try again in a moment.";

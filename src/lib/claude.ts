@@ -50,6 +50,11 @@ export function isClaudeErrorResponse(text: string): boolean {
     "invalid_api_key",
     "overloaded_error",
     "rate_limit_error",
+    "credit balance",
+    "add funds",
+    "billing",
+    "insufficient_quota",
+    "payment_required",
   ];
   return errorPatterns.some((p) => text.includes(p));
 }
