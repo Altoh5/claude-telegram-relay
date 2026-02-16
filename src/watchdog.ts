@@ -25,7 +25,23 @@ if (existsSync(envPath)) {
 
 const LOG_FILE = join(PROJECT_ROOT, "logs", "smart-checkin.log");
 const WATCHDOG_LOG = join(PROJECT_ROOT, "logs", "watchdog.log");
-const MAX_AGE_MINUTES = 90;
+
+// Load schedule config (user-personalized quiet hours, check-in times)
+const SCHEDULE_PATH = join(PROJECT_ROOT, "config", "schedule.json");
+const DEFAULT_SCHEDULE = {
+  quiet_hours: { start: 21, end: 8 },
+  check_in_hours: { start: 10, end: 19 },
+  check_in_intervals: [{ hour: 10, minute: 30 }],
+  minimum_gap_minutes: 90,
+};
+let schedule = DEFAULT_SCHEDULE;
+try {
+  if (existsSync(SCHEDULE_PATH)) {
+    schedule = { ...DEFAULT_SCHEDULE, ...JSON.parse(readFileSync(SCHEDULE_PATH, "utf-8")) };
+  }
+} catch {}
+
+const MAX_AGE_MINUTES = schedule.minimum_gap_minutes || 90;
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_USER_ID;
@@ -87,8 +103,51 @@ async function sendAlert(message: string) {
   }
 }
 
+/**
+ * Check if current time falls in the quiet window — quiet hours themselves
+ * plus a buffer after quiet hours end, giving the first scheduled check-in
+ * time to actually run before the watchdog starts caring.
+ */
+function isInQuietWindow(): boolean {
+  const tz = process.env.USER_TIMEZONE || schedule.timezone || "UTC";
+  const now = new Date();
+  const currentHour = parseInt(
+    now.toLocaleString("en-US", { timeZone: tz, hour: "2-digit", hour12: false })
+  );
+  const currentMinute = parseInt(
+    now.toLocaleString("en-US", { timeZone: tz, minute: "2-digit" })
+  );
+  const currentTime = currentHour * 60 + currentMinute;
+
+  const quietStart = (schedule.quiet_hours?.start ?? 21) * 60;
+  const quietEnd = (schedule.quiet_hours?.end ?? 8) * 60;
+
+  // During quiet hours (handles overnight wrap, e.g. 21:00 - 08:00)
+  if (quietStart > quietEnd) {
+    // Overnight: quiet from 21:00 to 08:00
+    if (currentTime >= quietStart || currentTime < quietEnd) return true;
+  } else {
+    if (currentTime >= quietStart && currentTime < quietEnd) return true;
+  }
+
+  // Buffer after quiet hours: suppress until first scheduled check-in + 60 min
+  const intervals = schedule.check_in_intervals || [];
+  if (intervals.length > 0) {
+    const firstCheckin = intervals[0].hour * 60 + intervals[0].minute;
+    const bufferEnd = firstCheckin + 60;
+    if (currentTime >= quietEnd && currentTime < bufferEnd) return true;
+  }
+
+  return false;
+}
+
 async function check() {
   log("🔍 Watchdog checking smart-checkin health...");
+
+  if (isInQuietWindow()) {
+    log("😴 In quiet window (quiet hours or pre-first-checkin buffer) — skipping alert");
+    return;
+  }
 
   if (!existsSync(LOG_FILE)) {
     log("❌ Log file doesn't exist!");
