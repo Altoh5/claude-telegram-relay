@@ -440,7 +440,7 @@ The VPS gateway (`src/vps-gateway.ts`) now supports two processing modes:
 
 **Agent SDK (`USE_AGENT_SDK=true`):** Full Claude Code capabilities on VPS for Sonnet/Opus requests. The Agent SDK spawns a Claude Code subprocess that loads:
 - Your `CLAUDE.md` (project instructions)
-- Your MCP servers (from Claude Code settings via `settingSources: ["project"]`)
+- Your MCP servers (from Claude Code settings via `settingSources: ["user", "project"]`)
 - Your skills and hooks
 - Built-in tools (Read, Write, Bash, WebSearch, etc.)
 - Session persistence for HITL resume

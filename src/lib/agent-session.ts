@@ -7,7 +7,10 @@
  *
  * Community version: no in-process MCP servers. Users configure their
  * own MCP servers in their Claude Code settings, and the Agent SDK
- * loads them automatically via settingSources: ["project"].
+ * loads them automatically via settingSources: ["user", "project"].
+ *
+ * Full capabilities: Skills, hooks, CLAUDE.md, MCP servers, all built-in
+ * tools — everything from Claude Code desktop, running on VPS.
  *
  * Usage: processWithAgentSDK(userMessage, chatId, ctx, resumeState?)
  */
@@ -203,12 +206,13 @@ export async function processWithAgentSDK(
     maxTurns: 15,
     maxBudgetUsd: Math.min(budgetRemaining, 2.0),
     cwd: process.cwd(),
-    executable: "bun",
+    executable: process.env.BUN_PATH || "bun",
     env: {
       ...process.env,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
       HOME: process.env.HOME || "/root",
-      PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+      // Ensure bun is in PATH for VPS environments
+      PATH: `${process.env.HOME || "/root"}/.bun/bin:/usr/local/bin:/usr/bin:/bin`,
     } as Record<string, string>,
     stderr: (data: string) => {
       console.error(`[SDK:stderr] ${data.trim()}`);
@@ -218,7 +222,73 @@ export async function processWithAgentSDK(
       preset: "claude_code",
       append: buildDynamicContext(),
     },
-    settingSources: ["project"],
+    // Load BOTH user (~/.claude/) and project settings — enables Skills, rules, CLAUDE.md
+    settingSources: ["user", "project"],
+    // Enable all Claude Code built-in tools INCLUDING Skill
+    allowedTools: [
+      "Skill",        // Skill system — reads from ~/.claude/skills/ and project skills
+      "Read",         // Read files
+      "Write",        // Write files
+      "Edit",         // Edit files
+      "Bash",         // Shell commands
+      "Glob",         // File pattern search
+      "Grep",         // Content search
+      "WebFetch",     // Fetch web content
+      "WebSearch",    // Search the web
+      "Task",         // Spawn sub-agents
+      "TodoRead",     // Read todos
+      "TodoWrite",    // Write todos
+    ],
+    permissionMode: "bypassPermissions",
+    persistSession: true,
+    thinking: tier === "opus" ? { type: "adaptive" } : { type: "disabled" },
+    effort: tier === "haiku" ? "low" : tier === "sonnet" ? "medium" : "high",
+    // Programmatic hooks — security guardrails for VPS
+    hooks: {
+      // Log all tool usage for observability
+      PostToolUse: [
+        {
+          matcher: "*",
+          hooks: [
+            async (input: any) => {
+              const toolName = input?.toolName || "unknown";
+              const duration = input?.durationMs || 0;
+              console.log(`[HOOK:PostToolUse] ${toolName} (${duration}ms)`);
+              return {};
+            },
+          ],
+        },
+      ],
+      // Security: block dangerous patterns
+      PreToolUse: [
+        {
+          matcher: "Bash",
+          hooks: [
+            async (input: any) => {
+              const cmd = (input?.input as any)?.command || "";
+              // Block destructive commands on VPS
+              const blocked = [
+                /rm\s+-rf\s+\/(?!tmp)/,     // rm -rf / (except /tmp)
+                /mkfs/,                       // format disk
+                /dd\s+if=/,                   // disk write
+                /iptables\s+-F/,             // flush firewall
+                /systemctl\s+(stop|disable)\s+(docker|traefik|ssh)/,  // critical services
+              ];
+              for (const pattern of blocked) {
+                if (pattern.test(cmd)) {
+                  console.warn(`[HOOK:Security] BLOCKED: ${cmd}`);
+                  return {
+                    decision: "block" as const,
+                    reason: `Blocked by security hook: destructive command pattern detected`,
+                  };
+                }
+              }
+              return {};
+            },
+          ],
+        },
+      ],
+    },
     canUseTool: async (toolName, input) => {
       // Intercept AskUserQuestion — pause the agent loop for HITL
       if (toolName === "AskUserQuestion") {
