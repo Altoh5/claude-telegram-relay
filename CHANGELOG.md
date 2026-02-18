@@ -1,5 +1,31 @@
 # Gobot Changelog
 
+## v2.5.2 — 2026-02-18
+
+**Agent SDK Full Capabilities**
+
+The Agent SDK was missing critical configuration that prevented Skills, hooks, and full tool access from working on VPS deployments. Community members deploying GoBot on VPS now get the same full Claude Code experience as desktop.
+
+### Fixes
+- **Skills not loading on VPS** — Added `allowedTools` with all 12 built-in tools including `Skill`. Previously the Agent SDK had no tool allowlist, so Skills were never discovered.
+- **User settings ignored** — Changed `settingSources` from `["project"]` to `["user", "project"]`. Now loads `~/.claude/CLAUDE.md`, `~/.claude/skills/`, and `~/.claude/rules/` from the user's home directory.
+- **Agent hangs on VPS** — Added `permissionMode: "bypassPermissions"` for headless environments (no TTY for interactive prompts).
+- **No security guardrails** — Added programmatic hooks: `PostToolUse` logging for observability, `PreToolUse` security blocks for destructive Bash commands (rm -rf, mkfs, iptables flush, etc.).
+- **Bun not found on VPS** — PATH now dynamically includes `~/.bun/bin`. Added `BUN_PATH` env override for custom Bun installations.
+- **No thinking/effort settings** — Added per-tier thinking (adaptive for Opus, disabled otherwise) and effort levels (low/medium/high).
+- **Session persistence** — Added `persistSession: true` for proper HITL resume across ask_user pauses.
+
+### Updated Files
+- `src/lib/agent-session.ts` — All 7 fixes above
+- `CLAUDE.md` — Updated settingSources documentation
+
+### Compatibility
+- Fully backward compatible. No config changes required.
+- Users without `~/.claude/` directory get the same behavior as before.
+- Users WITH Claude Code skills/rules get them automatically on VPS.
+
+---
+
 ## v2.5.1 — 2026-02-16
 
 **Fallback Fixes**
