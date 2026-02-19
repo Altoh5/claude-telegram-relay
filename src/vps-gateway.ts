@@ -94,6 +94,13 @@ const bot = new Bot(BOT_TOKEN);
 await bot.init();
 console.log(`Bot initialized: @${bot.botInfo.username}`);
 
+// Global error handler — prevents Grammy from dumping full Context objects
+bot.catch((err) => {
+  const e = err.error;
+  const errMsg = e instanceof Error ? e.message : String(e);
+  console.error(`BotError [update ${err.ctx?.update?.update_id}]: ${errMsg}`);
+});
+
 // Security: only accept messages from allowed user
 bot.use(async (ctx, next) => {
   const userId = ctx.from?.id?.toString();
@@ -514,7 +521,22 @@ async function processOnVPS(
     await ctx
       .reply("_Working on it..._", { parse_mode: "Markdown" })
       .catch(() => {});
-    return processWithAgentSDK(text, chatId, ctx, undefined, onCallInitiated);
+    try {
+      const result = await processWithAgentSDK(text, chatId, ctx, undefined, onCallInitiated);
+      if (result) return result;
+    } catch (err: any) {
+      console.error(`Agent SDK failed, falling back to direct API: ${err.message || err}`);
+    }
+    // Fallback to direct API
+    console.log(`Fallback to direct API (${tier})`);
+    return processWithAnthropic(
+      text,
+      chatId,
+      ctx,
+      undefined,
+      onCallInitiated || ((convId) => startCallTranscriptPolling(convId, chatId)),
+      model
+    );
   }
 
   // Haiku or Agent SDK disabled → Direct API (fast, cheap)
@@ -1267,8 +1289,8 @@ const server = Bun.serve({
 
       try {
         const update = await req.json();
-        bot.handleUpdate(update).catch((err) => {
-          console.error("Error handling update:", err);
+        bot.handleUpdate(update).catch((err: any) => {
+          console.error(`Error handling update: ${err.message || err}`);
         });
       } catch (err) {
         console.error("Failed to parse webhook update:", err);

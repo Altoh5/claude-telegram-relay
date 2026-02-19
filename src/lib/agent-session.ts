@@ -239,7 +239,7 @@ export async function processWithAgentSDK(
       "TodoRead",     // Read todos
       "TodoWrite",    // Write todos
     ],
-    permissionMode: "bypassPermissions",
+    permissionMode: "acceptEdits",
     persistSession: true,
     thinking: tier === "opus" ? { type: "adaptive" } : { type: "disabled" },
     effort: tier === "haiku" ? "low" : tier === "sonnet" ? "medium" : "high",

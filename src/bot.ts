@@ -250,6 +250,13 @@ process.on("uncaughtException", async (error) => {
 // 6. Security Middleware
 // ---------------------------------------------------------------------------
 
+// Global error handler — prevents Grammy from dumping full Context objects
+bot.catch((err) => {
+  const e = err.error;
+  const errMsg = e instanceof Error ? e.message : String(e);
+  console.error(`BotError [update ${err.ctx?.update?.update_id}]: ${errMsg}`);
+});
+
 bot.use(async (ctx, next) => {
   const userId = String(ctx.from?.id || "");
   if (userId !== ALLOWED_USER_ID) {

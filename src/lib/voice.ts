@@ -127,6 +127,7 @@ export async function initiatePhoneCall(
         body: JSON.stringify({
           agent_id: ELEVENLABS_AGENT_ID(),
           agent_phone_number_id: ELEVENLABS_PHONE_NUMBER_ID(),
+          max_duration_seconds: 300,
           to_number: USER_PHONE_NUMBER(),
           conversation_initiation_client_data: {
             dynamic_variables: {

@@ -92,7 +92,7 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
     maxTurns,
   } = options;
 
-  const args = ["-p", prompt, "--output-format", outputFormat, "--dangerously-skip-permissions"];
+  const args = ["-p", prompt, "--output-format", outputFormat];
 
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
@@ -185,7 +185,6 @@ export async function runClaudeWithTimeout(
     prompt,
     "--output-format",
     "text",
-    "--dangerously-skip-permissions",
     ...(options?.allowedTools
       ? ["--allowedTools", options.allowedTools.join(",")]
       : []),
@@ -271,7 +270,7 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
     onFirstText,
   } = options;
 
-  const args = ["-p", prompt, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
+  const args = ["-p", prompt, "--output-format", "stream-json", "--verbose"];
 
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
