@@ -1,25 +1,58 @@
 /**
  * Go - Voice Module (Optional)
  *
- * ElevenLabs text-to-speech and phone call integration.
+ * TTS: Gemini 2.5 Flash (free, same API key as transcription).
+ * Phone calls: ElevenLabs Conversational AI + Twilio (until Vapi migration).
  * All functions gracefully skip if API keys aren't configured.
  */
 
 import * as supabase from "./supabase";
 
+const GEMINI_API_KEY = () => process.env.GEMINI_API_KEY || "";
+const GEMINI_TTS_VOICE = () => process.env.GEMINI_TTS_VOICE || "Kore";
 const ELEVENLABS_API_KEY = () => process.env.ELEVENLABS_API_KEY || "";
-const ELEVENLABS_VOICE_ID = () => process.env.ELEVENLABS_VOICE_ID || "";
 const ELEVENLABS_AGENT_ID = () => process.env.ELEVENLABS_AGENT_ID || "";
 const ELEVENLABS_PHONE_NUMBER_ID = () =>
   process.env.ELEVENLABS_PHONE_NUMBER_ID || "";
 const USER_PHONE_NUMBER = () => process.env.USER_PHONE_NUMBER || "";
 
 /**
- * Convert text to speech using ElevenLabs.
- * Returns audio buffer (mp3) or null if not configured.
+ * Convert raw PCM (16-bit, 24kHz, mono) to WAV by prepending a 44-byte RIFF header.
+ * Zero dependencies — pure math.
+ */
+function pcmToWav(pcmBuffer: Buffer): Buffer {
+  const sampleRate = 24000;
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+  const blockAlign = numChannels * (bitsPerSample / 8);
+  const dataSize = pcmBuffer.length;
+
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + dataSize, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(numChannels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(dataSize, 40);
+
+  return Buffer.concat([header, pcmBuffer]);
+}
+
+/**
+ * Convert text to speech using Gemini 2.5 Flash TTS.
+ * Returns audio buffer (WAV) or null if not configured.
+ * Free tier — same API key as Gemini transcription.
  */
 export async function textToSpeech(text: string): Promise<Buffer | null> {
-  if (!ELEVENLABS_API_KEY() || !ELEVENLABS_VOICE_ID()) {
+  if (!GEMINI_API_KEY()) {
     return null;
   }
 
@@ -28,32 +61,39 @@ export async function textToSpeech(text: string): Promise<Buffer | null> {
       text.length > 4500 ? text.substring(0, 4500) + "..." : text;
 
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID()}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY()}`,
       {
         method: "POST",
-        headers: {
-          Accept: "audio/mpeg",
-          "Content-Type": "application/json",
-          "xi-api-key": ELEVENLABS_API_KEY(),
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: voiceText,
-          model_id: "eleven_turbo_v2_5",
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
+          contents: [{ parts: [{ text: voiceText }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: GEMINI_TTS_VOICE() },
+              },
+            },
           },
         }),
       }
     );
 
     if (!response.ok) {
-      console.error(`ElevenLabs TTS error: ${response.status}`);
+      console.error(`Gemini TTS error: ${response.status}`);
       return null;
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    const result = await response.json();
+    const audioData = result.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioData) {
+      console.error("Gemini TTS: no audio data in response");
+      return null;
+    }
+
+    // Gemini returns raw PCM (16-bit, 24kHz, mono) — convert to WAV
+    const pcmBuffer = Buffer.from(audioData, "base64");
+    return pcmToWav(pcmBuffer);
   } catch (error) {
     console.error("TTS error:", error);
     return null;
@@ -209,10 +249,11 @@ export async function waitForTranscript(
 }
 
 /**
- * Check if voice features are configured.
+ * Check if voice features (TTS) are configured.
+ * Uses Gemini API key (same as transcription).
  */
 export function isVoiceEnabled(): boolean {
-  return !!(ELEVENLABS_API_KEY() && ELEVENLABS_VOICE_ID());
+  return !!GEMINI_API_KEY();
 }
 
 /**

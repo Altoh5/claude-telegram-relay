@@ -900,7 +900,7 @@ bot.on("message:voice", async (ctx) => {
       const audioBuffer = await textToSpeech(response);
       if (audioBuffer) {
         await ctx
-          .replyWithVoice(new InputFile(audioBuffer, "response.mp3"))
+          .replyWithVoice(new InputFile(audioBuffer, "response.wav"))
           .catch((err) => {
             console.error("Failed to send voice reply:", err.message);
           });
