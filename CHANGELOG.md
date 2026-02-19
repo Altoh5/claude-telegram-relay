@@ -1,5 +1,34 @@
 # Gobot Changelog
 
+## v2.5.3 — 2026-02-19
+
+**ZIP-to-Git Upgrade + Setup Detection**
+
+Community members who downloaded GoBot as a ZIP file couldn't pull updates — they had to manually re-download and merge files. Now there's a one-command upgrade path that connects any installation to the official repo.
+
+### New
+
+- **`bun run upgrade`** — Smart upgrade script that detects your installation type and connects it to the official repo:
+  - ZIP download (no `.git/`): initializes git, connects to `autonomee/gobot`, aligns with master
+  - Wrong remote (personal fork): adds `upstream` for official repo, keeps fork as `origin`
+  - Proper clone: pulls latest with stash/unstash safety
+  - All user config (`.env`, profile, schedule, tokens) preserved — everything is gitignored
+  - Post-upgrade: reinstalls dependencies, checks schema, warns about running services
+- **Phase 0 git detection** — `bun run setup` now checks if the project is a ZIP download and recommends `bun run upgrade` before continuing
+- **README upgrade section** — Clear instructions for ZIP users to connect to the repo
+
+### Updated Files
+- `setup/upgrade.ts` — New upgrade script (3 scenarios: ZIP, wrong remote, proper clone)
+- `setup/install.ts` — Added git repo detection in prerequisites check
+- `package.json` — Added `"upgrade"` script
+- `CLAUDE.md` — Phase 0 now includes git/ZIP detection as step 1
+- `README.md` — Added "Downloaded as ZIP?" section
+
+### Why This Matters
+Future updates (new features, bug fixes, security patches) are now just `git pull origin master` for everyone — regardless of how they originally got the code.
+
+---
+
 ## v2.5.2 — 2026-02-18
 
 **Agent SDK Full Capabilities**

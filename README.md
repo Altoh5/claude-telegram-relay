@@ -91,7 +91,7 @@ Your laptop sleeps. Your VPS doesn't. With hybrid mode:
 ### Setup
 
 ```bash
-# Clone the repo
+# Clone the repo (recommended — enables future updates via git pull)
 git clone https://github.com/autonomee/gobot.git
 cd gobot
 
@@ -101,6 +101,16 @@ bun install
 # Open with Claude Code — it reads CLAUDE.md and guides you through setup
 claude
 ```
+
+### Downloaded as ZIP?
+
+If you downloaded the ZIP instead of cloning, your bot works fine — but you can't pull updates. Fix it with one command:
+
+```bash
+bun run upgrade
+```
+
+This connects your existing install to the official repo without touching your `.env`, profile, or any config. Future updates are then just `git pull origin master`.
 
 Claude Code reads the `CLAUDE.md` file and walks you through a guided conversation to:
 

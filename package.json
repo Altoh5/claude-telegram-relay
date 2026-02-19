@@ -1,6 +1,6 @@
 {
   "name": "gobot",
-  "version": "2.0.0",
+  "version": "2.5.3",
   "description": "Always-on AI Telegram agent powered by Claude with multi-agent routing, proactive check-ins, and persistent memory",
   "type": "module",
   "scripts": {
@@ -16,7 +16,8 @@
     "setup:google": "bun run setup/setup-google-oauth.ts",
     "test:telegram": "bun run setup/test-telegram.ts",
     "test:supabase": "bun run setup/test-supabase.ts",
-    "uninstall": "bun run setup/uninstall.ts"
+    "uninstall": "bun run setup/uninstall.ts",
+    "upgrade": "bun run setup/upgrade.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.54",

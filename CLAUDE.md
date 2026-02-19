@@ -90,28 +90,35 @@ Claude Code will ask for permission before running commands or editing files. Wh
 
 Even if the user says "no," run these checks silently. They may have forgotten, or someone else set it up on their machine.
 
-1. **Check for existing `.env` file** in this project directory. If it exists, read it and catalog every variable that has a real value (not a placeholder like `your_bot_token_here`).
+1. **Check if this is a ZIP download (no git):**
+   - Check if `.git/` directory exists in the project root
+   - If NO `.git/`: this is a ZIP download. Tell the user:
+     "This looks like a ZIP download. Run `bun run upgrade` to connect to the official repo — this lets you pull future updates with `git pull` without losing your config."
+   - If `.git/` exists: check `git remote get-url origin` — verify it points to `autonomee/gobot`
+   - If wrong remote: suggest `bun run upgrade` to fix it
 
-2. **Check for other bot projects** on the machine:
+2. **Check for existing `.env` file** in this project directory. If it exists, read it and catalog every variable that has a real value (not a placeholder like `your_bot_token_here`).
+
+3. **Check for other bot projects** on the machine:
    - Look for `~/.claude-relay/` directory (free mini-course relay)
    - Look for `~/claude-telegram-relay/` or any folder matching `*telegram*relay*` in `~/`, `~/Desktop/`, `~/Downloads/`, `~/Documents/`, `~/development/`
    - If found, read their `.env` files for reusable credentials
 
-3. **Check for running services:**
+4. **Check for running services:**
    - macOS: `launchctl list | grep -E "com\.go\.|claude.*relay|telegram"`
    - Linux/Windows: `pm2 list` (if pm2 exists)
    - Report any existing bot services that might conflict
 
-4. **Check for existing Supabase MCP:**
+5. **Check for existing Supabase MCP:**
    - Look for `supabase` in Claude Code's MCP configuration
    - If connected, test the connection
 
-5. **Check for existing Supabase tables** (if credentials found):
+6. **Check for existing Supabase tables** (if credentials found):
    - Run `bun run setup/test-supabase.ts` to verify connectivity
    - Query for existing tables: `messages`, `memory`, `logs`, `async_tasks`, `node_heartbeat`, `call_transcripts`
    - Check if data exists in `messages` table (indicates active prior usage)
 
-6. **Check for existing profile:**
+7. **Check for existing profile:**
    - Look for `config/profile.md` in this project
    - Look for `~/.claude-relay/profile.md` or similar in discovered projects
 
@@ -122,6 +129,7 @@ Present a clear summary to the user:
 ```
 ENVIRONMENT SCAN RESULTS
 
+Git connection: ✅ Connected to autonomee/gobot / ⚠️ ZIP download (run: bun run upgrade)
 Existing setup found: Yes/No
 Source: [this project / claude-telegram-relay at ~/path / other]
 
