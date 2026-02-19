@@ -7,6 +7,8 @@
  */
 
 import * as supabase from "./supabase";
+import { isMacAlive } from "./mac-health";
+import { getCapabilitiesText } from "./capabilities";
 
 const GEMINI_API_KEY = () => process.env.GEMINI_API_KEY || "";
 const GEMINI_TTS_VOICE = () => process.env.GEMINI_TTS_VOICE || "Kore";
@@ -407,7 +409,11 @@ export async function buildVoiceAgentContext(): Promise<Record<string, any>> {
   if (!recentChat) recentChat = "No recent messages. This is a new conversation.";
   if (!goals) goals = "No active goals set.";
 
-  console.log(`Voice context: memory=${memory.length}chars, chat=${recentChat.length}chars, goals=${goals.length}chars`);
+  const hybrid = isMacAlive();
+  const capabilities = getCapabilitiesText(hybrid);
+  const mode = hybrid ? "hybrid" : "vps";
+
+  console.log(`Voice context: mode=${mode}, memory=${memory.length}chars, chat=${recentChat.length}chars, goals=${goals.length}chars`);
 
   return {
     user_name: userName,
@@ -416,5 +422,7 @@ export async function buildVoiceAgentContext(): Promise<Record<string, any>> {
     memory: memory.substring(0, 2000),
     recent_telegram: recentChat.substring(0, 2000),
     active_goals: goals.substring(0, 1000),
+    mode,
+    capabilities,
   };
 }

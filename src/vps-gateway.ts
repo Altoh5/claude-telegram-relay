@@ -1322,4 +1322,171 @@ VPS Gateway started!
 
 supabase.testConnection().catch(() => {});
 
+// ============================================================
+// STARTUP RECOVERY — Process missed calls from crashes
+// ============================================================
+
+/**
+ * On startup, check ElevenLabs for recent completed conversations
+ * that were never processed (e.g. gateway crashed during a call).
+ * Fetches conversations from the last 30 minutes and processes any
+ * that don't already exist in Supabase.
+ */
+async function recoverMissedCalls(): Promise<void> {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const agentId = process.env.ELEVENLABS_AGENT_ID;
+  if (!apiKey || !agentId) return;
+
+  try {
+    console.log("Checking for missed call transcripts...");
+
+    const res = await fetch(
+      `https://api.elevenlabs.io/v1/convai/conversations?agent_id=${agentId}`,
+      { headers: { "xi-api-key": apiKey } }
+    );
+
+    if (!res.ok) {
+      console.error(`Failed to fetch recent conversations: ${res.status}`);
+      return;
+    }
+
+    const data = (await res.json()) as {
+      conversations?: {
+        conversation_id: string;
+        status: string;
+        start_time_unix_secs?: number;
+      }[];
+    };
+
+    if (!data.conversations?.length) {
+      console.log("No recent conversations found.");
+      return;
+    }
+
+    const thirtyMinAgo = Date.now() / 1000 - 30 * 60;
+    const candidates = data.conversations.filter(
+      (c) =>
+        c.status === "done" &&
+        c.start_time_unix_secs &&
+        c.start_time_unix_secs > thirtyMinAgo
+    );
+
+    if (candidates.length === 0) {
+      console.log("No missed calls to recover.");
+      return;
+    }
+
+    console.log(
+      `Found ${candidates.length} recent completed call(s), checking if already processed...`
+    );
+
+    // Check Supabase for each conversation_id
+    const sb = supabase.getSupabase();
+
+    for (const conv of candidates) {
+      // Skip if already in our in-memory dedup set
+      if (processedCallIds.has(conv.conversation_id)) {
+        continue;
+      }
+
+      // Check Supabase for existing transcript
+      let alreadySaved = false;
+      if (sb) {
+        try {
+          const { data: existing } = await sb
+            .from("messages")
+            .select("id")
+            .contains("metadata", { conversation_id: conv.conversation_id })
+            .limit(1);
+          alreadySaved = !!(existing && existing.length > 0);
+        } catch {
+          // If query fails, attempt recovery anyway
+        }
+      }
+
+      if (alreadySaved) {
+        processedCallIds.add(conv.conversation_id);
+        console.log(
+          `Call ${conv.conversation_id} already in Supabase, skipping.`
+        );
+        continue;
+      }
+
+      // Fetch and process the missed transcript
+      console.log(`Recovering missed call: ${conv.conversation_id}`);
+      processedCallIds.add(conv.conversation_id);
+
+      const transcript = await getCallTranscript(conv.conversation_id);
+      if (!transcript) {
+        console.log(
+          `Could not fetch transcript for ${conv.conversation_id}, skipping.`
+        );
+        continue;
+      }
+
+      const summary = await summarizeTranscript(transcript);
+      const chatId = ALLOWED_USER_ID;
+
+      // Send summary to Telegram
+      const summaryMsg = `**Recovered Call Summary**\n_(missed during downtime)_\n\n${summary}\n\n_Full transcript saved._`;
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: summaryMsg,
+          parse_mode: "Markdown",
+        }),
+      }).catch(() => {
+        fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: summaryMsg.replace(/\*\*/g, "").replace(/_/g, ""),
+          }),
+        }).catch(() => {});
+      });
+
+      // Save to Supabase
+      await supabase
+        .saveMessage({
+          chat_id: chatId,
+          role: "assistant",
+          content: `[Phone call transcript - recovered]\n${transcript}\n\n[Summary]\n${summary}`,
+          metadata: {
+            type: "phone_call",
+            conversation_id: conv.conversation_id,
+            processed_by: NODE_ID,
+            recovered: true,
+          },
+        })
+        .catch(() => {});
+
+      // Extract and execute tasks
+      extractTaskFromTranscript(transcript, summary)
+        .then(async (task) => {
+          if (task) {
+            console.log(
+              `Task detected from recovered call: "${task.substring(0, 80)}"`
+            );
+            await executeCallTask(task, chatId);
+          }
+        })
+        .catch((err) =>
+          console.error("Recovered call task extraction failed:", err)
+        );
+
+      console.log(`Successfully recovered call ${conv.conversation_id}`);
+    }
+  } catch (err: any) {
+    console.error("Call recovery error:", err.message);
+  }
+}
+
+// Run recovery after server is ready (non-blocking)
+recoverMissedCalls().catch((err) =>
+  console.error("Startup call recovery failed:", err)
+);
+
 // Updated February 2026: Clarified deployment modes and authentication following Anthropic's January 2026 ToS enforcement.
