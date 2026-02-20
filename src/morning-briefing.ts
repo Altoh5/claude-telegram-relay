@@ -135,7 +135,7 @@ async function main() {
   }
 
   // Stagger startup to avoid thundering herd after sleep/wake
-  const startupDelay = Math.floor(Math.random() * 30000);
+  const startupDelay = Math.floor(Math.random() * 5000);
   console.log(
     `⏳ Staggering startup by ${Math.round(startupDelay / 1000)}s...`
   );

@@ -32,7 +32,10 @@ export async function fetchAll(): Promise<FetchAllResult> {
 
   const settled = await Promise.allSettled(
     available.map(async (source) => {
+      const srcStart = Date.now();
       const result = await source.fetch();
+      const srcMs = Date.now() - srcStart;
+      console.log(`  ⏱️ ${source.name}: ${srcMs}ms`);
       return { source, result };
     })
   );
