@@ -258,9 +258,7 @@ function updateClock() {
 updateClock();
 
 async function sbQuery(table, params = "") {
-  const res = await fetch(SB_URL + "/rest/v1/" + table + "?" + params, {
-    headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
-  });
+  const res = await fetch("/api/sb?table=" + encodeURIComponent(table) + "&params=" + encodeURIComponent(params));
   if (!res.ok) throw new Error(res.status);
   return res.json();
 }
@@ -430,12 +428,30 @@ setInterval(refreshAll, 15000);
 
 const server = Bun.serve({
   port: PORT,
-  fetch(req) {
+  async fetch(req) {
     const url = new URL(req.url);
 
     // Proxy health check to avoid CORS issues
     if (url.pathname === "/api/health") {
       return fetch(HEALTH_URL).catch(() => new Response("{}", { status: 503 }));
+    }
+
+    // Proxy Supabase queries to avoid CORS issues
+    if (url.pathname === "/api/sb") {
+      const table = url.searchParams.get("table");
+      const params = url.searchParams.get("params") || "";
+      if (!table || !SB_URL || !SB_KEY) {
+        return Response.json({ error: "missing config" }, { status: 400 });
+      }
+      try {
+        const res = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+          headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+        });
+        const data = await res.json();
+        return Response.json(data);
+      } catch (e: any) {
+        return Response.json({ error: e.message }, { status: 500 });
+      }
     }
 
     // Serve dashboard
