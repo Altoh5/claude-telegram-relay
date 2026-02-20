@@ -28,7 +28,7 @@ import { fetchAll, getAvailableSources } from "./lib/data-sources";
 await loadEnv();
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const CHAT_ID = process.env.TELEGRAM_USER_ID || "";
+const CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID || process.env.TELEGRAM_USER_ID || "";
 const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "UTC";
 

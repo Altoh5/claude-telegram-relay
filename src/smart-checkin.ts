@@ -22,7 +22,7 @@ import { runClaudeWithTimeout } from "./lib/claude";
 await loadEnv();
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const CHAT_ID = process.env.TELEGRAM_USER_ID || "";
+const CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID || process.env.TELEGRAM_USER_ID || "";
 const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "UTC";
 
@@ -46,6 +46,7 @@ interface CheckinState {
   lastCallTime: string;
   pendingItems: string[];
   context: string;
+  lastTwinmindMeetingId?: string;
 }
 
 interface Memory {
@@ -298,6 +299,72 @@ REASON: [Why you made this decision]`;
 }
 
 // ============================================================
+// TWINMIND + NOTEBOOKLM INFOGRAPHIC
+// ============================================================
+
+async function checkTwinmindAndSendInfographic(state: CheckinState): Promise<void> {
+  console.log("\n📝 Checking TwinMind for latest meeting via Claude Code...");
+
+  const lastSeenId = state.lastTwinmindMeetingId || "";
+
+  const prompt = `You are running as part of a scheduled check-in. Do the following steps silently and efficiently:
+
+STEP 1: Use the TwinMind MCP (summary_search tool with limit=1) to get the most recent meeting.
+
+STEP 2: Extract the meeting_id from the result (it will be in format "summary-<uuid>" — extract just the uuid part).
+
+STEP 3: If the meeting_id is "${lastSeenId}", output exactly:
+RESULT: SKIP
+REASON: Already sent this meeting before.
+Then stop.
+
+STEP 4: If it's a NEW meeting, use the TwinMind fetch tool (id="summary-<uuid>") to get the full summary content.
+
+STEP 5: Create a NotebookLM notebook with the meeting title, add the summary as a text source (wait=true), then generate an infographic (artifact_type="infographic", orientation="landscape", detail_level="detailed", confirm=true).
+
+STEP 6: Poll studio_status every 10 seconds until the infographic status is "completed" (timeout after 3 minutes).
+
+STEP 7: Once completed, download the infographic to /tmp/twinmind-infographic-<meeting_id>.png using download_artifact.
+
+STEP 8: Send the infographic to Telegram chat ${CHAT_ID} using the bot token from the environment (TELEGRAM_BOT_TOKEN). Use this exact curl command:
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" -F "chat_id=${CHAT_ID}" -F "document=@/tmp/twinmind-infographic-<meeting_id>.png" -F "caption=📊 Meeting Infographic: <meeting title>"
+
+STEP 9: Also send a brief text summary of the meeting to Telegram:
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" --data-urlencode "chat_id=${CHAT_ID}" --data-urlencode "text=📝 Latest Meeting: <title>\\n\\n<first 800 chars of summary>"
+
+STEP 10: Output the result in this exact format:
+RESULT: SENT
+MEETING_ID: <the uuid>
+TITLE: <meeting title>
+
+If any step fails, output:
+RESULT: ERROR
+REASON: <what failed>
+
+Important: Only output the RESULT line and nothing else — no explanations, no markdown.`;
+
+  try {
+    const output = await runClaudeWithTimeout(prompt, 300000); // 5 min timeout
+
+    const resultMatch = output.match(/RESULT:\s*(SENT|SKIP|ERROR)/i);
+    const meetingIdMatch = output.match(/MEETING_ID:\s*([a-f0-9-]+)/i);
+    const result = resultMatch?.[1]?.toUpperCase() || "ERROR";
+
+    if (result === "SENT" && meetingIdMatch?.[1]) {
+      state.lastTwinmindMeetingId = meetingIdMatch[1];
+      console.log(`  ✅ TwinMind infographic sent for meeting ${meetingIdMatch[1]}`);
+    } else if (result === "SKIP") {
+      console.log("  ⏭️  No new TwinMind meeting since last check-in.");
+    } else {
+      const reasonMatch = output.match(/REASON:\s*(.+)/i);
+      console.error(`  ❌ TwinMind check failed: ${reasonMatch?.[1] || "unknown error"}`);
+    }
+  } catch (err) {
+    console.error("  TwinMind Claude subprocess error:", err);
+  }
+}
+
+// ============================================================
 // MAIN
 // ============================================================
 
@@ -363,6 +430,10 @@ if (action === "text" && message && message.toLowerCase() !== "none") {
 } else {
   console.log("💤 No check-in needed right now.");
 }
+
+// Always check TwinMind for new meetings regardless of check-in decision
+await checkTwinmindAndSendInfographic(state);
+await saveState(state);
 
 // Run health summary
 const failures = runHealth.filter((r) => r.status === "fail");
