@@ -25,14 +25,18 @@ if git diff HEAD@{1} --name-only 2>/dev/null | grep -q "bun.lock\|package.json";
   bun install 2>&1
 fi
 
-# Kill current gateway
-echo "Killing gateway..."
-kill $(pgrep -f "bun.*vps-gateway.ts") 2>/dev/null
-sleep 1
-
-# Restart
-echo "Starting gateway..."
-nohup bun run src/vps-gateway.ts > /tmp/gateway.log 2>&1 &
-echo "New PID: $!"
+# Restart gateway — use PM2 if available, else nohup fallback
+if command -v pm2 &>/dev/null && pm2 describe go-bot &>/dev/null; then
+  echo "Restarting via PM2..."
+  pm2 restart go-bot 2>&1
+  echo "PM2 restart complete"
+else
+  echo "Killing gateway (nohup mode)..."
+  kill $(pgrep -f "bun.*vps-gateway.ts") 2>/dev/null
+  sleep 1
+  echo "Starting gateway..."
+  nohup bun run src/vps-gateway.ts > /tmp/gateway.log 2>&1 &
+  echo "New PID: $!"
+fi
 
 echo "=== Deploy complete at $(date) ==="

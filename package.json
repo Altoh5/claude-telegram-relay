@@ -1,12 +1,10 @@
 {
-  "name": "claude-telegram-relay",
-  "version": "2.0.0",
+  "name": "gobot",
+  "version": "2.5.3",
   "description": "Always-on AI Telegram agent powered by Claude with multi-agent routing, proactive check-ins, and persistent memory",
   "type": "module",
   "scripts": {
-    "test": "bun test src/",
     "start": "bun run src/bot.ts",
-    "dev": "bun run --watch src/bot.ts",
     "vps": "bun run src/vps-gateway.ts",
     "checkin": "bun run src/smart-checkin.ts",
     "briefing": "bun run src/morning-briefing.ts",
@@ -18,16 +16,14 @@
     "setup:google": "bun run setup/setup-google-oauth.ts",
     "test:telegram": "bun run setup/test-telegram.ts",
     "test:supabase": "bun run setup/test-supabase.ts",
-    "test:voice": "bun run setup/test-voice.ts",
     "uninstall": "bun run setup/uninstall.ts",
-    "observatory": "bun run src/observatory.ts"
+    "upgrade": "bun run setup/upgrade.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.54",
     "@anthropic-ai/sdk": "^0.39.0",
     "@supabase/supabase-js": "^2.49.0",
     "grammy": "^1.35.0",
-    "groq-sdk": "^0.8.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {

@@ -5,13 +5,13 @@
  *
  * Two flows depending on processing mode:
  *
- * MAC (Claude Code / Max subscription):
- * 1. Image received -> saved locally + uploaded to Supabase Storage
+ * MAC (Claude Code CLI / subscription auth):
+ * 1. Image received → saved locally + uploaded to Supabase Storage
  * 2. File path passed to Claude Code (Opus reads image natively)
- * 3. AFTER response: parse [ASSET_DESC] tag -> update description + embedding
+ * 3. AFTER response: parse [ASSET_DESC] tag → update description + embedding
  *
  * VPS (Anthropic API / no Claude Code):
- * 1. Image received -> uploaded to Supabase Storage (no local save)
+ * 1. Image received → uploaded to Supabase Storage (no local save)
  * 2. Haiku vision generates description (VPS can't read local files)
  * 3. Description passed to Anthropic processor
  */
@@ -60,7 +60,7 @@ interface VisionResult {
 const BUCKET_NAME = "gobot-assets";
 
 // ============================================================
-// QUICK UPLOAD (Mac path -- no vision call, Claude Code reads image)
+// QUICK UPLOAD (Mac path — no vision call, Claude Code reads image)
 // ============================================================
 
 /**
@@ -85,7 +85,7 @@ export async function uploadAssetQuick(
 }
 
 /**
- * Upload from a Buffer (VPS path -- no local file).
+ * Upload from a Buffer (VPS path — no local file).
  */
 export async function uploadAssetFromBuffer(
   buffer: Buffer,
@@ -100,7 +100,7 @@ export async function uploadAssetFromBuffer(
 ): Promise<Asset | null> {
   const client = getSupabase();
   if (!client) {
-    console.warn("Supabase not configured -- asset not uploaded");
+    console.warn("⚠️ Supabase not configured — asset not uploaded");
     return null;
   }
 
@@ -175,7 +175,7 @@ export async function uploadAssetFromBuffer(
       return null;
     }
 
-    console.log(`Asset stored: ${storagePath} (${fileType})`);
+    console.log(`📦 Asset stored: ${storagePath} (${fileType})`);
     return data as Asset;
   } catch (err) {
     console.error("uploadAssetFromBuffer error:", err);
@@ -216,7 +216,7 @@ export async function updateAssetDescription(
       console.error("updateAssetDescription error:", error.message);
     } else {
       console.log(
-        `Asset ${assetId.substring(0, 8)} description updated${embedding ? " (with embedding)" : ""}`
+        `📝 Asset ${assetId.substring(0, 8)} description updated${embedding ? " (with embedding)" : ""}`
       );
     }
   } catch (err) {
@@ -260,7 +260,7 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
 }
 
 // ============================================================
-// IMAGE DESCRIPTION (Haiku Vision -- for VPS path)
+// IMAGE DESCRIPTION (Haiku Vision — for VPS path)
 // ============================================================
 
 /**
@@ -274,6 +274,7 @@ export async function describeImage(
 ): Promise<VisionResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
+    console.warn("⚠️ No ANTHROPIC_API_KEY — skipping vision description");
     return {
       description: caption || "Image (no description available)",
       tags: [],
@@ -295,7 +296,7 @@ export async function describeImage(
 }
 
 /**
- * Describe an image from a Buffer (VPS path -- no local file).
+ * Describe an image from a Buffer (VPS path — no local file).
  */
 export async function describeImageFromBuffer(
   imageBuffer: Buffer,
@@ -305,6 +306,7 @@ export async function describeImageFromBuffer(
 ): Promise<VisionResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
+    console.warn("⚠️ No ANTHROPIC_API_KEY — skipping vision description");
     return {
       description: caption || "Image (no description available)",
       tags: [],
@@ -338,7 +340,7 @@ export async function describeImageFromBuffer(
     promptParts.push(`Describe this image concisely for future reference. Include:
 1. What the image shows (objects, text, UI elements, people, etc.)
 2. Any text visible in the image
-3. The apparent purpose/context${caption ? " -- especially in relation to the user's message" : ""}
+3. The apparent purpose/context${caption ? " — especially in relation to the user's message" : ""}
 
 Respond in JSON only:
 {
@@ -434,7 +436,7 @@ export async function uploadAsset(
 ): Promise<Asset | null> {
   const client = getSupabase();
   if (!client) {
-    console.warn("Supabase not configured -- asset not uploaded");
+    console.warn("⚠️ Supabase not configured — asset not uploaded");
     return null;
   }
 
@@ -604,3 +606,5 @@ function getTimeAgo(dateString: string): string {
   if (diffDays < 7) return `${diffDays}d ago`;
   return `${Math.floor(diffDays / 7)}w ago`;
 }
+
+// Updated February 2026: Clarified deployment modes and authentication following Anthropic's January 2026 ToS enforcement.

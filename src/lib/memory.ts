@@ -50,7 +50,7 @@ interface Memory {
 
 const MEMORY_PATH =
   process.env.MEMORY_FILE_PATH ||
-  join(process.env.PROJECT_ROOT || process.cwd(), "memory.json");
+  join(process.env.GO_PROJECT_ROOT || process.cwd(), "memory.json");
 
 const DEFAULT_MEMORY: Memory = {
   facts: [],
@@ -322,10 +322,15 @@ export async function processIntents(
     if (success) result.goalsAdded.push(goalText);
   }
 
-  // [DONE: text]
+  // [DONE: text] — require minimum 5 chars to prevent vague matches
   const donePattern = /\[DONE:\s*([^\]]+?)\s*\]/gi;
   while ((match = donePattern.exec(text)) !== null) {
     const doneText = match[1].trim();
+    if (doneText.length < 5) {
+      console.warn(`[INTENT] Skipping vague DONE tag: "${doneText}"`);
+      continue;
+    }
+    console.log(`[INTENT] Processing DONE: "${doneText}"`);
     const success = await completeGoal(doneText);
     if (success) result.goalsCompleted.push(doneText);
   }
@@ -346,27 +351,18 @@ export async function processIntents(
     if (success) result.factsRemoved.push(forgetText);
   }
 
-  // [CANCEL: text]
+  // [CANCEL: text] — require minimum 5 chars to prevent vague matches
   const cancelPattern = /\[CANCEL:\s*([^\]]+?)\s*\]/gi;
   while ((match = cancelPattern.exec(text)) !== null) {
     const cancelText = match[1].trim();
+    if (cancelText.length < 5) {
+      console.warn(`[INTENT] Skipping vague CANCEL tag: "${cancelText}"`);
+      continue;
+    }
+    console.log(`[INTENT] Processing CANCEL: "${cancelText}"`);
     const success = await cancelGoal(cancelText);
     if (success) result.goalsCancelled.push(cancelText);
   }
 
   return result;
-}
-
-/**
- * Strip all intent tags from text before sending to user.
- */
-export function stripIntentTags(text: string): string {
-  return text
-    .replace(/\[GOAL:\s*[^\]]+\]/gi, "")
-    .replace(/\[DONE:\s*[^\]]+\]/gi, "")
-    .replace(/\[CANCEL:\s*[^\]]+\]/gi, "")
-    .replace(/\[REMEMBER:\s*[^\]]+\]/gi, "")
-    .replace(/\[FORGET:\s*[^\]]+\]/gi, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }

@@ -561,14 +561,14 @@ export async function log(
   if (!sb) return;
 
   try {
-    await sb.from("logs").insert({ level, event: service, message, metadata });
+    await sb.from("logs").insert({ level, service, message, metadata });
   } catch {
     // Logging should never throw
   }
 }
 
 // ---------------------------------------------------------------------------
-// Async Tasks (Human-in-the-Loop -- VPS mode)
+// Async Tasks (Human-in-the-Loop — VPS mode)
 // ---------------------------------------------------------------------------
 
 export interface AsyncTask {
@@ -744,7 +744,7 @@ export async function getStaleTasks(
 }
 
 // ---------------------------------------------------------------------------
-// Node Heartbeat (Hybrid mode -- local <-> VPS health tracking)
+// Node Heartbeat (Hybrid mode — local ↔ VPS health tracking)
 // ---------------------------------------------------------------------------
 
 /**

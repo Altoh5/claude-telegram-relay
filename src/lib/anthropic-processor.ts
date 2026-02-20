@@ -5,6 +5,13 @@
  * VPS mode processes messages when the local machine is offline.
  *
  * Tools: Ask User (human-in-the-loop), Phone Call
+ *
+ * For external service access (Gmail, Calendar, Notion, etc.), students
+ * connect MCP servers on their local machine. VPS mode uses Supabase
+ * context (memory, goals, conversation history) for awareness.
+ *
+ * All tool descriptions and system prompt are generalized via env vars.
+ * Configure USER_NAME, USER_EMAIL, USER_TIMEZONE, etc. in .env.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -14,7 +21,7 @@ import { buildTaskKeyboard } from "./task-queue";
 import type { Context } from "grammy";
 
 // ============================================================
-// ASK USER SIGNAL -- thrown when Claude needs user input
+// ASK USER SIGNAL — thrown when Claude needs user input
 // ============================================================
 
 export class AskUserSignal {
@@ -40,7 +47,7 @@ export class AskUserSignal {
 }
 
 // ============================================================
-// RESUME STATE -- passed when continuing from ask_user pause
+// RESUME STATE — passed when continuing from ask_user pause
 // ============================================================
 
 export interface ResumeState {
@@ -183,7 +190,7 @@ async function executeTool(
         return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
   } catch (err: any) {
-    // Re-throw AskUserSignal -- it's not an error
+    // Re-throw AskUserSignal — it's not an error
     if (err instanceof AskUserSignal) throw err;
 
     console.error(`Tool ${name} error:`, err.message);
@@ -192,7 +199,7 @@ async function executeTool(
 }
 
 // ============================================================
-// MESSAGE COMPRESSION -- truncate tool results before storing
+// MESSAGE COMPRESSION — truncate tool results before storing
 // ============================================================
 
 function compressMessages(
@@ -228,7 +235,7 @@ function compressMessages(
 function buildSystemPrompt(): string {
   const userName = process.env.USER_NAME || "User";
   const userTimezone = process.env.USER_TIMEZONE || "UTC";
-  const botName = process.env.BOT_NAME || "Assistant";
+  const botName = process.env.BOT_NAME || "Go";
 
   const now = new Date();
   const localTime = now.toLocaleString("en-US", {
@@ -251,6 +258,12 @@ AVAILABLE TOOLS:
 - ask_user: Ask the user a question via inline buttons. Use BEFORE any irreversible action.
 ${process.env.ELEVENLABS_API_KEY ? "- phone_call: Initiate a voice call via ElevenLabs" : ""}
 
+NOTE: External service integrations (Gmail, Calendar, Notion, etc.) are available
+on the local machine via MCP servers. When the local machine is offline, you can
+still have conversations, answer questions, and use your knowledge. For tasks that
+require external service access, let the user know you'll handle it when the local
+machine is back online, or use ask_user to confirm actions.
+
 HUMAN-IN-THE-LOOP (CRITICAL):
 - Use ask_user tool BEFORE taking irreversible actions
 - ask_user pauses the conversation and sends buttons to Telegram
@@ -263,12 +276,19 @@ IMPORTANT BEHAVIORS:
 - When user sends a short reply (like "1", "yes", "no"), check conversation context
 - Be helpful and proactive with what you CAN do (reasoning, planning, advice)
 
+LIMITATIONS (CRITICAL):
+- You CANNOT modify your own code, server, or configuration
+- You CANNOT restart services, deploy updates, or fix bugs in yourself
+- You CANNOT access the filesystem of the server you run on
+- If something is broken, tell the user clearly — do NOT promise to fix it yourself
+- Never say "I'll look into that", "Let me debug this", or "I'll fix that" about your own systems
+
 INTENT DETECTION - Include at END of response when relevant:
-- [GOAL: goal text | DEADLINE: optional] -- for goals/tasks
-- [DONE: what completed] -- for completions
-- [CANCEL: partial match] -- for cancelling/abandoning a goal
-- [REMEMBER: fact] -- for important facts to remember
-- [FORGET: partial match] -- for removing a stored fact`;
+- [GOAL: goal text | DEADLINE: optional] — for goals/tasks
+- [DONE: what was completed] — ONLY when user explicitly states they finished something. Use the full goal text, not a vague summary.
+- [CANCEL: partial match] — for cancelling/abandoning a goal
+- [REMEMBER: fact] — for important facts to remember
+- [FORGET: partial match] — for removing a stored fact`;
 }
 
 // ============================================================
@@ -306,7 +326,7 @@ export async function processWithAnthropic(
   let messages: Anthropic.MessageParam[];
 
   if (resumeState) {
-    // Resume from ask_user pause -- restore messages + inject user's choice
+    // Resume from ask_user pause — restore messages + inject user's choice
     console.log(
       `Resuming from ask_user (task ${resumeState.taskId}): "${resumeState.userChoice}"`
     );
@@ -398,7 +418,7 @@ export async function processWithAnthropic(
               });
             } catch (signal) {
               if (signal instanceof AskUserSignal) {
-                // Pause the loop -- save state and send buttons
+                // Pause the loop — save state and send buttons
                 const task = await supabase.createTask(
                   chatId,
                   userMessage || "resumed task",
@@ -443,7 +463,7 @@ export async function processWithAnthropic(
                   `Anthropic API paused (ask_user): ${iterations} iterations, ${totalToolCalls} tool calls, ${elapsed}ms`
                 );
 
-                // Return empty -- the response was already sent via buttons
+                // Return empty — the response was already sent via buttons
                 return "";
               }
               throw signal; // Re-throw unknown errors

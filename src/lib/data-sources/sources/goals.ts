@@ -13,7 +13,7 @@ import { join } from "path";
 import { register } from "../registry";
 import type { DataSource, DataSourceResult } from "../types";
 
-const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 
 const goalsSource: DataSource = {
   id: "goals",

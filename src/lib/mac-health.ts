@@ -3,8 +3,8 @@
  *
  * When running in hybrid mode, the VPS checks if the Mac (local machine)
  * is alive and responsive. If Mac is alive, messages are forwarded to it
- * (uses Claude Code subscription = free). If Mac is down, VPS processes
- * locally using Anthropic API (pay-per-token).
+ * (uses Claude Code CLI with subscription). If Mac is down, VPS processes
+ * using Anthropic API (pay-per-token).
  *
  * Health check methods:
  * 1. HTTP GET to your Mac's health endpoint (via Cloudflare Tunnel or similar)
@@ -141,3 +141,5 @@ export async function forceCheck(): Promise<boolean> {
   await updateHealth();
   return state.isAlive;
 }
+
+// Updated February 2026: Clarified deployment modes and authentication following Anthropic's January 2026 ToS enforcement.

@@ -1,5 +1,5 @@
 /**
- * Claude Code Subprocess Spawner
+ * Go - Claude Code Subprocess Spawner
  *
  * Spawns claude CLI as a subprocess for AI processing.
  * Handles session resumption, timeouts, cleanup, and streaming progress.
@@ -50,6 +50,11 @@ export function isClaudeErrorResponse(text: string): boolean {
     "invalid_api_key",
     "overloaded_error",
     "rate_limit_error",
+    "credit balance",
+    "add funds",
+    "billing",
+    "insufficient_quota",
+    "payment_required",
   ];
   return errorPatterns.some((p) => text.includes(p));
 }
@@ -87,7 +92,7 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
     maxTurns,
   } = options;
 
-  const args = ["-p", prompt, "--output-format", outputFormat, "--dangerously-skip-permissions"];
+  const args = ["-p", prompt, "--output-format", outputFormat];
 
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
@@ -180,7 +185,6 @@ export async function runClaudeWithTimeout(
     prompt,
     "--output-format",
     "text",
-    "--dangerously-skip-permissions",
     ...(options?.allowedTools
       ? ["--allowedTools", options.allowedTools.join(",")]
       : []),
@@ -240,7 +244,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 function friendlyToolName(toolName: string): string {
   // Direct match
   if (TOOL_DISPLAY_NAMES[toolName]) return TOOL_DISPLAY_NAMES[toolName];
-  // MCP tool: mcp__server__action -> "Using server"
+  // MCP tool: mcp__server__action → "Using server"
   if (toolName.startsWith("mcp__")) {
     const parts = toolName.split("__");
     const server = parts[1] || "tool";
@@ -266,15 +270,15 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
     onFirstText,
   } = options;
 
-  const args = ["-p", prompt, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"];
+  const args = ["-p", prompt, "--output-format", "stream-json", "--verbose"];
 
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
   }
 
-  // Skip --resume for streaming mode: it suppresses stream_event events,
-  // preventing live progress updates. Context is already in the prompt
-  // via memory + conversation history from Supabase.
+  if (resumeSessionId) {
+    args.push("--resume", resumeSessionId);
+  }
 
   if (maxTurns) {
     args.push("--max-turns", maxTurns);
@@ -346,12 +350,13 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
           continue;
         }
 
-        // Try both stream_event format and direct event format
-        // Claude CLI may emit events directly rather than wrapped in stream_event
-        const apiEvent = event.type === "stream_event" ? event.event : event;
+        // Only process stream_event type
+        if (event.type !== "stream_event") continue;
+
+        const apiEvent = event.event;
         if (!apiEvent) continue;
 
-        // Tool use start -> progress callback
+        // Tool use start → progress callback
         if (
           apiEvent.type === "content_block_start" &&
           apiEvent.content_block?.type === "tool_use" &&
@@ -365,21 +370,7 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
           }
         }
 
-        // Check for tool use in assistant message content blocks
-        if (apiEvent.type === "assistant" && apiEvent.message?.content && onToolStart) {
-          for (const block of apiEvent.message.content) {
-            if (block.type === "tool_use") {
-              const now = Date.now();
-              if (now - lastToolProgressAt >= TOOL_THROTTLE_MS) {
-                lastToolProgressAt = now;
-                const name = block.name || "tool";
-                onToolStart(friendlyToolName(name));
-              }
-            }
-          }
-        }
-
-        // Text delta -> accumulate for first-text callback
+        // Text delta → accumulate for first-text callback
         if (
           apiEvent.type === "content_block_delta" &&
           apiEvent.delta?.type === "text_delta" &&
@@ -390,29 +381,12 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
           // Send first meaningful text snippet (>30 chars, first sentence)
           if (!firstTextSent && onFirstText && textAccumulator.length > 30) {
             firstTextSent = true;
+            // Extract first sentence or first 150 chars
             const match = textAccumulator.match(/^.{30,150}?[.!?\n]/);
             const snippet = match ? match[0].trim() : textAccumulator.substring(0, 150).trim();
             onFirstText(snippet);
           }
         }
-
-        // Check for text in assistant message content blocks
-        if (apiEvent.type === "assistant" && apiEvent.message?.content && onFirstText && !firstTextSent) {
-          for (const block of apiEvent.message.content) {
-            if (block.type === "text" && block.text) {
-              textAccumulator += block.text;
-              if (textAccumulator.length > 30) {
-                firstTextSent = true;
-                const match = textAccumulator.match(/^.{30,150}?[.!?\n]/);
-                const snippet = match ? match[0].trim() : textAccumulator.substring(0, 150).trim();
-                console.log(`[streaming] First text: ${snippet.substring(0, 80)}`);
-                onFirstText(snippet);
-              }
-            }
-          }
-        }
-
-        // (dead code removed — handled above)
       }
     }
 

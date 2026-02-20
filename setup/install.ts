@@ -78,6 +78,29 @@ async function checkBun(): Promise<boolean> {
   return false;
 }
 
+async function checkGitRepo(): Promise<boolean> {
+  const gitDir = join(PROJECT_ROOT, ".git");
+  if (!existsSync(gitDir)) {
+    console.log(`  ${WARN} No git repository detected ${dim("(ZIP download?)")}`);
+    console.log(`      ${yellow("Run")} ${cyan("bun run upgrade")} ${yellow("to connect to the official repo for future updates")}`);
+    return false;
+  }
+
+  const remote = await runCommand(["git", "remote", "get-url", "origin"]);
+  if (remote.ok && remote.stdout.includes("autonomee/gobot")) {
+    console.log(`  ${PASS} Git: connected to autonomee/gobot`);
+    return true;
+  } else if (remote.ok) {
+    console.log(`  ${WARN} Git remote: ${remote.stdout} ${dim("(not the official repo)")}`);
+    console.log(`      ${yellow("Run")} ${cyan("bun run upgrade")} ${yellow("to connect for updates")}`);
+    return false;
+  }
+
+  console.log(`  ${WARN} Git: no remote configured`);
+  console.log(`      ${yellow("Run")} ${cyan("bun run upgrade")} ${yellow("to connect to the official repo")}`);
+  return false;
+}
+
 async function checkClaude(): Promise<boolean> {
   // Check CLAUDE_PATH env var first
   const claudePath = process.env.CLAUDE_PATH;
@@ -176,6 +199,7 @@ async function main() {
     process.exit(1);
   }
 
+  const gitOk = await checkGitRepo();
   const claudeOk = await checkClaude();
 
   // 2. Dependencies
@@ -199,6 +223,10 @@ async function main() {
   console.log(dim("  ----------"));
 
   const steps: string[] = [];
+
+  if (!gitOk) {
+    steps.push(`Connect to official repo for updates: ${cyan("bun run upgrade")}`);
+  }
 
   if (!envReady) {
     steps.push(`Edit .env with your API keys: ${cyan("$EDITOR .env")}`);

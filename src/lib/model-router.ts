@@ -1,8 +1,9 @@
 /**
  * Model Router — Tiered Model Selection
  *
- * Classifies message complexity to select the right model tier.
- * Zero overhead — pure regex matching, no API calls.
+ * Extracts complexity classification from anthropic-processor.ts
+ * into a standalone module. Used by both the legacy processor
+ * and the new Agent SDK session manager.
  *
  * Distribution target: ~60% Haiku, ~30% Sonnet, ~10% Opus
  */
@@ -31,7 +32,7 @@ export const MODEL_COSTS: Record<ModelTier, { input: number; output: number }> =
 // PATTERNS
 // ============================================================
 
-// Patterns that indicate simple requests (-> Haiku)
+// Patterns that indicate simple requests (→ Haiku)
 const SIMPLE_PATTERNS = [
   /^(hi|hey|hello|morning|good morning|gm|thanks|ok|yes|no|sure|got it)/i,
   /what('s| is) (the )?(time|date|day)/i,
@@ -43,7 +44,7 @@ const SIMPLE_PATTERNS = [
   /^remind me/i,
 ];
 
-// Patterns that indicate complex requests (-> Opus)
+// Patterns that indicate complex requests (→ Opus)
 const COMPLEX_PATTERNS = [
   /\b(analyze|analysis|evaluate|compare|contrast)\b/i,
   /\b(strategy|strategic|plan|roadmap|architecture)\b/i,
@@ -75,10 +76,10 @@ export function classifyComplexity(message: string): ModelTier {
     if (pattern.test(message)) return "haiku";
   }
 
-  // Short messages (< 40 chars) -> Haiku
+  // Short messages (< 40 chars) → Haiku
   if (message.length < 40) return "haiku";
 
-  // Medium-length or unclear -> Sonnet (good default)
+  // Medium-length or unclear → Sonnet (good default)
   return "sonnet";
 }
 
@@ -91,7 +92,7 @@ export function selectModelForMessage(
 ): { tier: ModelTier; model: string } {
   const tier = classifyComplexity(message);
 
-  // Downgrade Opus -> Sonnet if budget is running low (< $1 remaining)
+  // Downgrade Opus → Sonnet if budget is running low (< $1 remaining)
   const effectiveTier =
     tier === "opus" && budgetRemaining !== undefined && budgetRemaining < 1.0
       ? "sonnet"

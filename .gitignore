@@ -1,30 +1,21 @@
-# Environment
-.env
-.env.local
-
-# Dependencies
 node_modules/
-
-# Bun
-bun.lockb
-
-# Personal config (keep examples, ignore actual)
-config/profile.md
-config/schedule.json
-
-# Runtime files
-*.lock
-*.log
+dist/
+.env
+.env.*
+!.env.example
 logs/
 temp/
 uploads/
-session.json
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.idea/
-.vscode/
-*.swp
+*.lock
+bot.lock
+session-state.json
+memory.json
+checkin-state.json
+config/profile.md
+config/schedule.json
+config/.google-tokens.json
+news-history.json
+last-processed-call.json
+meeting-actions-state.json
+bun.lock
+gobot-master/

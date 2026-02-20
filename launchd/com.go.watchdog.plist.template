@@ -21,7 +21,7 @@
         <string>{{BUN_DIR}}:{{CLAUDE_DIR}}:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key>
         <string>{{HOME}}</string>
-        <key>PROJECT_ROOT</key>
+        <key>GO_PROJECT_ROOT</key>
         <string>{{PROJECT_ROOT}}</string>
     </dict>
 

@@ -28,8 +28,8 @@ import { fetchAll, getAvailableSources } from "./lib/data-sources";
 await loadEnv();
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID || process.env.TELEGRAM_USER_ID || "";
-const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+const CHAT_ID = process.env.TELEGRAM_USER_ID || "";
+const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "UTC";
 
 // ============================================================
@@ -120,6 +120,20 @@ async function buildAndSendBriefing(): Promise<void> {
 // ============================================================
 
 async function main() {
+  // Dedup: skip if briefing was already sent today
+  const stateFile = join(PROJECT_ROOT, "checkin-state.json");
+  try {
+    const { readFile: rf } = await import("fs/promises");
+    const state = JSON.parse(await rf(stateFile, "utf-8"));
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: USER_TIMEZONE });
+    if (state.lastBriefingDate === today) {
+      console.log(`⏭️ Briefing already sent today (${today}), skipping.`);
+      return;
+    }
+  } catch {
+    // No state file or parse error — continue
+  }
+
   // Stagger startup to avoid thundering herd after sleep/wake
   const startupDelay = Math.floor(Math.random() * 30000);
   console.log(
@@ -130,6 +144,19 @@ async function main() {
   console.log("🌅 Morning Briefing starting...");
   console.log(`📱 Chat: ${CHAT_ID}`);
   await buildAndSendBriefing();
+
+  // Record that briefing was sent today
+  try {
+    const { readFile: rf, writeFile: wf } = await import("fs/promises");
+    let state: Record<string, any> = {};
+    try {
+      state = JSON.parse(await rf(stateFile, "utf-8"));
+    } catch {}
+    state.lastBriefingDate = new Date().toLocaleDateString("en-CA", { timeZone: USER_TIMEZONE });
+    await wf(stateFile, JSON.stringify(state, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Failed to save briefing state:", err);
+  }
 }
 
 main().catch(console.error);

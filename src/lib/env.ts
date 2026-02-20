@@ -1,5 +1,5 @@
 /**
- * Environment Loader
+ * Go - Environment Loader
  *
  * Loads .env file from project root. No external dependencies.
  */
@@ -7,7 +7,7 @@
 import { readFile } from "fs/promises";
 import { join } from "path";
 
-const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 
 export async function loadEnv(envPath?: string): Promise<void> {
   const path = envPath || join(PROJECT_ROOT, ".env");

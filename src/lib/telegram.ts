@@ -1,5 +1,5 @@
 /**
- * Telegram Helpers
+ * Go - Telegram Helpers
  *
  * Send messages, sanitize markdown, manage typing indicators.
  */
@@ -118,7 +118,7 @@ export async function sendResponse(
   if (wantsVoice && voiceFn) {
     const audioBuffer = await voiceFn(text);
     if (audioBuffer) {
-      await ctx.replyWithVoice(new InputFile(audioBuffer, "response.mp3"));
+      await ctx.replyWithVoice(new InputFile(audioBuffer, "response.wav"));
       return;
     }
   }

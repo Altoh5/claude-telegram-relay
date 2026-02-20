@@ -1,176 +1,248 @@
-# Claude Telegram Relay
+# Gobot — Always-On AI Telegram Agent
 
-A personal AI assistant on Telegram powered by Claude Code.
+An always-on Telegram agent powered by Claude with multi-agent routing, proactive check-ins, persistent memory, voice calls, and morning briefings. Supports three deployment modes: local desktop, cloud VPS, or hybrid (recommended).
 
-You message it. Claude responds. Text, photos, documents, voice. It remembers across sessions, checks in proactively, and runs in the background.
+**Created by [Goda Go](https://youtube.com/@GodaGo)** | [Autonomee Community](https://skool.com/autonomee)
 
-**Created by [Goda Go](https://youtube.com/@GodaGo)** | [AI Productivity Hub Community](https://skool.com/autonomee)
+## What It Does
 
 ```
-You ──▶ Telegram ──▶ Relay ──▶ Claude Code CLI ──▶ Response
-                                    │
-                              Supabase (memory)
+                          ┌── Local (Claude Code CLI + subscription)
+You ──▶ Telegram ──▶ Bot ─┤
+                          └── VPS  (Anthropic API + API key)
+                                │
+                                ├── Same code, same features everywhere:
+                                │   MCP Servers, Skills, Hooks, CLAUDE.md
+                                │
+                                └── Supabase (shared memory, goals, history)
 ```
 
-## What You Get
-
-- **Relay**: Send messages on Telegram, get Claude responses back
-- **Memory**: Semantic search over conversation history, persistent facts and goals via Supabase
+- **Relay**: Send messages on Telegram, get Claude responses back (and connect from Google Chat, Microsoft Teams, Discord, WhatsApp, Slack, and more)
+- **Multi-Agent**: Route messages to specialized agents via Telegram forum topics
+- **Memory**: Persistent facts, goals, and conversation history via Supabase
+- **Image Storage**: Photos stored persistently with AI-generated descriptions, tags, and semantic search
+- **Smart Routing**: Messages auto-classified by complexity — Haiku (fast), Sonnet (medium), Opus (powerful)
+- **Streaming Progress**: Complex tasks show real-time tool usage and progress updates in Telegram
+- **Call-to-Task**: Phone calls auto-detect actionable tasks and execute them with live progress updates
 - **Proactive**: Smart check-ins that know when to reach out (and when not to)
-- **Briefings**: Daily morning summary with goals and schedule
-- **Voice**: Transcribe voice messages (Groq cloud or local Whisper — your choice)
-- **Always On**: Runs in the background, starts on boot, restarts on crash
-- **Guided Setup**: Claude Code reads CLAUDE.md and walks you through everything
+- **Briefings**: Daily morning summary with pluggable data sources (goals, calendar, email, news, tasks)
+- **Voice**: Text-to-speech replies, voice transcription, and phone calls
+- **Human-in-the-Loop**: Claude asks for confirmation via inline buttons before taking actions
+- **Hybrid Mode**: VPS catches messages 24/7, forwards to your local machine when it's awake
+- **Auto-Deploy**: Push to GitHub, VPS pulls and restarts automatically
+
+## What's New
+
+### v2.5.1 — Fallback Fixes
+Billing errors ("credit balance too low", "add funds") now properly trigger the fallback chain instead of being sent as bot responses. Fallback tag now shows which backend answered (`via ollama` or `via openrouter`). New `FALLBACK_OFFLINE_ONLY=true` env var skips OpenRouter entirely for fully offline operation.
+
+### v2.5.0 — Reliability & VPS Hardening
+Fixed 6 bugs discovered in production: ElevenLabs voice calls no longer fail on empty context, call transcripts are deduped (no more double messages), morning briefings can't send twice, AI news is validated against search results, the bot can no longer promise to fix itself, and intent detection is less trigger-happy. Also added VPS hardening docs (fail2ban recovery, SSH key management, budget guidance) and raised the default API budget to $15.
+
+### v2.4.0 — Pluggable Data Sources for Morning Briefings
+Morning briefings now use direct REST APIs instead of a Claude subprocess (~3s vs ~90s). Sources auto-enable from env vars — no config files. Built-in: Goals, Gmail, Calendar, Notion Tasks, AI News (Grok). Add your own with the custom source template. Works on local, VPS, and hybrid equally.
+
+### v2.3.0 — Call-to-Task Auto-Execution
+When you end a phone call with the bot, it detects actionable tasks in the transcript (e.g. "create a presentation", "research X") and automatically starts executing them with live progress updates in Telegram. Works on both Mac and VPS.
+
+### v2.2.0 — Persistent Image Storage
+Photos sent to the bot are stored in Supabase Storage with AI-generated descriptions, tags, and optional semantic search. Images survive restarts and can be recalled later.
+
+### v2.1.0 — Smart Routing + Streaming Progress
+Messages auto-classified by complexity (Haiku/Sonnet/Opus). Complex tasks show real-time progress in Telegram — which tools are being used, Claude's initial plan. Simple messages respond instantly.
+
+### v2.0.0 — VPS Gateway + Hybrid Mode
+Always-on VPS processing with Anthropic API, hybrid forwarding to local machine, human-in-the-loop confirmations, and auto-deploy via GitHub webhook.
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+## Deployment Modes
+
+| Mode | How It Works | Cost |
+|------|-------------|------|
+| **Local** | Runs on your machine using Claude Code CLI | Claude Pro subscription to get started ($20/mo), Max for full power ($100-200/mo) |
+| **VPS** (24/7) | Runs on a cloud server using Anthropic API | VPS (~$5/mo) + API costs vary by usage and model selection |
+| **Hybrid** (recommended) | VPS always on, forwards to local when your machine is awake | VPS + API costs + subscription |
+
+### Same Code, Full Power — Everywhere
+
+Claude Code CLI works with an `ANTHROPIC_API_KEY` environment variable. When set, it uses the Anthropic API (pay-per-token). Without it, Claude Code uses your subscription authentication. Both modes give you **all** Claude Code features: MCP servers, skills, hooks, CLAUDE.md, built-in tools.
+
+This means: clone the repo on your VPS, install Claude Code, set your API key, and run `bun run start`. Same experience as your laptop. One codebase everywhere.
+
+### Why Hybrid?
+
+Your laptop sleeps. Your VPS doesn't. With hybrid mode:
+- Messages are always processed, even at 3am
+- When your local machine is awake, it handles everything via your Claude Code CLI (subscription)
+- When it sleeps, VPS takes over with API key (pay-per-token)
+- Both have full Claude Code power — MCP servers, skills, hooks, everything
 
 ## Quick Start
 
 ### Prerequisites
 
+- **macOS, Windows, or Linux**
 - **[Bun](https://bun.sh)** runtime (`curl -fsSL https://bun.sh/install | bash`)
+  - After installing, restart your terminal or run: `export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH"`
 - **[Claude Code](https://claude.ai/claude-code)** CLI installed and authenticated
-- A **Telegram** account
+- **Windows/Linux only**: [PM2](https://pm2.keymetrics.io/) for daemon services (`npm install -g pm2`)
 
-### Option A: Guided Setup (Recommended)
+### Setup
 
 ```bash
-git clone https://github.com/godagoo/claude-telegram-relay.git
-cd claude-telegram-relay
+# Clone the repo (recommended — enables future updates via git pull)
+git clone https://github.com/autonomee/gobot.git
+cd gobot
+
+# Install dependencies
+bun install
+
+# Open with Claude Code — it reads CLAUDE.md and guides you through setup
 claude
 ```
 
-Claude Code reads `CLAUDE.md` and walks you through setup conversationally:
+### Downloaded as ZIP?
+
+If you downloaded the ZIP instead of cloning, your bot works fine — but you can't pull updates. Fix it with one command:
+
+```bash
+bun run upgrade
+```
+
+This connects your existing install to the official repo without touching your `.env`, profile, or any config. Future updates are then just `git pull origin master`.
+
+Claude Code reads the `CLAUDE.md` file and walks you through a guided conversation to:
 
 1. Create a Telegram bot via BotFather
 2. Set up Supabase for persistent memory
-3. Personalize your profile
+3. Personalize your profile and agents
 4. Test the bot
 5. Configure always-on services
-6. Set up proactive check-ins and briefings
-7. Add voice transcription (optional)
+6. Set up optional integrations (voice, fallback LLMs)
+7. Deploy to VPS (optional)
 
-### Option B: Manual Setup
+## Tech Stack
 
-```bash
-git clone https://github.com/godagoo/claude-telegram-relay.git
-cd claude-telegram-relay
-bun run setup          # Install deps, create .env
-# Edit .env with your API keys
-bun run test:telegram  # Verify bot token
-bun run test:supabase  # Verify database
-bun run start          # Start the bot
+| Component | Technology |
+|-----------|-----------|
+| Runtime | [Bun](https://bun.sh) |
+| Telegram SDK | [grammY](https://grammy.dev) |
+| AI (Local) | [Claude Code](https://claude.ai/claude-code) CLI |
+| AI (VPS) | [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) |
+| Database | [Supabase](https://supabase.com) (PostgreSQL + Storage) |
+| Always-On | macOS launchd / PM2 + cron / VPS webhook mode |
+| Voice (opt.) | [ElevenLabs](https://elevenlabs.io) |
+| Phone Calls (opt.) | ElevenLabs + [Twilio](https://twilio.com) |
+| Transcription (opt.) | [Google Gemini](https://ai.google.dev) |
+| Fallback LLM (opt.) | [OpenRouter](https://openrouter.ai) / [Ollama](https://ollama.ai) |
+| External Tools | Your MCP servers (Gmail, Calendar, Notion, etc.) |
+
+## Architecture
+
+### Local Mode
 ```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Telegram    │────▶│  Gobot       │────▶│  Claude Code    │
+│  (grammY)   │◀────│  (polling)   │◀────│  CLI Subprocess │
+└─────────────┘     └──────┬───────┘     └─────────────────┘
+                           │
+                    ┌──────┴───────┐
+                    │  Supabase    │
+                    │  - Messages  │
+                    │  - Memory    │
+                    │  - Assets    │
+                    │  - Logs      │
+                    └──────────────┘
+```
+
+### VPS Mode (same code as local)
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────────┐
+│  Telegram    │────▶│  Gobot       │────▶│  Claude Code CLI    │
+│  (grammY)   │◀────│  (polling)   │◀────│  + ANTHROPIC_API_KEY │
+└─────────────┘     └──────┬───────┘     │                     │
+                           │              │  ✅ MCP Servers      │
+                    ┌──────┴───────┐     │  ✅ Skills           │
+                    │  Supabase    │     │  ✅ Hooks            │
+                    │  - Messages  │     │  ✅ CLAUDE.md        │
+                    │  - Memory    │     │  ✅ Built-in Tools   │
+                    │  - Assets    │     └─────────────────────┘
+                    │  - Tasks     │
+                    └──────────────┘
+```
+
+### Hybrid Mode
+```
+┌───────────┐     ┌──────────────────────────────────────────┐
+│ Telegram  │     │  VPS (always on, Claude Code + API key)  │
+│           │────▶│                                           │
+│           │◀────│  Is local machine alive?                  │
+└───────────┘     │  ├── YES → forward to local (subscription)│
+                  │  └── NO  → process on VPS (API tokens)   │
+                  │                                           │
+                  │  Both have full Claude Code power:        │
+                  │  MCP servers, skills, hooks, tools        │
+                  └──────────────────┬───────────────────────┘
+                                     │
+                              ┌──────┴───────┐
+                              │  Supabase    │
+                              │  (shared)    │
+                              └──────────────┘
+```
+
+## Learn to Build This
+
+Step-by-step video walkthroughs for every module are available in the [Autonomee](https://skool.com/autonomee) community on Skool.
+
+Also in this repo:
+- [Changelog](CHANGELOG.md)
+- [FAQ](docs/faq.md)
+- [Architecture Deep Dive](docs/architecture.md)
+- [Troubleshooting](docs/troubleshooting.md)
 
 ## Commands
 
 ```bash
-# Run
-bun run start              # Start the bot
-bun run dev                # Start with auto-reload
+# Local mode
+bun run start              # Start bot (polling mode, uses Claude Code CLI)
 
-# Setup & Testing
-bun run setup              # Install dependencies, create .env
-bun run test:telegram      # Test Telegram connection
-bun run test:supabase      # Test Supabase connection
+# VPS mode
+bun run vps                # Start VPS gateway (webhook mode, uses Anthropic API)
+
+# Background services
+bun run checkin            # Run smart check-in
+bun run briefing           # Run morning briefing
+bun run watchdog           # Run health check
+
+# Setup & testing
+bun run setup              # Install dependencies
+bun run setup:launchd      # Configure launchd services (macOS)
+bun run setup:services     # Configure services (Windows/Linux)
+bun run setup:google       # Set up Google OAuth (Gmail + Calendar)
 bun run setup:verify       # Full health check
-
-# Always-On Services
-bun run setup:launchd      # Configure launchd (macOS)
-bun run setup:services     # Configure PM2 (Windows/Linux)
-
-# Use --service flag for specific services:
-# bun run setup:launchd -- --service relay
-# bun run setup:launchd -- --service all    (relay + checkin + briefing)
+bun run test:telegram      # Test Telegram connectivity
+bun run test:supabase      # Test Supabase connectivity
+bun run uninstall          # Remove all services
 ```
 
-## Project Structure
+## VPS Hosting
 
-```
-CLAUDE.md                    # Guided setup (Claude Code reads this)
-src/
-  relay.ts                   # Core relay daemon
-  transcribe.ts              # Voice transcription (Groq / whisper.cpp)
-  memory.ts                  # Persistent memory (facts, goals, semantic search)
-examples/
-  smart-checkin.ts           # Proactive check-ins
-  morning-briefing.ts        # Daily briefing
-  memory.ts                  # Memory persistence patterns
-config/
-  profile.example.md         # Personalization template
-db/
-  schema.sql                 # Supabase database schema
-supabase/
-  functions/
-    embed/index.ts           # Auto-embedding Edge Function
-    search/index.ts          # Semantic search Edge Function
-setup/
-  install.ts                 # Prerequisites checker
-  test-telegram.ts           # Telegram connectivity test
-  test-supabase.ts           # Supabase connectivity test
-  test-voice.ts              # Voice transcription test
-  configure-launchd.ts       # macOS service setup
-  configure-services.ts      # Windows/Linux service setup
-  verify.ts                  # Full health check
-daemon/
-  launchagent.plist          # macOS daemon template
-  claude-relay.service       # Linux systemd template
-  README-WINDOWS.md          # Windows options
-```
+Need a VPS? I recommend [Hostinger](https://hostinger.com?REFERRALCODE=1GODA06) — affordable, reliable, and works great for this bot. Use promo code **GODAGO** for a discount.
 
-## How It Works
+## Community
 
-The relay does three things:
-1. **Listen** for Telegram messages (via grammY)
-2. **Spawn** Claude Code CLI with context (your profile, memory, time)
-3. **Send** the response back on Telegram
-
-Claude Code gives you full power: tools, MCP servers, web search, file access. Not just a model — an AI with hands.
-
-Your bot remembers between sessions via Supabase. Every message gets an embedding (via OpenAI, stored in Supabase) so the bot can semantically search past conversations for relevant context. It also tracks facts and goals — Claude detects when you mention something worth remembering and stores it automatically.
-
-## Environment Variables
-
-See `.env.example` for all options. The essentials:
-
-```bash
-# Required
-TELEGRAM_BOT_TOKEN=     # From @BotFather
-TELEGRAM_USER_ID=       # From @userinfobot
-SUPABASE_URL=           # From Supabase dashboard
-SUPABASE_ANON_KEY=      # From Supabase dashboard
-
-# Recommended
-USER_NAME=              # Your first name
-USER_TIMEZONE=          # e.g., America/New_York
-
-# Optional — Voice
-VOICE_PROVIDER=         # "groq" or "local"
-GROQ_API_KEY=           # For Groq (free at console.groq.com)
-
-# Note: OpenAI key for embeddings is stored in Supabase
-# (Edge Function secrets), not in this .env file.
-```
-
-## The Full Version
-
-This free relay covers the essentials. The full version in the [AI Productivity Hub](https://skool.com/autonomee) community unlocks:
-
-- **6 Specialized AI Agents** — Research, Content, Finance, Strategy, Critic + General orchestrator via Telegram forum topics
-- **VPS Deployment** — Always-on cloud server with hybrid mode ($2-5/month)
-- **Real Integrations** — Gmail, Calendar, Notion connected via MCP
-- **Human-in-the-Loop** — Claude asks before taking actions via inline buttons
-- **Voice & Phone Calls** — Bot speaks back via ElevenLabs, calls when urgent
-- **Fallback AI Models** — Auto-switch to OpenRouter or Ollama when Claude is down
-- **Production Infrastructure** — Auto-deploy, watchdog, uninstall scripts
-
-We also help you personalize it for your business, or package it as a product for your clients.
-
-**Subscribe on YouTube:** [youtube.com/@GodaGo](https://youtube.com/@GodaGo)
-**Join the community:** [skool.com/autonomee](https://skool.com/autonomee)
+Join the [Autonomee](https://skool.com/autonomee) community on Skool for:
+- Step-by-step video walkthroughs of every module
+- Help with setup and customization
+- Share your bot builds and integrations
 
 ## License
 
-MIT — Take it, customize it, make it yours.
+MIT
 
 ---
 
 Built by [Goda Go](https://youtube.com/@GodaGo)
+
+<!-- Updated February 19, 2026: Clarified deployment modes and authentication following Anthropic's January 2026 ToS enforcement. -->

@@ -11,7 +11,7 @@ import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { createServer } from "http";
 
-const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 const REDIRECT_PORT = 8976;
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 const SCOPES = [

@@ -1,5 +1,5 @@
 /**
- * Multi-Agent Base Configuration
+ * Go - Multi-Agent Base Configuration
  *
  * Base interface and utilities for agent configurations.
  * Each agent has specialized instructions, tools, and reasoning style.
@@ -21,13 +21,11 @@ export interface AgentConfig {
 // Default topic-to-agent mapping. Update these with your Telegram forum topic IDs.
 // Find topic IDs by sending a message in each topic and checking the bot logs.
 export const topicAgentMap: Record<number, string> = {
-  1: "general",
-  3: "research",
-  4: "content",
-  5: "finance",
-  6: "strategy",
-  34: "critic",
-  58: "marketing",
+  // Example:
+  // 3: "research",
+  // 4: "content",
+  // 5: "finance",
+  // 6: "strategy",
 };
 
 export function getAgentByTopicId(topicId: number): string | undefined {
@@ -48,10 +46,6 @@ export function getAgentConfig(agentName: string): AgentConfig | undefined {
     case "strategy":
     case "ceo":
       return require("./strategy").default;
-    case "marketing":
-    case "copywriter":
-    case "copy":
-      return require("./marketing").default;
     case "critic":
     case "devils-advocate":
       return require("./critic").default;
@@ -68,8 +62,7 @@ export const AGENT_INVOCATION_MAP: Record<string, string[]> = {
   content: ["critic", "research"],
   finance: ["critic"],
   strategy: ["critic", "finance", "research"],
-  marketing: ["critic", "research"],
-  general: ["critic", "finance", "research", "content", "strategy", "marketing"],
+  general: ["critic", "finance", "research", "content", "strategy"],
   critic: [], // Critic doesn't invoke others (prevents loops)
 };
 
@@ -147,7 +140,7 @@ You are an AI assistant operating as part of a multi-agent system.
 Each agent specializes in a different domain.
 
 CORE IDENTITY:
-- You operate within a personal AI infrastructure
+- You operate as part of an AI Second Brain system
 - You have access to memory, tools, and skills
 - You speak in first person ("I recommend..." not "the bot recommends...")
 

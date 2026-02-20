@@ -34,7 +34,7 @@ const grokNewsSource: DataSource = {
           {
             role: "system",
             content:
-              "You are a concise AI news briefer. Return 3-5 bullet points about the most important AI news from the last 24 hours. Each bullet should be one sentence. Format: • [news item]. No headers, no fluff.",
+              "You are a concise AI news briefer. Return 3-5 bullet points about the most important AI news from the last 24 hours. Each bullet should be one sentence with a source link or @handle. Format: • [news item] (source). No headers, no fluff. Only include news you found via search — never make up stories.",
           },
           {
             role: "user",
@@ -42,8 +42,8 @@ const grokNewsSource: DataSource = {
           },
         ],
         max_tokens: 300,
-        temperature: 0.3,
-        search_mode: "auto",
+        temperature: 0,
+        search_mode: "on",
       }),
     });
 
@@ -57,6 +57,23 @@ const grokNewsSource: DataSource = {
 
     if (!content) {
       return { lines: ["No news available"], meta: { empty: true } };
+    }
+
+    // Validate that the response contains search citations
+    const hasSearchResults =
+      data.choices?.[0]?.message?.search_results?.length > 0 ||
+      data.choices?.[0]?.search_results?.length > 0 ||
+      content.includes("@") ||
+      content.includes("x.com") ||
+      content.includes("twitter.com") ||
+      content.includes("http");
+
+    if (!hasSearchResults && !content.toLowerCase().includes("quiet")) {
+      console.warn("Grok news response has no search citations — likely hallucinated, skipping");
+      return {
+        lines: ["Quiet 24h in AI — no verified news from search."],
+        meta: { model: "grok-3-mini-fast", filtered: true },
+      };
     }
 
     // Split into lines and clean up
