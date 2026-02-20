@@ -288,6 +288,13 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     metadata: { topicId, messageId: ctx.message?.message_id },
   });
 
+  // Log incoming message
+  await sbLog("info", "message_received", `Text message from user`, {
+    preview: text.substring(0, 100),
+    topicId,
+    chatId,
+  });
+
   // ----- Memory Commands -----
 
   // remember: <fact>
@@ -296,6 +303,7 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     if (fact) {
       const success = await addFact(fact);
       const reply = success ? `Noted. I'll remember that.` : `Failed to save that. Try again?`;
+      if (success) await sbLog("info", "memory_add", `Fact saved: ${fact.substring(0, 80)}`);
       await ctx.reply(reply);
       return;
     }
@@ -314,6 +322,7 @@ async function handleTextMessage(ctx: Context): Promise<void> {
       const reply = success
         ? `Goal tracked: "${goalText}"${deadlineNote}`
         : `Failed to track that goal.`;
+      if (success) await sbLog("info", "goal_add", `Goal tracked: ${goalText.substring(0, 80)}`);
       await ctx.reply(reply);
       return;
     }
@@ -327,6 +336,7 @@ async function handleTextMessage(ctx: Context): Promise<void> {
       const reply = success
         ? `Goal completed! Nice work.`
         : `Couldn't find an active goal matching "${search}".`;
+      if (success) await sbLog("info", "goal_complete", `Goal completed: ${search.substring(0, 80)}`);
       await ctx.reply(reply);
       return;
     }
@@ -515,6 +525,11 @@ async function handleTextMessage(ctx: Context): Promise<void> {
 
   // Determine agent from topic (if forum mode)
   const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
+  await sbLog("info", "processing", `Routing to ${agentName} agent`, {
+    agent: agentName,
+    tier: classifyComplexity(text),
+    topicId,
+  });
   await callClaudeAndReply(ctx, chatId, text, agentName, topicId);
 }
 
@@ -550,6 +565,7 @@ async function handleVoiceMessage(ctx: Context): Promise<void> {
     await writeFile(localPath, buffer);
 
     // Transcribe
+    await sbLog("info", "voice_received", "Processing voice message", { chatId });
     const transcript = await transcribeAudio(localPath);
 
     // Persist user message (transcribed)
@@ -565,16 +581,7 @@ async function handleVoiceMessage(ctx: Context): Promise<void> {
     const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
 
     const voicePrompt = `[Voice message transcription]: ${transcript}`;
-    const tier = classifyComplexity(voicePrompt);
-    let claudeResponse: string;
-
-    if (tier !== "haiku") {
-      // Complex task → streaming subprocess with live progress
-      claudeResponse = await callClaudeWithProgress(ctx, voicePrompt, chatId, agentName, topicId);
-    } else {
-      // Simple task → standard subprocess (fast, no progress needed)
-      claudeResponse = await callClaude(voicePrompt, chatId, agentName, topicId);
-    }
+    const claudeResponse = await callClaudeWithProgress(ctx, voicePrompt, chatId, agentName, topicId);
 
     // Persist bot response
     await saveMessage({
@@ -621,6 +628,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
       return;
     }
 
+    await sbLog("info", "photo_received", "Processing photo message", { chatId });
     const largest = photos[photos.length - 1];
     const file = await ctx.api.getFile(largest.file_id);
     const filePath = file.file_path;
@@ -664,16 +672,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
 
     const assetNote = asset ? `\n(asset: ${asset.id})` : "";
     const photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
-    const tier = classifyComplexity(caption);
-    let claudeResponse: string;
-
-    if (tier !== "haiku") {
-      // Complex task → streaming subprocess with live progress
-      claudeResponse = await callClaudeWithProgress(ctx, photoPrompt, chatId, agentName, topicId);
-    } else {
-      // Simple task → standard subprocess (fast, no progress needed)
-      claudeResponse = await callClaude(photoPrompt, chatId, agentName, topicId);
-    }
+    const claudeResponse = await callClaudeWithProgress(ctx, photoPrompt, chatId, agentName, topicId);
 
     // Parse [ASSET_DESC] tag from response and update asset
     if (asset) {
@@ -735,6 +734,7 @@ async function handleDocumentMessage(ctx: Context): Promise<void> {
       return;
     }
 
+    await sbLog("info", "document_received", `Processing document: ${doc.file_name || "unknown"}`, { chatId });
     const file = await ctx.api.getFile(doc.file_id);
     const filePath = file.file_path;
     if (!filePath) {
@@ -767,14 +767,7 @@ async function handleDocumentMessage(ctx: Context): Promise<void> {
     const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
 
     const docPrompt = `[User sent a document saved at: ${localPath}, filename: ${fileName}]\n\n${caption}`;
-    const tier = classifyComplexity(caption);
-    let claudeResponse: string;
-
-    if (tier !== "haiku") {
-      claudeResponse = await callClaudeWithProgress(ctx, docPrompt, chatId, agentName, topicId);
-    } else {
-      claudeResponse = await callClaude(docPrompt, chatId, agentName, topicId);
-    }
+    const claudeResponse = await callClaudeWithProgress(ctx, docPrompt, chatId, agentName, topicId);
 
     // Persist bot response
     await saveMessage({
@@ -1128,16 +1121,8 @@ async function callClaudeAndReply(
   typing.start();
 
   try {
-    const tier = classifyComplexity(userMessage);
-    let response: string;
-
-    if (tier !== "haiku") {
-      // Complex task → streaming subprocess with live progress
-      response = await callClaudeWithProgress(ctx, userMessage, chatId, agentName, topicId);
-    } else {
-      // Simple task → standard subprocess (fast, no progress needed)
-      response = await callClaude(userMessage, chatId, agentName, topicId);
-    }
+    // Always use streaming subprocess — progress message only appears if tools are used
+    const response = await callClaudeWithProgress(ctx, userMessage, chatId, agentName, topicId);
 
     // Persist bot response
     await saveMessage({
@@ -1173,8 +1158,16 @@ async function callClaudeAndReply(
 
     // Normal response (no question or task creation failed)
     await sendResponse(ctx, response);
+
+    await sbLog("info", "response_sent", `Reply sent (${response.length} chars)`, {
+      agent: agentName,
+      chars: response.length,
+    });
   } catch (error) {
     console.error("callClaudeAndReply error:", error);
+    await sbLog("error", "processing_error", `Error: ${(error as Error).message}`, {
+      agent: agentName,
+    });
     await ctx.reply("Something went wrong. Please try again.");
   } finally {
     typing.stop();
@@ -1238,12 +1231,15 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
 
   const fullPrompt = sections.join("\n\n---\n\n");
 
-  // Track progress message for editing
+  // Track progress message for editing — only created when tools are used
   let progressMsgId: number | undefined;
-  let progressSteps: string[] = ["_Working on it..._"];
+  let progressSteps: string[] = [];
 
-  // Helper to send or edit progress message
+  // Helper to send or edit progress message (lazy — creates on first tool use)
   const updateProgress = async (step: string) => {
+    if (progressSteps.length === 0) {
+      progressSteps.push("_Working on it..._");
+    }
     progressSteps.push(`→ ${step}`);
     const text = progressSteps.join("\n");
     try {
@@ -1259,12 +1255,6 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
       // Edit can fail if text is identical or message too old — ignore
     }
   };
-
-  // Send initial progress
-  try {
-    const msg = await ctx.reply("_Working on it..._", { parse_mode: "Markdown" });
-    progressMsgId = msg.message_id;
-  } catch {}
 
   // Call streaming subprocess
   const result = await callClaudeStreaming({
