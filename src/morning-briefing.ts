@@ -28,7 +28,9 @@ import { fetchAll, getAvailableSources } from "./lib/data-sources";
 await loadEnv();
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const CHAT_ID = process.env.TELEGRAM_USER_ID || "";
+const GROUP_CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID || "";
+const DM_CHAT_ID = process.env.TELEGRAM_USER_ID || "";
+const GENERAL_TOPIC_ID = 1; // Telegram forum "General" topic is always thread ID 1
 const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "UTC";
 
@@ -107,10 +109,13 @@ async function buildAndSendBriefing(): Promise<void> {
 
   briefing += "---\n_Reply to chat with me_";
 
-  // Send briefing
-  console.log("📤 Sending morning briefing...");
-  const sent = await sendTelegramMessage(BOT_TOKEN, CHAT_ID, briefing, {
+  // Send briefing to group General topic, fall back to DM
+  const chatId = GROUP_CHAT_ID || DM_CHAT_ID;
+  const threadId = GROUP_CHAT_ID ? GENERAL_TOPIC_ID : undefined;
+  console.log(`📤 Sending morning briefing to ${GROUP_CHAT_ID ? "group General topic" : "DM"}...`);
+  const sent = await sendTelegramMessage(BOT_TOKEN, chatId, briefing, {
     parseMode: "Markdown",
+    messageThreadId: threadId,
   });
   if (sent) console.log("✅ Briefing sent!");
 }
@@ -120,29 +125,35 @@ async function buildAndSendBriefing(): Promise<void> {
 // ============================================================
 
 async function main() {
-  // Dedup: skip if briefing was already sent today
+  const forceRun = process.argv.includes("--force");
+
+  // Dedup: skip if briefing was already sent today (unless --force)
   const stateFile = join(PROJECT_ROOT, "checkin-state.json");
-  try {
-    const { readFile: rf } = await import("fs/promises");
-    const state = JSON.parse(await rf(stateFile, "utf-8"));
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: USER_TIMEZONE });
-    if (state.lastBriefingDate === today) {
-      console.log(`⏭️ Briefing already sent today (${today}), skipping.`);
-      return;
+  if (!forceRun) {
+    try {
+      const { readFile: rf } = await import("fs/promises");
+      const state = JSON.parse(await rf(stateFile, "utf-8"));
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: USER_TIMEZONE });
+      if (state.lastBriefingDate === today) {
+        console.log(`⏭️ Briefing already sent today (${today}), skipping. Use --force to override.`);
+        return;
+      }
+    } catch {
+      // No state file or parse error — continue
     }
-  } catch {
-    // No state file or parse error — continue
+  } else {
+    console.log("🔓 --force flag: skipping dedup check");
   }
 
-  // Stagger startup to avoid thundering herd after sleep/wake
-  const startupDelay = Math.floor(Math.random() * 5000);
+  // Stagger startup to avoid thundering herd after sleep/wake (skip if forced)
+  const startupDelay = forceRun ? 0 : Math.floor(Math.random() * 5000);
   console.log(
     `⏳ Staggering startup by ${Math.round(startupDelay / 1000)}s...`
   );
   await new Promise((r) => setTimeout(r, startupDelay));
 
   console.log("🌅 Morning Briefing starting...");
-  console.log(`📱 Chat: ${CHAT_ID}`);
+  console.log(`📱 Chat: ${GROUP_CHAT_ID || DM_CHAT_ID}`);
   await buildAndSendBriefing();
 
   // Record that briefing was sent today

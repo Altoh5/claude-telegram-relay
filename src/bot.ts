@@ -31,7 +31,7 @@ import {
   listGoals,
   listFacts,
 } from "./lib/memory";
-import { uploadAssetQuick, updateAssetDescription, parseAssetDescTag, stripAssetDescTag } from "./lib/asset-store";
+import { uploadAssetQuick, updateAssetDescription, parseAssetDescTag, stripAssetDescTag, describeImage } from "./lib/asset-store";
 import { callFallbackLLM } from "./lib/fallback-llm";
 import { textToSpeech, initiatePhoneCall, isVoiceEnabled, isCallEnabled, waitForTranscript, summarizeTranscript, extractTaskFromTranscript } from "./lib/voice";
 import { transcribeAudio, isTranscriptionEnabled } from "./lib/transcribe";
@@ -632,8 +632,16 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     const ext = filePath.split(".").pop() || "jpg";
     const localPath = join(uploadsDir, `photo_${Date.now()}.${ext}`);
     const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
-    const response = await fetch(fileUrl);
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const dlRes = await fetch(fileUrl);
+    if (!dlRes.ok) {
+      await ctx.reply(`Could not download photo (HTTP ${dlRes.status}). Please try again.`);
+      return;
+    }
+    const buffer = Buffer.from(await dlRes.arrayBuffer());
+    if (buffer.length < 100) {
+      await ctx.reply("Photo download failed (empty file). Please try again.");
+      return;
+    }
     await writeFile(localPath, buffer);
 
     const caption = ctx.message?.caption || "User sent a photo. Describe and respond to it.";
@@ -659,20 +667,57 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
 
     const assetNote = asset ? `\n(asset: ${asset.id})` : "";
-    const photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
+
+    // Try direct image path first (Claude Code reads natively), fall back to vision pre-description.
+    // Large images (>800KB) go straight to vision to avoid "Could not process image" errors.
+    const MAX_INLINE_IMAGE_BYTES = 800 * 1024;
+    let photoPrompt: string;
+    let usedVisionFallback = false;
+
+    if (buffer.length > MAX_INLINE_IMAGE_BYTES) {
+      console.log(`[photo] Large image (${buffer.length}b) — using vision pre-description`);
+      const recentCtx = await getConversationContext(chatId, 3);
+      const vision = await describeImage(localPath, caption, recentCtx);
+      const visionNote = `[Image description (Vision API): ${vision.description}]`;
+      photoPrompt = `${visionNote}${assetNote}\n\nUser says: ${caption}`;
+      usedVisionFallback = true;
+      if (asset) {
+        updateAssetDescription(asset.id, vision.description, vision.tags, vision.suggestedProject).catch(() => {});
+      }
+    } else {
+      photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
+    }
+
     const tier = classifyComplexity(caption);
     let claudeResponse: string;
 
     if (tier !== "haiku") {
-      // Complex task → streaming subprocess with live progress
       claudeResponse = await callClaudeWithProgress(ctx, photoPrompt, chatId, agentName, topicId);
     } else {
-      // Simple task → standard subprocess (fast, no progress needed)
       claudeResponse = await callClaude(photoPrompt, chatId, agentName, topicId);
     }
 
+    // If Claude couldn't process the image directly, retry with vision pre-description
+    if (!usedVisionFallback && claudeResponse.includes("wasn't able to process that image")) {
+      console.log(`[photo] Direct image failed, retrying with vision pre-description`);
+      const recentCtx = await getConversationContext(chatId, 3);
+      const vision = await describeImage(localPath, caption, recentCtx);
+      const visionNote = `[Image description (Vision API): ${vision.description}]`;
+      const retryPrompt = `${visionNote}${assetNote}\n\nUser says: ${caption}`;
+      usedVisionFallback = true;
+      if (asset) {
+        updateAssetDescription(asset.id, vision.description, vision.tags, vision.suggestedProject).catch(() => {});
+      }
+      if (tier !== "haiku") {
+        claudeResponse = await callClaudeWithProgress(ctx, retryPrompt, chatId, agentName, topicId);
+      } else {
+        claudeResponse = await callClaude(retryPrompt, chatId, agentName, topicId);
+      }
+    }
+
     // Parse [ASSET_DESC] tag from response and update asset
-    if (asset) {
+    // (only if we didn't already update description via vision pre-description)
+    if (asset && !usedVisionFallback) {
       const parsed = parseAssetDescTag(claudeResponse);
       if (parsed) {
         updateAssetDescription(asset.id, parsed.description, parsed.tags).catch(
@@ -1091,9 +1136,16 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
 
   // Handle errors with fallback
   if (result.isError || !result.text) {
+    const errText = result.text || "";
     console.error("Claude error, falling back to secondary LLM...");
+
+    // Image processing errors — don't pass the image prompt to fallback LLM
+    if (errText.includes("Could not process image") || errText.includes("API Error: 400")) {
+      return "I wasn't able to process that image (the file may be too large or in an unsupported format). Try sending it as a document, or send a smaller version.";
+    }
+
     await sbLog("warn", "bot", "Claude failed, using fallback LLM", {
-      error: result.text?.substring(0, 200),
+      error: errText.substring(0, 200),
     });
 
     try {
@@ -1242,6 +1294,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
   const updateProgress = async (step: string) => {
     progressSteps.push(`→ ${step}`);
     const text = progressSteps.join("\n");
+    console.log(`[progress] Updating: ${step} (msgId=${progressMsgId})`);
     try {
       if (!progressMsgId) {
         const msg = await ctx.reply(text, { parse_mode: "Markdown" });
@@ -1251,8 +1304,8 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
           parse_mode: "Markdown",
         });
       }
-    } catch {
-      // Edit can fail if text is identical or message too old — ignore
+    } catch (err: any) {
+      console.error(`[progress] Edit failed: ${err?.message || err}`);
     }
   };
 
@@ -1298,9 +1351,16 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
 
   // Handle errors with fallback
   if (result.isError || !result.text) {
+    const errText = result.text || "";
     console.error("Claude streaming error, falling back to secondary LLM...");
+
+    // Image processing errors — don't pass the image prompt to fallback LLM
+    if (errText.includes("Could not process image") || errText.includes("API Error: 400")) {
+      return "I wasn't able to process that image (the file may be too large or in an unsupported format). Try sending it as a document, or send a smaller version.";
+    }
+
     await sbLog("warn", "bot", "Claude streaming failed, using fallback LLM", {
-      error: result.text?.substring(0, 200),
+      error: errText.substring(0, 200),
     });
 
     try {
@@ -1428,7 +1488,15 @@ async function processInBackground(
       const localPath = join(uploadsDir, `photo_${Date.now()}.${ext}`);
       const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
       const dlRes = await fetch(fileUrl);
+      if (!dlRes.ok) {
+        await sendDirectMessage(targetChatId, `Could not download photo (HTTP ${dlRes.status}). Please try again.`, threadId);
+        return;
+      }
       const buffer = Buffer.from(await dlRes.arrayBuffer());
+      if (buffer.length < 100) {
+        await sendDirectMessage(targetChatId, "Photo download failed (empty file). Please try again.", threadId);
+        return;
+      }
       await writeFile(localPath, buffer);
 
       // Upload to asset store
@@ -1441,15 +1509,41 @@ async function processInBackground(
       const caption = text || "User sent a photo. Describe and respond to it.";
       const assetNote = asset ? `\n(asset: ${asset.id})` : "";
 
-      response = await callClaude(
-        `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`,
-        targetChatId,
-        "general",
-        threadId
-      );
+      // Use vision pre-description for large images or as fallback
+      const MAX_INLINE = 800 * 1024;
+      let photoPrompt: string;
+      let usedVision = false;
+
+      if (buffer.length > MAX_INLINE) {
+        console.log(`[/process photo] Large image (${buffer.length}b) — using vision pre-description`);
+        const recentCtx = await getConversationContext(targetChatId, 3);
+        const vision = await describeImage(localPath, caption, recentCtx);
+        photoPrompt = `[Image description (Vision API): ${vision.description}]${assetNote}\n\nUser says: ${caption}`;
+        usedVision = true;
+        if (asset) {
+          updateAssetDescription(asset.id, vision.description, vision.tags, vision.suggestedProject).catch(() => {});
+        }
+      } else {
+        photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
+      }
+
+      response = await callClaude(photoPrompt, targetChatId, "general", threadId);
+
+      // If direct image failed, retry with vision pre-description
+      if (!usedVision && response.includes("wasn't able to process that image")) {
+        console.log(`[/process photo] Direct image failed, retrying with vision`);
+        const recentCtx = await getConversationContext(targetChatId, 3);
+        const vision = await describeImage(localPath, caption, recentCtx);
+        const retryPrompt = `[Image description (Vision API): ${vision.description}]${assetNote}\n\nUser says: ${caption}`;
+        usedVision = true;
+        if (asset) {
+          updateAssetDescription(asset.id, vision.description, vision.tags, vision.suggestedProject).catch(() => {});
+        }
+        response = await callClaude(retryPrompt, targetChatId, "general", threadId);
+      }
 
       // Parse and update asset description
-      if (asset) {
+      if (asset && !usedVision) {
         const parsed = parseAssetDescTag(response);
         if (parsed) {
           updateAssetDescription(asset.id, parsed.description, parsed.tags).catch(() => {});

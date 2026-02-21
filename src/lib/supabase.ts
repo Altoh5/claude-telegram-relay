@@ -23,11 +23,12 @@ export interface Message {
 
 export interface MemoryItem {
   id?: string;
-  type: "fact" | "goal";
+  type: "fact" | "goal" | "completed_goal" | "preference";
   content: string;
   deadline?: string;
-  completed?: boolean;
   completed_at?: string;
+  priority?: number;
+  metadata?: Record<string, unknown>;
   created_at?: string;
 }
 
@@ -381,7 +382,6 @@ export async function addGoal(
       type: "goal",
       content,
       deadline: parsedDeadline,
-      completed: false,
     });
     return !error;
   } catch {
@@ -402,14 +402,14 @@ export async function completeGoal(searchText: string): Promise<boolean> {
       .from("memory")
       .select("id, content")
       .eq("type", "goal")
-      .eq("completed", false)
+      .is("completed_at", null)
       .ilike("content", `%${searchText}%`);
 
     if (!goals || goals.length === 0) return false;
 
     const { error } = await sb
       .from("memory")
-      .update({ completed: true, completed_at: new Date().toISOString() })
+      .update({ type: "completed_goal", completed_at: new Date().toISOString() })
       .eq("id", goals[0].id);
 
     return !error;
@@ -460,7 +460,7 @@ export async function cancelGoal(searchText: string): Promise<boolean> {
       .from("memory")
       .select("id, content")
       .eq("type", "goal")
-      .eq("completed", false)
+      .is("completed_at", null)
       .ilike("content", `%${searchText}%`);
 
     if (!goals || goals.length === 0) return false;
@@ -488,7 +488,7 @@ export async function getActiveGoals(): Promise<MemoryItem[]> {
       .from("memory")
       .select("*")
       .eq("type", "goal")
-      .eq("completed", false)
+      .is("completed_at", null)
       .order("created_at", { ascending: true });
 
     if (error || !data) return [];

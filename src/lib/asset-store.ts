@@ -315,7 +315,25 @@ export async function describeImageFromBuffer(
   }
 
   try {
-    const base64 = imageBuffer.toString("base64");
+    if (!imageBuffer || imageBuffer.length === 0) {
+      console.error("describeImageFromBuffer: empty buffer, skipping vision call");
+      return {
+        description: caption || "Image (empty buffer)",
+        tags: [],
+        suggestedProject: null,
+      };
+    }
+
+    // Anthropic API limit: 5MB per image
+    const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+    if (imageBuffer.length > MAX_IMAGE_BYTES) {
+      console.warn(`[vision] Image too large (${imageBuffer.length}b > 5MB), skipping vision call`);
+      return {
+        description: caption || "Image (too large for vision analysis)",
+        tags: [],
+        suggestedProject: null,
+      };
+    }
 
     const ext = filename.split(".").pop()?.toLowerCase() || "jpg";
     const mimeMap: Record<string, string> = {
@@ -325,7 +343,45 @@ export async function describeImageFromBuffer(
       gif: "image/gif",
       webp: "image/webp",
     };
-    const mediaType = mimeMap[ext] || "image/jpeg";
+    // Telegram photos are always JPEG; fall back to jpeg if extension unrecognized
+    const mediaType = (mimeMap[ext] as "image/jpeg" | "image/png" | "image/gif" | "image/webp") || "image/jpeg";
+
+    // Detect actual format from magic bytes to avoid sending wrong media_type
+    let detectedMediaType = mediaType;
+    if (imageBuffer.length >= 4) {
+      if (imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8) {
+        detectedMediaType = "image/jpeg";
+      } else if (
+        imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50 &&
+        imageBuffer[2] === 0x4E && imageBuffer[3] === 0x47
+      ) {
+        detectedMediaType = "image/png";
+      } else if (
+        imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49 &&
+        imageBuffer[2] === 0x46
+      ) {
+        detectedMediaType = "image/gif";
+      } else if (
+        imageBuffer[0] === 0x52 && imageBuffer[1] === 0x49 &&
+        imageBuffer[2] === 0x46 && imageBuffer[3] === 0x46
+      ) {
+        detectedMediaType = "image/webp";
+      }
+    }
+
+    // Validate it's a supported format
+    const supportedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!supportedTypes.includes(detectedMediaType)) {
+      console.warn(`[vision] Unsupported image format ${detectedMediaType}, skipping vision call`);
+      return {
+        description: caption || "Image (unsupported format)",
+        tags: [],
+        suggestedProject: null,
+      };
+    }
+
+    const base64 = imageBuffer.toString("base64");
+    console.log(`[vision] buffer=${imageBuffer.length}b ext=${ext} mediaType=${detectedMediaType} filename=${filename}`);
 
     let promptParts: string[] = [];
 
@@ -357,7 +413,7 @@ Respond in JSON only:
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-3-5-haiku-20241022",
         max_tokens: 400,
         messages: [
           {
@@ -371,7 +427,7 @@ Respond in JSON only:
                 type: "image",
                 source: {
                   type: "base64",
-                  media_type: mediaType,
+                  media_type: detectedMediaType,
                   data: base64,
                 },
               },
@@ -383,7 +439,7 @@ Respond in JSON only:
 
     if (!response.ok) {
       const err = await response.text();
-      console.error("Vision API error:", err);
+      console.error(`Vision API error (${response.status}): ${err} | buffer=${imageBuffer.length}b mediaType=${mediaType}`);
       return {
         description: caption || "Image (vision API error)",
         tags: [],

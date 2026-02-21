@@ -54,6 +54,7 @@ export async function sendTelegramMessage(
   options?: {
     parseMode?: "Markdown" | "HTML";
     buttons?: { text: string; callback_data: string }[][];
+    messageThreadId?: number;
   }
 ): Promise<boolean> {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
@@ -62,6 +63,10 @@ export async function sendTelegramMessage(
     chat_id: chatId,
     text: options?.parseMode ? sanitizeForTelegram(message) : message,
   };
+
+  if (options?.messageThreadId) {
+    body.message_thread_id = options.messageThreadId;
+  }
 
   if (options?.parseMode) {
     body.parse_mode = options.parseMode;

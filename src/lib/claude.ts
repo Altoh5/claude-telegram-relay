@@ -24,8 +24,8 @@ export interface ClaudeOptions {
 }
 
 export interface ClaudeStreamOptions extends ClaudeOptions {
-  /** Called when a tool starts executing. Throttled to max 1 call per 5s. */
-  onToolStart?: (toolName: string) => void;
+  /** Called when a tool starts executing. Throttled to max 1 call per 2s. */
+  onToolStart?: (displayName: string) => void;
   /** Called when the first meaningful text chunk arrives (plan/thinking). */
   onFirstText?: (snippet: string) => void;
 }
@@ -42,12 +42,15 @@ export interface ClaudeResult {
 export function isClaudeErrorResponse(text: string): boolean {
   const errorPatterns = [
     "authentication_error",
+    "API Error: 400",
     "API Error: 401",
     "API Error: 403",
     "API Error: 429",
     "OAuth token has expired",
     "Failed to authenticate",
     "invalid_api_key",
+    "invalidRequestError",
+    "Could not process image",
     "overloaded_error",
     "rate_limit_error",
     "credit balance",
@@ -228,28 +231,57 @@ export async function runClaudeWithTimeout(
 // Friendly tool name mapping for progress updates
 // ---------------------------------------------------------------------------
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  Read: "Reading file",
-  Write: "Writing file",
-  Edit: "Editing file",
-  Glob: "Searching files",
-  Grep: "Searching code",
-  Bash: "Running command",
-  WebSearch: "Searching the web",
-  WebFetch: "Fetching page",
-  Task: "Delegating task",
-  AskUserQuestion: "Asking a question",
-};
+/**
+ * Build a concise, informative progress string from tool name + input.
+ * E.g. "Reading src/bot.ts" instead of just "Reading file".
+ */
+function friendlyToolName(toolName: string, input?: Record<string, any>): string {
+  const shorten = (p: string, max = 40) => {
+    // Strip common prefixes, keep just the meaningful part
+    const short = p.replace(/^\/Users\/[^/]+\/[^/]+\/[^/]+\//, "");
+    return short.length > max ? "..." + short.slice(-max) : short;
+  };
 
-function friendlyToolName(toolName: string): string {
-  // Direct match
-  if (TOOL_DISPLAY_NAMES[toolName]) return TOOL_DISPLAY_NAMES[toolName];
-  // MCP tool: mcp__server__action → "Using server"
+  switch (toolName) {
+    case "Read":
+      return input?.file_path ? `Reading ${shorten(input.file_path)}` : "Reading file";
+    case "Write":
+      return input?.file_path ? `Writing ${shorten(input.file_path)}` : "Writing file";
+    case "Edit":
+      return input?.file_path ? `Editing ${shorten(input.file_path)}` : "Editing file";
+    case "Glob":
+      return input?.pattern ? `Finding ${input.pattern}` : "Searching files";
+    case "Grep":
+      return input?.pattern ? `Searching for "${input.pattern}"` : "Searching code";
+    case "Bash": {
+      const cmd = input?.command || "";
+      // Extract the first meaningful word/command
+      const first = cmd.split(/\s+/)[0]?.replace(/^.*\//, "") || "command";
+      const desc = input?.description;
+      if (desc) return desc.length > 50 ? desc.substring(0, 50) + "..." : desc;
+      return `Running ${first}`;
+    }
+    case "WebSearch":
+      return input?.query ? `Searching: ${input.query.substring(0, 40)}` : "Searching the web";
+    case "WebFetch":
+      return "Fetching web page";
+    case "Task":
+      return input?.description ? `${input.description}` : "Delegating task";
+    case "AskUserQuestion":
+      return "Asking a question";
+    default:
+      break;
+  }
+
+  // MCP tool: mcp__server__action → "Using server: action"
   if (toolName.startsWith("mcp__")) {
     const parts = toolName.split("__");
-    const server = parts[1] || "tool";
-    return `Using ${server.replace(/-/g, " ")}`;
+    const server = (parts[1] || "tool").replace(/-/g, " ");
+    const action = parts[2] || "";
+    const actionClean = action.replace(/_/g, " ");
+    return actionClean ? `${server}: ${actionClean}` : `Using ${server}`;
   }
+
   return `Using ${toolName}`;
 }
 
@@ -308,9 +340,9 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
     try { proc.kill(); } catch {}
   }, timeoutMs);
 
-  // Throttle tool progress (max 1 per 5s)
+  // Throttle tool progress (max 1 per 2s)
   let lastToolProgressAt = 0;
-  const TOOL_THROTTLE_MS = 5_000;
+  const TOOL_THROTTLE_MS = 2_000;
 
   let sessionId: string | undefined;
   let resultText = "";
@@ -347,50 +379,48 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
         if (event.type === "result") {
           resultText = event.result || "";
           sessionId = event.session_id || sessionId;
+          console.log(`[streaming] Result received (${resultText.length} chars)`);
           continue;
         }
 
-        // Only process stream_event type
-        if (event.type !== "stream_event") continue;
+        // Assistant message → check for tool_use and text blocks
+        if (event.type === "assistant" && event.message?.content) {
+          for (const block of event.message.content) {
+            // Tool use → progress callback
+            if (block.type === "tool_use") {
+              const name = block.name || "tool";
+              const display = friendlyToolName(name, block.input);
+              console.log(`[streaming] Tool: ${display}`);
+              if (onToolStart) {
+                const now = Date.now();
+                if (now - lastToolProgressAt >= TOOL_THROTTLE_MS) {
+                  lastToolProgressAt = now;
+                  onToolStart(display);
+                }
+              }
+            }
 
-        const apiEvent = event.event;
-        if (!apiEvent) continue;
+            // Text block → accumulate for first-text callback
+            if (block.type === "text" && block.text) {
+              textAccumulator += block.text;
 
-        // Tool use start → progress callback
-        if (
-          apiEvent.type === "content_block_start" &&
-          apiEvent.content_block?.type === "tool_use" &&
-          onToolStart
-        ) {
-          const now = Date.now();
-          if (now - lastToolProgressAt >= TOOL_THROTTLE_MS) {
-            lastToolProgressAt = now;
-            const name = apiEvent.content_block.name || "tool";
-            onToolStart(friendlyToolName(name));
+              if (!firstTextSent && onFirstText && textAccumulator.length > 30) {
+                firstTextSent = true;
+                const match = textAccumulator.match(/^.{30,150}?[.!?\n]/);
+                const snippet = match ? match[0].trim() : textAccumulator.substring(0, 150).trim();
+                console.log(`[streaming] First text: ${snippet.substring(0, 80)}`);
+                onFirstText(snippet);
+              }
+            }
           }
-        }
-
-        // Text delta → accumulate for first-text callback
-        if (
-          apiEvent.type === "content_block_delta" &&
-          apiEvent.delta?.type === "text_delta" &&
-          apiEvent.delta.text
-        ) {
-          textAccumulator += apiEvent.delta.text;
-
-          // Send first meaningful text snippet (>30 chars, first sentence)
-          if (!firstTextSent && onFirstText && textAccumulator.length > 30) {
-            firstTextSent = true;
-            // Extract first sentence or first 150 chars
-            const match = textAccumulator.match(/^.{30,150}?[.!?\n]/);
-            const snippet = match ? match[0].trim() : textAccumulator.substring(0, 150).trim();
-            onFirstText(snippet);
-          }
+        } else if (event.type !== "result" && event.type !== "system" && event.type !== "user" && event.type !== "rate_limit_event" && event.type !== "tool_use_summary") {
+          console.log(`[streaming] Unknown event type: ${event.type}`);
         }
       }
     }
 
     clearTimeout(timeoutId);
+    console.log(`[streaming] Stream ended. timedOut=${timedOut}, resultLen=${resultText.length}, accumulatorLen=${textAccumulator.length}`);
 
     if (timedOut) {
       return { text: "", isError: true };
