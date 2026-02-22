@@ -35,6 +35,7 @@ import { uploadAssetQuick, updateAssetDescription, parseAssetDescTag, stripAsset
 import { callFallbackLLM } from "./lib/fallback-llm";
 import { textToSpeech, initiatePhoneCall, isVoiceEnabled, isCallEnabled, waitForTranscript, summarizeTranscript, extractTaskFromTranscript } from "./lib/voice";
 import { transcribeAudio, isTranscriptionEnabled } from "./lib/transcribe";
+import { enrichWithTranscripts, isSupadataEnabled } from "./lib/youtube";
 import {
   saveMessage,
   getConversationContext,
@@ -509,9 +510,12 @@ async function handleTextMessage(ctx: Context): Promise<void> {
 
   // ----- Default: Claude Processing -----
 
+  // Enrich with YouTube transcripts if URLs detected
+  const enrichedText = await enrichWithTranscripts(text);
+
   // Determine agent from topic (if forum mode)
   const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
-  await callClaudeAndReply(ctx, chatId, text, agentName, topicId);
+  await callClaudeAndReply(ctx, chatId, enrichedText, agentName, topicId);
 }
 
 // --- Voice Messages ---
@@ -850,6 +854,42 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
   // Acknowledge the button press immediately
   await ctx.answerCallbackQuery().catch(() => {});
 
+  // ---- Check-in button handlers ----
+
+  if (data === "call_yes") {
+    await ctx.editMessageText("📞 Calling you now...").catch(() => {});
+    try {
+      const { initiatePhoneCall } = await import("./lib/voice");
+      const originalText = (ctx.callbackQuery.message as any)?.text || "";
+      const context = originalText.replace(/^.*?about:\n\n/s, "").trim();
+      await initiatePhoneCall(context || "Check-in call");
+    } catch (err: any) {
+      await ctx.editMessageText("Failed to initiate call: " + err.message).catch(() => {});
+    }
+    return;
+  }
+
+  if (data === "call_no" || data === "dismiss") {
+    await ctx.editMessageText("✓").catch(() => {});
+    return;
+  }
+
+  if (data === "snooze") {
+    await ctx.editMessageText("😴 Snoozed for 30 minutes").catch(() => {});
+    return;
+  }
+
+  if (data === "call_request") {
+    await ctx.editMessageText("📞 Calling you now...").catch(() => {});
+    try {
+      const { initiatePhoneCall } = await import("./lib/voice");
+      await initiatePhoneCall("You requested a call from the check-in");
+    } catch (err: any) {
+      await ctx.editMessageText("Failed to initiate call: " + err.message).catch(() => {});
+    }
+    return;
+  }
+
   if (!data.startsWith("atask:")) return;
 
   const result = await handleTaskCallback(data);
@@ -1177,6 +1217,7 @@ async function callClaudeAndReply(
 
   try {
     const tier = classifyComplexity(userMessage);
+    console.log(`[routing] tier=${tier} msgLen=${userMessage.length} msg="${userMessage.substring(0, 60)}"`);
     let response: string;
 
     if (tier !== "haiku") {
@@ -1557,8 +1598,9 @@ async function processInBackground(
 
       response = stripAssetDescTag(response);
     } else {
-      // Text message
-      response = await callClaude(text || "", targetChatId, "general", threadId);
+      // Text message — enrich with YouTube transcripts if URLs detected
+      const enrichedMsg = await enrichWithTranscripts(text || "");
+      response = await callClaude(enrichedMsg, targetChatId, "general", threadId);
     }
 
     // Send response directly to Telegram
@@ -1644,6 +1686,7 @@ console.log(`Claude:      ${CLAUDE_PATH}`);
 console.log(`Voice:       ${isVoiceEnabled() ? "enabled" : "disabled"}`);
 console.log(`Phone:       ${isCallEnabled() ? "enabled" : "disabled"}`);
 console.log(`Transcribe:  ${isTranscriptionEnabled() ? "enabled" : "disabled"}`);
+console.log(`YouTube:     ${isSupadataEnabled() ? "enabled (Supadata)" : "disabled"}`);
 console.log(`Session:     ${sessionState.sessionId || "new"}`);
 console.log(`HITL:        enabled (inline buttons + task queue)`);
 console.log(`Routing:     model tier (haiku→instant, sonnet/opus→streaming progress)`);

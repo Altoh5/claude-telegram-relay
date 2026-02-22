@@ -253,12 +253,16 @@ function startCallTranscriptPolling(
           continue;
         }
 
-        // Mark as processed before doing anything
+        // Wait 30s for webhook to claim it first (dedup race fix)
+        console.log(`Waiting 30s for webhook to process call ${conversationId} first...`);
+        await new Promise((resolve) => setTimeout(resolve, 30_000));
+
         if (processedCallIds.has(conversationId)) {
-          console.log(`Transcript for ${conversationId} already processed (race), skipping`);
+          console.log(`Call ${conversationId} already processed (by webhook), skipping poll`);
           return;
         }
         processedCallIds.add(conversationId);
+        console.log(`Webhook did not fire for ${conversationId}, poller taking over as fallback`);
 
         console.log(
           `Transcript received for ${conversationId} after ${attempt} polls`

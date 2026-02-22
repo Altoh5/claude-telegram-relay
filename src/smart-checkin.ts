@@ -345,7 +345,7 @@ if (action === "text" && message && message.toLowerCase() !== "none") {
   console.log("✅ Text sent!");
 } else if (action === "call" && message) {
   console.log(`📞 Want to call about: ${message}`);
-  const askMessage = `📞 I'd like to call you about:\n\n${message.substring(0, 150)}`;
+  const askMessage = `📞 I'd like to call you about:\n\n${message.substring(0, 500)}`;
 
   const callButtons = [
     [
