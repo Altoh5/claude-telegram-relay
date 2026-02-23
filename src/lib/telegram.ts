@@ -107,6 +107,57 @@ export async function sendTelegramMessage(
 }
 
 /**
+ * Send a photo via Telegram Bot API (multipart form, no grammy).
+ * Accepts a local file path. Returns true on success.
+ */
+export async function sendTelegramPhoto(
+  botToken: string,
+  chatId: string,
+  photoPath: string,
+  options?: {
+    caption?: string;
+    parseMode?: "Markdown" | "HTML";
+    messageThreadId?: number;
+  }
+): Promise<boolean> {
+  const url = `https://api.telegram.org/bot${botToken}/sendPhoto`;
+  const form = new FormData();
+  form.append("chat_id", chatId);
+
+  const file = Bun.file(photoPath);
+  form.append("photo", file);
+
+  if (options?.caption) {
+    form.append(
+      "caption",
+      options.parseMode ? sanitizeForTelegram(options.caption) : options.caption
+    );
+  }
+  if (options?.parseMode) form.append("parse_mode", options.parseMode);
+  if (options?.messageThreadId)
+    form.append("message_thread_id", String(options.messageThreadId));
+
+  try {
+    const response = await fetch(url, { method: "POST", body: form });
+    if (!response.ok && options?.parseMode && options?.caption) {
+      // Retry without formatting
+      const retry = new FormData();
+      retry.append("chat_id", chatId);
+      retry.append("photo", Bun.file(photoPath));
+      retry.append(
+        "caption",
+        (options.caption || "").replace(/\*/g, "").replace(/_/g, "")
+      );
+      const fallback = await fetch(url, { method: "POST", body: retry });
+      return fallback.ok;
+    }
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Send a long response, splitting into chunks if needed.
  * Telegram has a 4096 character limit per message.
  */
