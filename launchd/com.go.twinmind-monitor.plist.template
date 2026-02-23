@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.go.twinmind-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{BUN_PATH}}</string>
+        <string>run</string>
+        <string>src/twinmind-monitor.ts</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>{{BUN_DIR}}:{{CLAUDE_DIR}}:{{NLM_DIR}}:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+        <key>GO_PROJECT_ROOT</key>
+        <string>{{PROJECT_ROOT}}</string>
+    </dict>
+
+    <!-- Every 30 min, 8am-10pm (StartCalendarInterval survives sleep) -->
+    <key>StartCalendarInterval</key>
+    <array>
+        {{CALENDAR_INTERVALS}}
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/logs/twinmind-monitor.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/logs/twinmind-monitor.error.log</string>
+</dict>
+</plist>
