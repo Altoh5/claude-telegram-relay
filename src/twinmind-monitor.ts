@@ -9,9 +9,9 @@
  * Scheduled: launchd every 30 min (8am-10pm)
  */
 
-import { readFile, writeFile, unlink } from "fs/promises";
+import { readFile, writeFile, mkdir, unlink } from "fs/promises";
 import { existsSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
 import { loadEnv } from "./lib/env";
 import { sendTelegramMessage, sendTelegramPhoto } from "./lib/telegram";
 
@@ -52,6 +52,7 @@ async function loadState(): Promise<MonitorState> {
 async function saveState(state: MonitorState): Promise<void> {
   // Keep only last 200 processed IDs to avoid unbounded growth
   state.processedMeetingIds = state.processedMeetingIds.slice(-200);
+  await mkdir(dirname(STATE_FILE), { recursive: true });
   await writeFile(STATE_FILE, JSON.stringify(state, null, 2), "utf-8");
 }
 
