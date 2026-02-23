@@ -67,6 +67,10 @@ import {
 // Model Router (UX-only on Mac — controls progress updates, not model selection)
 import { classifyComplexity } from "./lib/model-router";
 
+// Multi-Bot Agent Identity
+import { BotRegistry } from "./lib/bot-registry";
+import { parseInvocationTags, stripInvocationTags, executeVisibleInvocation } from "./lib/cross-agent";
+
 // Agents
 import {
   getAgentConfig,
@@ -104,6 +108,9 @@ if (!ALLOWED_USER_ID) {
 }
 
 const bot = new Bot(BOT_TOKEN);
+
+// Multi-bot registry (agent-specific bots for visible identities)
+const botRegistry = new BotRegistry(bot);
 
 // ---------------------------------------------------------------------------
 // 3. Session State Management
@@ -447,11 +454,7 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     lowerText.startsWith("/board ")
   ) {
     const extraContext = text.replace(/^\/board\s*/i, "").replace(/^board meeting\s*/i, "").trim();
-    const boardPrompt = extraContext
-      ? `Board meeting requested. Additional context: ${extraContext}`
-      : "Board meeting requested. Review all recent activity and provide a synthesis.";
-
-    await callClaudeAndReply(ctx, chatId, boardPrompt, "general", topicId);
+    await runBoardMeeting(chatId, topicId, extraContext || undefined);
     return;
   }
 
@@ -1182,6 +1185,29 @@ async function callClaudeAndReply(
     // Process intents (goals, facts, etc.)
     await processIntents(response);
 
+    // --- Cross-Agent Invocations ---
+    const invocations = parseInvocationTags(response);
+    if (invocations.length > 0) {
+      // Send pre-invocation text (everything except the tags) via source agent
+      const preText = stripInvocationTags(response);
+      if (preText) {
+        await botRegistry.sendAsAgent(agentName, chatId, preText, { threadId: topicId });
+      }
+
+      // Execute each invocation visibly
+      for (const invocation of invocations) {
+        await executeVisibleInvocation(
+          botRegistry,
+          agentName,
+          invocation,
+          chatId,
+          topicId,
+          callClaude
+        );
+      }
+      return;
+    }
+
     // Check if Claude is asking a question that needs inline button response
     const parsed = parseClaudeResponse(response);
     if (parsed.needsInput && parsed.options.length > 0) {
@@ -1196,15 +1222,13 @@ async function callClaudeAndReply(
           current_step: parsed.text.substring(0, 500),
         });
         const keyboard = buildTaskKeyboard(task.id, parsed.options);
-        await ctx
-          .reply(response, { reply_markup: keyboard, parse_mode: "Markdown" })
-          .catch(() => ctx.reply(response, { reply_markup: keyboard }));
+        await botRegistry.sendWithKeyboardAsAgent(agentName, chatId, response, keyboard, { threadId: topicId });
         return;
       }
     }
 
-    // Normal response (no question or task creation failed)
-    await sendResponse(ctx, response);
+    // Normal response — send via agent's bot
+    await botRegistry.sendAsAgent(agentName, chatId, response, { threadId: topicId });
   } catch (error) {
     console.error("callClaudeAndReply error:", error);
     await ctx.reply("Something went wrong. Please try again.");
@@ -1349,6 +1373,85 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
   }
 
   return result.text;
+}
+
+// ---------------------------------------------------------------------------
+// Board Meeting — Multi-Bot Sequential Discussion
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a board meeting with each agent bot posting sequentially.
+ * Orchestrator announces → each agent contributes → Orchestrator synthesizes.
+ */
+async function runBoardMeeting(
+  chatId: string,
+  topicId?: number,
+  extraContext?: string
+): Promise<void> {
+  const boardAgents = ["research", "content", "finance", "strategy", "critic"];
+  const contextNote = extraContext ? `\n\nAdditional context: ${extraContext}` : "";
+
+  // Orchestrator announces
+  await botRegistry.sendAsAgent(
+    "general",
+    chatId,
+    `*Board Meeting Starting*\n\nGathering perspectives from all agents...${contextNote}`,
+    { threadId: topicId }
+  );
+
+  const agentResponses: { agent: string; response: string }[] = [];
+
+  // Each agent contributes sequentially
+  for (const agent of boardAgents) {
+    // Typing indicator from this agent's bot
+    await botRegistry.sendTypingAsAgent(agent, chatId, topicId);
+
+    // Build board prompt for this agent
+    const previousInput = agentResponses
+      .map((r) => `**${r.agent}**: ${r.response.substring(0, 300)}`)
+      .join("\n\n");
+
+    const boardPrompt = `You are participating in a board meeting. Review recent activity and provide your specialized perspective.${contextNote}
+
+${previousInput ? `## PREVIOUS AGENT INPUTS\n${previousInput}` : ""}
+
+Provide a concise analysis from your domain. Focus on what matters most from your perspective. Keep it to 2-4 key points.`;
+
+    try {
+      const response = await callClaude(boardPrompt, chatId, agent, topicId);
+      const cleanResponse = stripInvocationTags(response);
+      agentResponses.push({ agent, response: cleanResponse });
+
+      // Post via agent's bot
+      await botRegistry.sendAsAgent(agent, chatId, cleanResponse, { threadId: topicId });
+
+      // Brief pause for readability
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch (err) {
+      console.error(`[BoardMeeting] ${agent} failed:`, err);
+      agentResponses.push({ agent, response: "(unavailable)" });
+    }
+  }
+
+  // Orchestrator synthesizes
+  await botRegistry.sendTypingAsAgent("general", chatId, topicId);
+
+  const synthesisPrompt = `Board meeting synthesis requested. Here are all agent contributions:
+
+${agentResponses.map((r) => `**${r.agent.toUpperCase()}**:\n${r.response}`).join("\n\n---\n\n")}
+
+Synthesize the key themes, identify conflicts or alignments between agents, and propose 3-5 concrete action items with clear ownership.`;
+
+  const synthesis = await callClaude(synthesisPrompt, chatId, "general", topicId);
+  await botRegistry.sendAsAgent("general", chatId, synthesis, { threadId: topicId });
+
+  // Persist the full board meeting
+  await saveMessage({
+    chat_id: chatId,
+    role: "assistant",
+    content: `[Board Meeting]\n\n${agentResponses.map((r) => `${r.agent}: ${r.response}`).join("\n\n")}\n\n[Synthesis]\n${synthesis}`,
+    metadata: { type: "board_meeting", topicId },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1574,6 +1677,9 @@ const healthServer = Bun.serve({
 // ---------------------------------------------------------------------------
 // 11. Bot Startup
 // ---------------------------------------------------------------------------
+
+// Initialize multi-bot agent identities (outbound-only, no polling)
+await botRegistry.initialize();
 
 console.log("=".repeat(50));
 console.log("Go Telegram Bot - Starting");

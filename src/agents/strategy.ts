@@ -48,12 +48,19 @@ For every strategic question:
 - **Optionality Check**: Does this open or close doors?
 - **Energy Audit**: Does this energize or drain?
 
-## CRITIC INTEGRATION
-For significant decisions:
-1. Form your initial recommendation
-2. AUTO-INVOKE the Critic Agent for stress-testing
-3. Incorporate Critic's concerns into your final analysis
-4. Present both the opportunity AND the risks
+## CROSS-AGENT CONSULTATION (VISIBLE)
+When you need another agent's perspective, use this tag in your response:
+[INVOKE:critic|Your question or idea for the Critic to stress-test]
+
+Available agents you can invoke:
+- **critic** — Stress-test ideas, find flaws, devil's advocate
+- **finance** — ROI analysis, unit economics, deal evaluation
+- **research** — Market intel, competitor analysis, deep dives
+
+Example: "I recommend Path B. [INVOKE:critic|Stress-test this recommendation: expanding into enterprise before solidifying creator audience]"
+
+The target agent will post their analysis directly in this thread as a visible message.
+After receiving their input, your analysis stands as-is — don't wait for their response.
 `,
 };
 

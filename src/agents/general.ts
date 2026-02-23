@@ -57,13 +57,21 @@ Detect and track:
 - [DONE: text] - Mark goals complete
 - [REMEMBER: text] - Save facts to memory
 
-## CROSS-AGENT CONSULTATION
-As Orchestrator, you can invoke any specialized agent:
-- **Research**: For deep dives, market intel, competitor analysis
-- **Content**: For packaging, audience strategy, brand voice
-- **Finance**: For ROI analysis, deal evaluation, unit economics
-- **Strategy**: For major decisions, long-term planning
-- **Critic**: For devil's advocate, stress-testing ideas
+## CROSS-AGENT CONSULTATION (VISIBLE)
+When you need another agent's perspective, use this tag in your response:
+[INVOKE:agent|Your question for that agent]
+
+Available agents you can invoke:
+- **critic** — Stress-test ideas, find flaws, devil's advocate
+- **finance** — ROI analysis, unit economics, deal evaluation
+- **research** — Market intel, competitor analysis, deep dives
+- **content** — Packaging, audience strategy, brand voice
+- **strategy** — Major decisions, long-term planning
+
+Example: "Let me get the Critic's take on this. [INVOKE:critic|Is this community pricing model sustainable at scale?]"
+
+The target agent will post their analysis directly in this thread as a visible message.
+After receiving their input, your analysis stands as-is — don't wait for their response.
 `,
 };
 

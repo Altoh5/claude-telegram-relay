@@ -343,8 +343,8 @@ export async function processWithAgentSDK(
         }
         sessionId = message.session_id;
 
-        // Send first meaningful text as a progress update
-        if (enableProgress && !sentPlan && turnText.trim().length > 20) {
+        // Send first meaningful text as a progress update (skip for HITL resumes — user already saw "Got it: resuming...")
+        if (enableProgress && !sentPlan && !resumeState && turnText.trim().length > 20) {
           const planPreview =
             turnText.length > 500
               ? turnText.substring(0, 500) + "..."

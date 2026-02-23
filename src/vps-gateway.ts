@@ -49,7 +49,8 @@ import {
 } from "./lib/asset-store";
 import * as supabase from "./lib/supabase";
 import { BotRegistry } from "./lib/bot-registry";
-import { getAgentByTopicId } from "./agents";
+import { getAgentByTopicId, getAgentConfig } from "./agents";
+import { stripInvocationTags } from "./lib/cross-agent";
 
 // ============================================================
 // LOAD ENVIRONMENT
@@ -624,6 +625,84 @@ bot.on("message:text", async (ctx) => {
       },
     })
     .catch(() => {});
+
+  // ---- Board Meeting: intercept /board before generic routing ----
+  if (/^\/board\b|^board meeting/i.test(text)) {
+    // If Mac is alive, forward — Mac handles multi-bot board meeting
+    if (isMacAlive()) {
+      console.log("📊 Board meeting → forwarding to Mac");
+      const localResult = await forwardToLocal(text, chatId, threadId);
+      if (localResult.async || (localResult.success && localResult.response)) {
+        if (localResult.response) {
+          await botRegistry.sendAsAgent("general", chatId, localResult.response, { threadId });
+        }
+        return;
+      }
+      console.log("Mac forwarding failed, running board meeting on VPS...");
+    }
+
+    // VPS-native board meeting (Mac down or forwarding failed)
+    console.log("📊 Running board meeting on VPS");
+    const extraContext = text.replace(/^\/board\s*/i, "").replace(/^board meeting\s*/i, "").trim();
+
+    await botRegistry.sendAsAgent("general", chatId,
+      `*Board Meeting Starting*\n\nGathering perspectives from all agents...${extraContext ? `\n\nContext: ${extraContext}` : ""}`,
+      { threadId }
+    );
+
+    const boardContext = await supabase.getBoardMeetingContext(7);
+    const boardAgents = ["research", "content", "finance", "strategy", "critic"];
+    const agentResponses: { agent: string; response: string }[] = [];
+
+    for (const agent of boardAgents) {
+      await botRegistry.sendTypingAsAgent(agent, chatId, threadId);
+
+      const previousInput = agentResponses
+        .map((r) => `**${r.agent}**: ${r.response.substring(0, 300)}`)
+        .join("\n\n");
+
+      const agentConfig = getAgentConfig(agent);
+      const boardPrompt = `${agentConfig?.systemPrompt || ""}
+
+${boardContext}
+
+${previousInput ? `## PREVIOUS AGENT INPUTS\n${previousInput}` : ""}
+
+You are participating in a board meeting. Provide a concise analysis from your domain. Focus on what matters most from your perspective. Keep it to 2-4 key points.${extraContext ? `\n\nAdditional context: ${extraContext}` : ""}`;
+
+      try {
+        const response = await processWithAnthropic(boardPrompt, chatId, ctx);
+        const cleanResponse = stripInvocationTags(response);
+        agentResponses.push({ agent, response: cleanResponse });
+        await botRegistry.sendAsAgent(agent, chatId, cleanResponse, { threadId });
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (err) {
+        console.error(`[BoardMeeting] ${agent} failed:`, err);
+        agentResponses.push({ agent, response: "(unavailable)" });
+      }
+    }
+
+    // Orchestrator synthesizes
+    await botRegistry.sendTypingAsAgent("general", chatId, threadId);
+    const synthesisPrompt = `Board meeting synthesis. All agent contributions:
+
+${agentResponses.map((r) => `**${r.agent.toUpperCase()}**:\n${r.response}`).join("\n\n---\n\n")}
+
+Synthesize key themes, identify conflicts or alignments, and propose 3-5 concrete action items with clear ownership.`;
+
+    const synthesis = await processWithAnthropic(synthesisPrompt, chatId, ctx);
+    await botRegistry.sendAsAgent("general", chatId, synthesis, { threadId });
+
+    // Persist full meeting
+    await supabase.saveMessage({
+      chat_id: chatId,
+      role: "assistant",
+      content: `[Board Meeting]\n\n${agentResponses.map((r) => `${r.agent}: ${r.response}`).join("\n\n")}\n\n[Synthesis]\n${synthesis}`,
+      metadata: { type: "board_meeting", thread_id: threadId, processed_by: NODE_ID },
+    }).catch(() => {});
+
+    return;
+  }
 
   const typingInterval = setInterval(() => {
     ctx.replyWithChatAction("typing").catch(() => {});
