@@ -8,7 +8,7 @@
  *   bun run setup/configure-launchd.ts --service telegram-relay
  *   bun run setup/configure-launchd.ts --service all
  *
- * Services: telegram-relay, smart-checkin, morning-briefing, watchdog, all
+ * Services: telegram-relay, smart-checkin, morning-briefing, watchdog, twinmind-monitor, all
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -22,7 +22,7 @@ const PROJECT_ROOT = dirname(import.meta.dir);
 const LAUNCHD_DIR = join(PROJECT_ROOT, "launchd");
 const LAUNCH_AGENTS_DIR = join(process.env.HOME!, "Library", "LaunchAgents");
 
-const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog"] as const;
+const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor"] as const;
 type ServiceName = (typeof SERVICES)[number];
 
 interface ScheduleInterval {
@@ -37,6 +37,10 @@ interface ScheduleConfig {
     enabled: boolean;
   };
   check_in_intervals?: ScheduleInterval[];
+  twinmind_monitor?: {
+    intervals: ScheduleInterval[];
+    enabled: boolean;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +80,15 @@ async function resolvePath(cmd: string): Promise<string> {
   return result.ok ? result.stdout : "";
 }
 
+function generateHalfHourIntervals(startHour: number, endHour: number): ScheduleInterval[] {
+  const intervals: ScheduleInterval[] = [];
+  for (let h = startHour; h <= endHour; h++) {
+    intervals.push({ hour: h, minute: 0 });
+    if (h < endHour) intervals.push({ hour: h, minute: 30 });
+  }
+  return intervals;
+}
+
 function loadSchedule(): ScheduleConfig {
   const schedulePath = join(PROJECT_ROOT, "config", "schedule.json");
   const examplePath = join(PROJECT_ROOT, "config", "schedule.example.json");
@@ -106,6 +119,10 @@ function loadSchedule(): ScheduleConfig {
       { hour: 16, minute: 30 },
       { hour: 18, minute: 30 },
     ],
+    twinmind_monitor: {
+      enabled: true,
+      intervals: generateHalfHourIntervals(8, 22), // 8:00-22:00, every 30 min
+    },
   };
 }
 
@@ -189,6 +206,21 @@ async function configureService(service: ServiceName): Promise<boolean> {
     console.log(
       `    Schedule: ${String(briefing.hour).padStart(2, "0")}:${String(briefing.minute).padStart(2, "0")} daily`
     );
+  }
+
+  if (service === "twinmind-monitor") {
+    const tmConfig = schedule.twinmind_monitor || {
+      intervals: generateHalfHourIntervals(8, 22),
+    };
+    const xml = generateCalendarIntervalsXml(tmConfig.intervals);
+    content = content.replace(/\{\{CALENDAR_INTERVALS\}\}/g, xml);
+
+    // Resolve nlm path for PATH env var
+    const nlmPath = await resolvePath("nlm");
+    const nlmDir = nlmPath ? dirname(nlmPath) : "/usr/local/bin";
+    content = content.replace(/\{\{NLM_DIR\}\}/g, nlmDir);
+
+    console.log(`    Schedule: ${tmConfig.intervals.length} intervals (every 30 min)`);
   }
 
   // Unload existing if present
