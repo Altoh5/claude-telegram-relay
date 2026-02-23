@@ -572,8 +572,8 @@ async function handleVoiceMessage(ctx: Context): Promise<void> {
       // Complex task → streaming subprocess with live progress
       claudeResponse = await callClaudeWithProgress(ctx, voicePrompt, chatId, agentName, topicId);
     } else {
-      // Simple task → standard subprocess (fast, no progress needed)
-      claudeResponse = await callClaude(voicePrompt, chatId, agentName, topicId);
+      // Simple task → no tools, single turn (skips MCP server init)
+      claudeResponse = await callClaude(voicePrompt, chatId, agentName, topicId, { maxTurns: "1" });
     }
 
     // Persist bot response
@@ -698,7 +698,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     if (tier !== "haiku") {
       claudeResponse = await callClaudeWithProgress(ctx, photoPrompt, chatId, agentName, topicId);
     } else {
-      claudeResponse = await callClaude(photoPrompt, chatId, agentName, topicId);
+      claudeResponse = await callClaude(photoPrompt, chatId, agentName, topicId, { maxTurns: "1" });
     }
 
     // If Claude couldn't process the image directly, retry with vision pre-description
@@ -715,7 +715,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
       if (tier !== "haiku") {
         claudeResponse = await callClaudeWithProgress(ctx, retryPrompt, chatId, agentName, topicId);
       } else {
-        claudeResponse = await callClaude(retryPrompt, chatId, agentName, topicId);
+        claudeResponse = await callClaude(retryPrompt, chatId, agentName, topicId, { maxTurns: "1" });
       }
     }
 
@@ -818,7 +818,7 @@ async function handleDocumentMessage(ctx: Context): Promise<void> {
     if (tier !== "haiku") {
       claudeResponse = await callClaudeWithProgress(ctx, docPrompt, chatId, agentName, topicId);
     } else {
-      claudeResponse = await callClaude(docPrompt, chatId, agentName, topicId);
+      claudeResponse = await callClaude(docPrompt, chatId, agentName, topicId, { maxTurns: "1" });
     }
 
     // Persist bot response
@@ -1079,7 +1079,8 @@ async function callClaude(
   userMessage: string,
   chatId: string,
   agentName: string = "general",
-  topicId?: number
+  topicId?: number,
+  options?: { maxTurns?: string }
 ): Promise<string> {
   const agentConfig = getAgentConfig(agentName);
   const userProfile = await getUserProfile();
@@ -1166,6 +1167,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
     resumeSessionId: sessionState.sessionId || undefined,
     timeoutMs: 1_800_000, // 30 minutes
     cwd: PROJECT_ROOT,
+    ...(options?.maxTurns ? { maxTurns: options.maxTurns } : {}),
   });
 
   // Update session ID
@@ -1224,8 +1226,8 @@ async function callClaudeAndReply(
       // Complex task → streaming subprocess with live progress
       response = await callClaudeWithProgress(ctx, userMessage, chatId, agentName, topicId);
     } else {
-      // Simple task → standard subprocess (fast, no progress needed)
-      response = await callClaude(userMessage, chatId, agentName, topicId);
+      // Simple task → no tools, single turn (skips MCP server init)
+      response = await callClaude(userMessage, chatId, agentName, topicId, { maxTurns: "1" });
     }
 
     // Persist bot response

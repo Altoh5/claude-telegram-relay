@@ -1,68 +1,24 @@
 /**
  * Go - Audio Transcription (Optional)
  *
- * Uses Gemini for voice message transcription.
+ * Uses Groq Whisper (cloud) for voice message transcription.
  * Falls back to a placeholder if not configured.
  */
 
 import { readFile } from "fs/promises";
 
-const GEMINI_API_KEY = () => process.env.GEMINI_API_KEY || "";
-
 /**
- * Transcribe an audio file using Gemini.
+ * Transcribe an audio file using Groq Whisper.
  * Supports OGG (Telegram voice), MP3, WAV, etc.
  */
 export async function transcribeAudio(filePath: string): Promise<string> {
-  if (!GEMINI_API_KEY()) {
-    return "[Voice transcription unavailable - no Gemini API key configured]";
+  if (!process.env.GROQ_API_KEY) {
+    return "[Voice transcription unavailable - no GROQ_API_KEY configured]";
   }
 
   try {
     const audioBuffer = await readFile(filePath);
-    const base64Audio = audioBuffer.toString("base64");
-
-    // Detect MIME type from extension
-    const ext = filePath.split(".").pop()?.toLowerCase() || "ogg";
-    const mimeMap: Record<string, string> = {
-      ogg: "audio/ogg",
-      mp3: "audio/mpeg",
-      wav: "audio/wav",
-      m4a: "audio/mp4",
-      webm: "audio/webm",
-    };
-    const mimeType = mimeMap[ext] || "audio/ogg";
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY()}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: "Transcribe this audio message accurately. Only output the transcription, nothing else.",
-                },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64Audio,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-      }
-    );
-
-    const result = await response.json();
-    return (
-      result.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "[Could not transcribe audio]"
-    );
+    return transcribeWithGroq(audioBuffer, filePath.split("/").pop() || "voice.ogg");
   } catch (error) {
     console.error("Transcription error:", error);
     return "[Transcription failed]";
@@ -70,50 +26,19 @@ export async function transcribeAudio(filePath: string): Promise<string> {
 }
 
 /**
- * Transcribe audio from an in-memory buffer using Gemini.
+ * Transcribe audio from an in-memory buffer using Groq Whisper.
  * Used by the VPS gateway where files aren't written to disk.
  */
 export async function transcribeAudioBuffer(
   audioBuffer: Buffer,
-  mimeType: string = "audio/ogg"
+  _mimeType: string = "audio/ogg"
 ): Promise<string> {
-  if (!GEMINI_API_KEY()) {
-    return "[Voice transcription unavailable - no Gemini API key configured]";
+  if (!process.env.GROQ_API_KEY) {
+    return "[Voice transcription unavailable - no GROQ_API_KEY configured]";
   }
 
   try {
-    const base64Audio = audioBuffer.toString("base64");
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY()}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: "Transcribe this audio message accurately. Only output the transcription, nothing else.",
-                },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64Audio,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-      }
-    );
-
-    const result = await response.json();
-    return (
-      result.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "[Could not transcribe audio]"
-    );
+    return transcribeWithGroq(audioBuffer, "voice.ogg");
   } catch (error) {
     console.error("Buffer transcription error:", error);
     return "[Transcription failed]";
@@ -121,8 +46,25 @@ export async function transcribeAudioBuffer(
 }
 
 /**
+ * Core Groq Whisper transcription.
+ */
+async function transcribeWithGroq(audioBuffer: Buffer, filename: string): Promise<string> {
+  const Groq = (await import("groq-sdk")).default;
+  const groq = new Groq(); // reads GROQ_API_KEY from env
+
+  const file = new File([audioBuffer], filename, { type: "audio/ogg" });
+
+  const result = await groq.audio.transcriptions.create({
+    file,
+    model: "whisper-large-v3-turbo",
+  });
+
+  return result.text.trim();
+}
+
+/**
  * Check if transcription is configured.
  */
 export function isTranscriptionEnabled(): boolean {
-  return !!GEMINI_API_KEY();
+  return !!process.env.GROQ_API_KEY;
 }

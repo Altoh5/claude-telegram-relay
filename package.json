@@ -25,6 +25,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@supabase/supabase-js": "^2.49.0",
     "grammy": "^1.35.0",
+    "groq-sdk": "^0.37.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {

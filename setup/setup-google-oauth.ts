@@ -17,12 +17,13 @@ const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
 ].join(" ");
 
 console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║          Google OAuth Setup for Gobot                       ║
-║          Enables: Gmail + Calendar in morning briefings     ║
+║     Enables: Gmail + Calendar read & event creation         ║
 ╚══════════════════════════════════════════════════════════════╝
 
 This script helps you get a Google OAuth refresh token.
