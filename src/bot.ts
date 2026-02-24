@@ -508,6 +508,19 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     return;
   }
 
+  // ----- TwinMind Meetings -----
+
+  if (lowerText === "/twinmind" || lowerText.startsWith("/twinmind ")) {
+    const typing = createTypingIndicator(ctx);
+    typing.start();
+    try {
+      await handleTwinmindCommand(ctx, lowerText);
+    } finally {
+      typing.stop();
+    }
+    return;
+  }
+
   // ----- Default: Claude Processing -----
 
   // Enrich with YouTube transcripts if URLs detected
@@ -516,6 +529,102 @@ async function handleTextMessage(ctx: Context): Promise<void> {
   // Determine agent from topic (if forum mode)
   const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
   await callClaudeAndReply(ctx, chatId, enrichedText, agentName, topicId);
+}
+
+// --- TwinMind Command Handler ---
+
+async function handleTwinmindCommand(ctx: Context, command: string): Promise<void> {
+  const sb = (await import("./lib/supabase")).getSupabase();
+  if (!sb) {
+    await ctx.reply("Supabase not configured. Cannot access TwinMind cache.");
+    return;
+  }
+
+  // /twinmind — show recent meetings + process any unprocessed
+  // /twinmind status — just show status
+  const subcommand = command.replace(/^\/twinmind\s*/, "").trim();
+
+  // Get counts
+  const { count: totalCount } = await sb
+    .from("twinmind_meetings")
+    .select("*", { count: "exact", head: true });
+
+  const { count: unprocessedCount } = await sb
+    .from("twinmind_meetings")
+    .select("*", { count: "exact", head: true })
+    .eq("processed", false);
+
+  // Get last 5 meetings
+  const { data: recent } = await sb
+    .from("twinmind_meetings")
+    .select("meeting_title, start_time, processed, synced_at")
+    .order("start_time", { ascending: false })
+    .limit(5);
+
+  let msg = `*TwinMind Meetings*\n\n`;
+  msg += `Total: ${totalCount || 0} | Unprocessed: ${unprocessedCount || 0}\n\n`;
+
+  if (recent && recent.length > 0) {
+    msg += `*Recent:*\n`;
+    for (const m of recent) {
+      const status = m.processed ? "done" : "pending";
+      const date = new Date(m.start_time).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      msg += `${status === "done" ? "\\u2705" : "\\u23F3"} ${date} — ${m.meeting_title}\n`;
+    }
+  } else {
+    msg += `_No meetings synced yet. Run "sync twinmind" in Claude Code._`;
+  }
+
+  if (subcommand === "status" || (unprocessedCount || 0) === 0) {
+    await ctx.reply(msg, { parse_mode: "Markdown" }).catch(() => ctx.reply(msg));
+    return;
+  }
+
+  // Process unprocessed meetings
+  msg += `\n_Processing ${unprocessedCount} unprocessed meeting(s)..._`;
+  await ctx.reply(msg, { parse_mode: "Markdown" }).catch(() => ctx.reply(msg));
+
+  const { data: unprocessed } = await sb
+    .from("twinmind_meetings")
+    .select("meeting_id, meeting_title, summary, action_items, start_time, end_time")
+    .eq("processed", false)
+    .order("start_time", { ascending: true });
+
+  if (!unprocessed || unprocessed.length === 0) return;
+
+  const BOT_TOKEN_LOCAL = process.env.TELEGRAM_BOT_TOKEN || "";
+  const CHAT_ID_LOCAL = process.env.TELEGRAM_GROUP_CHAT_ID || process.env.TELEGRAM_USER_ID || "";
+
+  for (const meeting of unprocessed) {
+    // Send summary
+    let summaryText = `*Meeting Summary*\n\n`;
+    summaryText += `*${meeting.meeting_title}*\n`;
+    if (meeting.start_time) {
+      const dateStr = new Date(meeting.start_time).toLocaleString("en-US", {
+        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      });
+      summaryText += `${dateStr}\n`;
+    }
+    summaryText += `\n${meeting.summary}`;
+    if (meeting.action_items) {
+      summaryText += `\n\n*Action Items:*\n${meeting.action_items}`;
+    }
+
+    await ctx.reply(summaryText, { parse_mode: "Markdown" }).catch(() =>
+      ctx.reply(summaryText)
+    );
+
+    // Mark as processed
+    await sb
+      .from("twinmind_meetings")
+      .update({ processed: true, processed_at: new Date().toISOString() })
+      .eq("meeting_id", meeting.meeting_id);
+  }
+
+  await ctx.reply(`Processed ${unprocessed.length} meeting(s).`);
 }
 
 // --- Voice Messages ---
@@ -573,7 +682,7 @@ async function handleVoiceMessage(ctx: Context): Promise<void> {
       claudeResponse = await callClaudeWithProgress(ctx, voicePrompt, chatId, agentName, topicId);
     } else {
       // Simple task → no tools, single turn (skips MCP server init)
-      claudeResponse = await callClaude(voicePrompt, chatId, agentName, topicId, { maxTurns: "1" });
+      claudeResponse = await callClaude(voicePrompt, chatId, agentName, topicId, );
     }
 
     // Persist bot response
@@ -698,7 +807,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     if (tier !== "haiku") {
       claudeResponse = await callClaudeWithProgress(ctx, photoPrompt, chatId, agentName, topicId);
     } else {
-      claudeResponse = await callClaude(photoPrompt, chatId, agentName, topicId, { maxTurns: "1" });
+      claudeResponse = await callClaude(photoPrompt, chatId, agentName, topicId, );
     }
 
     // If Claude couldn't process the image directly, retry with vision pre-description
@@ -715,7 +824,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
       if (tier !== "haiku") {
         claudeResponse = await callClaudeWithProgress(ctx, retryPrompt, chatId, agentName, topicId);
       } else {
-        claudeResponse = await callClaude(retryPrompt, chatId, agentName, topicId, { maxTurns: "1" });
+        claudeResponse = await callClaude(retryPrompt, chatId, agentName, topicId, );
       }
     }
 
@@ -818,7 +927,7 @@ async function handleDocumentMessage(ctx: Context): Promise<void> {
     if (tier !== "haiku") {
       claudeResponse = await callClaudeWithProgress(ctx, docPrompt, chatId, agentName, topicId);
     } else {
-      claudeResponse = await callClaude(docPrompt, chatId, agentName, topicId, { maxTurns: "1" });
+      claudeResponse = await callClaude(docPrompt, chatId, agentName, topicId, );
     }
 
     // Persist bot response
@@ -1227,7 +1336,7 @@ async function callClaudeAndReply(
       response = await callClaudeWithProgress(ctx, userMessage, chatId, agentName, topicId);
     } else {
       // Simple task → no tools, single turn (skips MCP server init)
-      response = await callClaude(userMessage, chatId, agentName, topicId, { maxTurns: "1" });
+      response = await callClaude(userMessage, chatId, agentName, topicId);
     }
 
     // Persist bot response

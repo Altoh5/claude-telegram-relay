@@ -311,3 +311,43 @@ $$;
 -- New: assets table for persistent image/file storage
 -- Action needed: Create a Storage bucket named "gobot-assets" in Supabase Dashboard
 -- (Settings → Storage → New Bucket → Name: "gobot-assets" → Make public)
+
+-- ============================================================
+-- MIGRATION v3: TwinMind Meeting Cache (2026-02)
+-- ============================================================
+-- Cache for TwinMind meeting summaries. Synced from interactive
+-- Claude Code sessions (TwinMind is a cloud MCP connector that
+-- cannot be accessed from background scripts). The twinmind-monitor
+-- reads from this table instead of querying TwinMind directly.
+
+CREATE TABLE IF NOT EXISTS twinmind_meetings (
+  id BIGSERIAL PRIMARY KEY,
+  meeting_id TEXT UNIQUE NOT NULL,
+  meeting_title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  action_items TEXT,
+  start_time TIMESTAMPTZ NOT NULL,
+  end_time TIMESTAMPTZ,
+  synced_at TIMESTAMPTZ DEFAULT NOW(),
+  processed BOOLEAN DEFAULT FALSE,
+  processed_at TIMESTAMPTZ,
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_twinmind_meetings_meeting_id ON twinmind_meetings (meeting_id);
+CREATE INDEX IF NOT EXISTS idx_twinmind_meetings_processed ON twinmind_meetings (processed);
+CREATE INDEX IF NOT EXISTS idx_twinmind_meetings_start_time ON twinmind_meetings (start_time DESC);
+
+ALTER TABLE twinmind_meetings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access" ON twinmind_meetings
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Anon read access" ON twinmind_meetings
+  FOR SELECT USING (auth.role() = 'anon');
+
+CREATE POLICY "Anon insert access" ON twinmind_meetings
+  FOR INSERT WITH CHECK (auth.role() = 'anon');
+
+CREATE POLICY "Anon update access" ON twinmind_meetings
+  FOR UPDATE USING (auth.role() = 'anon');

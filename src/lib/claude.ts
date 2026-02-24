@@ -153,10 +153,11 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
     if (outputFormat === "json") {
       try {
         const result = JSON.parse(output);
+        const hasError = result.subtype === "error_max_turns" || isClaudeErrorResponse(result.result || "");
         return {
-          text: result.result || output,
+          text: result.result || "",
           sessionId: result.session_id,
-          isError: isClaudeErrorResponse(result.result || ""),
+          isError: hasError,
         };
       } catch {
         return { text: output, isError: isClaudeErrorResponse(output) };
