@@ -61,3 +61,76 @@ describe("readTwinMindToken", () => {
     readFileSpy.mockRestore();
   });
 });
+
+// ─── fetchMeetingsFromTwinMind ────────────────────────────────────────────────
+
+describe("fetchMeetingsFromTwinMind", () => {
+  const FAKE_TOKEN = "bearer-token-123";
+  const FAKE_URL = "https://api.thirdear.live/v3/mcp";
+
+  const fakeMcpResponse = (meetings: any[]) => ({
+    jsonrpc: "2.0",
+    id: 1,
+    result: {
+      content: [{ type: "text", text: JSON.stringify(meetings) }],
+      isError: false,
+    },
+  });
+
+  it("parses meetings from MCP response", async () => {
+    const rawMeetings = [
+      {
+        meeting_id: "abc-123",
+        meeting_title: "WMI Strategy Call",
+        summary: "Discussed proposal.",
+        action: "Follow up with Rachel.",
+        start_time_local: "2026-02-25T10:00:00",
+        end_time_local: "2026-02-25T11:00:00",
+      },
+    ];
+
+    global.fetch = mock(async () => ({
+      ok: true,
+      json: async () => fakeMcpResponse(rawMeetings),
+    })) as any;
+
+    const { fetchMeetingsFromTwinMind } = await getModule();
+    const result = await fetchMeetingsFromTwinMind(FAKE_TOKEN, FAKE_URL);
+
+    expect(result).not.toBeNull();
+    expect(result!.length).toBe(1);
+    expect(result![0].meeting_id).toBe("abc-123");
+    expect(result![0].meeting_title).toBe("WMI Strategy Call");
+    expect(result![0].action_items).toBe("Follow up with Rachel.");
+  });
+
+  it("returns null on HTTP 401", async () => {
+    global.fetch = mock(async () => ({ ok: false, status: 401 })) as any;
+
+    const { fetchMeetingsFromTwinMind } = await getModule();
+    const result = await fetchMeetingsFromTwinMind(FAKE_TOKEN, FAKE_URL);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null on network error", async () => {
+    global.fetch = mock(async () => { throw new Error("Network error"); }) as any;
+
+    const { fetchMeetingsFromTwinMind } = await getModule();
+    const result = await fetchMeetingsFromTwinMind(FAKE_TOKEN, FAKE_URL);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when response has no content", async () => {
+    global.fetch = mock(async () => ({
+      ok: true,
+      json: async () => ({ jsonrpc: "2.0", id: 1, result: {} }),
+    })) as any;
+
+    const { fetchMeetingsFromTwinMind } = await getModule();
+    const result = await fetchMeetingsFromTwinMind(FAKE_TOKEN, FAKE_URL);
+
+    expect(result).toBeNull();
+  });
+});
