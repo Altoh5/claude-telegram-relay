@@ -134,3 +134,56 @@ describe("fetchMeetingsFromTwinMind", () => {
     expect(result).toBeNull();
   });
 });
+
+// ─── upsertMeetings ───────────────────────────────────────────────────────────
+
+describe("upsertMeetings", () => {
+  function mockSupabase(upsertError: any = null) {
+    const upserted: any[] = [];
+    return {
+      client: {
+        from: () => ({
+          upsert: mock(async (rows: any[]) => {
+            upserted.push(...rows);
+            return { error: upsertError };
+          }),
+        }),
+      } as any,
+      upserted,
+    };
+  }
+
+  it("upserts all meetings and returns count", async () => {
+    const { client, upserted } = mockSupabase();
+    const meetings = [
+      { meeting_id: "m1", meeting_title: "Meet 1", summary: "S1", action_items: "A1" },
+      { meeting_id: "m2", meeting_title: "Meet 2", summary: "S2", action_items: "" },
+    ];
+
+    const { upsertMeetings } = await getModule();
+    const count = await upsertMeetings(client, meetings);
+
+    expect(count).toBe(2);
+    expect(upserted.length).toBe(2);
+    expect(upserted[0].meeting_id).toBe("m1");
+  });
+
+  it("returns 0 on Supabase error", async () => {
+    const { client } = mockSupabase({ message: "DB error" });
+    const meetings = [{ meeting_id: "m1", meeting_title: "T", summary: "S" }];
+
+    const { upsertMeetings } = await getModule();
+    const count = await upsertMeetings(client, meetings);
+
+    expect(count).toBe(0);
+  });
+
+  it("returns 0 for empty array", async () => {
+    const { client } = mockSupabase();
+
+    const { upsertMeetings } = await getModule();
+    const count = await upsertMeetings(client, []);
+
+    expect(count).toBe(0);
+  });
+});
