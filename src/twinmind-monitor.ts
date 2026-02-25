@@ -13,8 +13,10 @@
 import { unlink } from "fs/promises";
 import { existsSync } from "fs";
 import { loadEnv } from "./lib/env";
-import { sendTelegramMessage, sendTelegramPhoto } from "./lib/telegram";
+import { sendTelegramMessage, sendTelegramPhoto, sendTelegramDocument } from "./lib/telegram";
+import { runClaudeWithTimeout } from "./lib/claude";
 import { createClient } from "@supabase/supabase-js";
+import { syncFromTwinmindDirect } from "./lib/twinmind-direct-sync";
 
 // Load environment
 await loadEnv();
@@ -50,6 +52,7 @@ interface MeetingSummary {
   action_items?: string;
   start_time: string;
   end_time?: string;
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================================
@@ -65,7 +68,7 @@ async function fetchUnprocessedMeetings(): Promise<MeetingSummary[]> {
 
   const { data, error } = await sb
     .from("twinmind_meetings")
-    .select("meeting_id, meeting_title, summary, action_items, start_time, end_time")
+    .select("meeting_id, meeting_title, summary, action_items, start_time, end_time, metadata")
     .eq("processed", false)
     .order("start_time", { ascending: true });
 
@@ -89,6 +92,26 @@ async function markProcessed(meetingId: string): Promise<void> {
   if (error) {
     console.error(`Failed to mark ${meetingId} as processed: ${error.message}`);
   }
+}
+
+async function updateMetadata(meetingId: string, updates: Record<string, unknown>): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+
+  // Merge with existing metadata
+  const { data } = await sb
+    .from("twinmind_meetings")
+    .select("metadata")
+    .eq("meeting_id", meetingId)
+    .single();
+
+  const existing = (data?.metadata || {}) as Record<string, unknown>;
+  const merged = { ...existing, ...updates };
+
+  await sb
+    .from("twinmind_meetings")
+    .update({ metadata: merged })
+    .eq("meeting_id", meetingId);
 }
 
 // ============================================================
@@ -225,84 +248,366 @@ async function createInfographic(
   return true;
 }
 
+async function createSlideDeck(
+  notebookId: string,
+  sourceId: string,
+  style: "standard" | "sketchnote",
+  outputPath: string
+): Promise<boolean> {
+  console.log(`  Creating slide deck (fallback for ${style})...`);
+
+  const args = [
+    "slides", "create", notebookId,
+    "--source-ids", sourceId,
+    "-y",
+  ];
+
+  if (style === "sketchnote") {
+    args.push("--focus", "sketchnote style visual summary");
+  }
+
+  const createResult = await runNlm(args);
+  if (!createResult.ok) {
+    console.error(`  nlm slides create failed: ${createResult.stderr}`);
+    return false;
+  }
+
+  // Extract artifact ID
+  const artifactMatch = createResult.stdout.match(/Artifact ID:\s*([0-9a-f-]{36})/i);
+  const artifactId = artifactMatch?.[1];
+  if (artifactId) {
+    console.log(`  Slide Artifact ID: ${artifactId}`);
+  }
+
+  // Poll until complete (max 5 min)
+  const maxPolls = 20;
+  for (let i = 0; i < maxPolls; i++) {
+    await new Promise(r => setTimeout(r, 15_000));
+    const status = await runNlm(["studio", "status", notebookId]);
+
+    let artifactStatus = "unknown";
+    try {
+      const artifacts = JSON.parse(status.stdout) as Array<{ id: string; status: string }>;
+      if (artifactId) {
+        const target = artifacts.find(a => a.id === artifactId);
+        artifactStatus = target?.status || "not_found";
+      } else {
+        artifactStatus = artifacts[0]?.status || "unknown";
+      }
+    } catch {
+      if (status.stdout.toLowerCase().includes('"status":"completed"') ||
+          status.stdout.toLowerCase().includes('"status": "completed"')) {
+        artifactStatus = "completed";
+      }
+    }
+
+    console.log(`  Poll ${i + 1}/${maxPolls}: slide ${artifactId?.slice(0, 8) || "?"} → ${artifactStatus}`);
+
+    if (artifactStatus === "completed") break;
+    if (artifactStatus === "failed") {
+      console.error(`  Slide deck generation failed for artifact ${artifactId}`);
+      return false;
+    }
+  }
+
+  // Download as PDF
+  const dlResult = await runNlm(["download", "slide-deck", notebookId, "-o", outputPath]);
+  if (!dlResult.ok) {
+    console.error(`  nlm download slide-deck failed: ${dlResult.stderr}`);
+    return false;
+  }
+
+  console.log(`  Downloaded slide deck -> ${outputPath}`);
+  return true;
+}
+
+// ============================================================
+// CONTEXT ANALYSIS — enrich summaries with memory + intent
+// ============================================================
+
+async function fetchRelatedMemory(meetingTitle: string, meetingSummary: string): Promise<string[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+
+  // Extract keywords from meeting title (2+ chars, skip common words)
+  const stopWords = new Set(["the", "and", "for", "are", "but", "not", "you", "all", "can", "her", "was", "one", "our", "out", "with", "from", "that", "this", "about", "their", "have", "will", "been", "were", "they", "what", "when", "where", "which", "there", "would", "could", "should", "being", "after", "before", "between", "through", "during", "into", "over", "under", "then", "than", "also", "more", "some", "very", "just", "only", "each", "other", "such", "like", "meeting", "session", "discussion", "new", "demo", "at"]);
+  const keywords = meetingTitle
+    .split(/[\s,\-:&()]+/)
+    .filter(w => w.length >= 2)
+    .map(w => w.toLowerCase())
+    .filter(w => !stopWords.has(w));
+
+  if (keywords.length === 0) return [];
+
+  // Search memory for related facts/goals using PostgREST ILIKE
+  const conditions = keywords.map(k => `content.ilike.%${k}%`).join(",");
+  const { data: memories, error } = await sb
+    .from("memory")
+    .select("type, content, created_at")
+    .or(conditions)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error(`  Memory search error: ${error.message}`);
+    return [];
+  }
+
+  return (memories || []).map(m => `[${m.type}] ${m.content}`);
+}
+
+async function fetchRelatedMessages(meetingTitle: string): Promise<string[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+
+  // Extract top keywords (2+ chars, skip common words)
+  const stopWords = new Set(["the", "and", "for", "are", "but", "not", "you", "all", "can", "her", "was", "one", "our", "out", "with", "from", "that", "this", "about", "their", "have", "will", "been", "were", "meeting", "session", "training", "discussion", "new", "demo", "at"]);
+  const keywords = meetingTitle
+    .split(/[\s,\-:&()]+/)
+    .filter(w => w.length >= 2)
+    .map(w => w.toLowerCase())
+    .filter(w => !stopWords.has(w))
+    .slice(0, 5); // Top 5 keywords
+
+  if (keywords.length === 0) return [];
+
+  // Search recent messages (last 30 days) for related conversations
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const conditions = keywords.map(k => `content.ilike.%${k}%`).join(",");
+
+  const { data: msgs } = await sb
+    .from("messages")
+    .select("role, content, created_at")
+    .or(conditions)
+    .gte("created_at", thirtyDaysAgo)
+    .order("created_at", { ascending: false })
+    .limit(15);
+
+  return (msgs || []).map(m => `[${m.role} ${new Date(m.created_at).toLocaleDateString()}] ${(m.content || "").slice(0, 200)}`);
+}
+
+async function generateMeetingAnalysis(
+  meeting: MeetingSummary,
+  relatedMemory: string[],
+  relatedMessages: string[]
+): Promise<string | null> {
+  if (relatedMemory.length === 0 && relatedMessages.length === 0) {
+    return null; // No context to analyze against
+  }
+
+  const contextBlock = [
+    relatedMemory.length > 0 ? `RELATED MEMORY/GOALS:\n${relatedMemory.join("\n")}` : "",
+    relatedMessages.length > 0 ? `RECENT RELATED CONVERSATIONS:\n${relatedMessages.join("\n")}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  const prompt = `You are analyzing a meeting summary against the user's prior context (goals, facts, conversations).
+
+MEETING: ${meeting.meeting_title}
+DATE: ${meeting.start_time || "Unknown"}
+
+SUMMARY:
+${meeting.summary}
+
+${meeting.action_items ? `ACTION ITEMS:\n${meeting.action_items}` : ""}
+
+PRIOR CONTEXT:
+${contextBlock}
+
+Provide a brief analysis (3-5 bullet points max) covering:
+1. How this meeting connects to known goals/priorities
+2. Any notable progress or gaps relative to intent
+3. Key follow-ups that align with existing commitments
+
+Keep it concise and actionable. Use plain text, no markdown headers. Start with a one-line verdict like "✅ Strong alignment with X goal" or "⚠️ Gap identified: Y".`;
+
+  try {
+    const analysis = await runClaudeWithTimeout(prompt, 60_000, {
+      cwd: PROJECT_ROOT,
+    });
+    const trimmed = analysis.trim();
+    return trimmed || null;
+  } catch (err) {
+    console.error(`  Claude analysis failed: ${err}`);
+    return null;
+  }
+}
+
 // ============================================================
 // PROCESS MEETING
 // ============================================================
 
-async function processMeeting(meeting: MeetingSummary): Promise<boolean> {
+async function processMeeting(meeting: MeetingSummary): Promise<"complete" | "partial" | "failed"> {
   console.log(`\nProcessing: ${meeting.meeting_title}`);
   const chatId = CHAT_ID;
+  const meta = (meeting.metadata || {}) as Record<string, unknown>;
 
-  // 1. Send summary text
-  let summaryText = `*New Meeting Summary*\n\n`;
-  summaryText += `*${meeting.meeting_title}*\n`;
-  if (meeting.start_time) {
-    summaryText += `${meeting.start_time}`;
-    if (meeting.end_time) summaryText += ` - ${meeting.end_time}`;
-    summaryText += "\n";
-  }
-  summaryText += `\n${meeting.summary}`;
-  if (meeting.action_items) {
-    summaryText += `\n\n*Action Items:*\n${meeting.action_items}`;
+  // 1. Send summary text (skip if already sent on a previous attempt)
+  if (meta.summary_sent) {
+    console.log("  Summary already sent (previous run) — skipping");
+  } else {
+    let summaryText = `*New Meeting Summary*\n\n`;
+    summaryText += `*${meeting.meeting_title}*\n`;
+    if (meeting.start_time) {
+      summaryText += `${meeting.start_time}`;
+      if (meeting.end_time) summaryText += ` - ${meeting.end_time}`;
+      summaryText += "\n";
+    }
+    summaryText += `\n${meeting.summary}`;
+    if (meeting.action_items) {
+      summaryText += `\n\n*Action Items:*\n${meeting.action_items}`;
+    }
+
+    const textSent = await sendTelegramMessage(BOT_TOKEN, chatId, summaryText, {
+      parseMode: "Markdown",
+      messageThreadId: THREAD_ID,
+    });
+
+    if (!textSent) {
+      console.error("Failed to send summary text to Telegram");
+      return "failed";
+    }
+    console.log("  Summary text sent");
+    await updateMetadata(meeting.meeting_id, { summary_sent: true });
   }
 
-  const textSent = await sendTelegramMessage(BOT_TOKEN, chatId, summaryText, {
-    parseMode: "Markdown",
-    messageThreadId: THREAD_ID,
-  });
+  // 1b. Context analysis — search memory for related intent, send as follow-up
+  if (meta.analysis_sent) {
+    console.log("  Context analysis already sent — skipping");
+  } else {
+    console.log("  Searching memory for related context...");
+    const [relatedMemory, relatedMessages] = await Promise.all([
+      fetchRelatedMemory(meeting.meeting_title, meeting.summary),
+      fetchRelatedMessages(meeting.meeting_title),
+    ]);
+    console.log(`  Found ${relatedMemory.length} memory entries, ${relatedMessages.length} related messages`);
 
-  if (!textSent) {
-    console.error("Failed to send summary text to Telegram");
-    return false;
+    if (relatedMemory.length > 0 || relatedMessages.length > 0) {
+      console.log("  Generating meeting analysis via Claude...");
+      const analysis = await generateMeetingAnalysis(meeting, relatedMemory, relatedMessages);
+      if (analysis) {
+        const analysisText = `*Context Analysis*\n_${meeting.meeting_title}_\n\n${analysis}`;
+        await sendTelegramMessage(BOT_TOKEN, chatId, analysisText, {
+          parseMode: "Markdown",
+          messageThreadId: THREAD_ID,
+        });
+        console.log("  Context analysis sent");
+        await updateMetadata(meeting.meeting_id, { analysis_sent: true });
+      } else {
+        console.log("  No analysis generated — skipping");
+        await updateMetadata(meeting.meeting_id, { analysis_sent: true }); // Don't retry
+      }
+    } else {
+      console.log("  No related context found — skipping analysis");
+      await updateMetadata(meeting.meeting_id, { analysis_sent: true });
+    }
   }
-  console.log("  Summary text sent");
 
   // 2. Create infographics (if NLM notebook configured)
   if (!NLM_NOTEBOOK_ID) {
     console.log("  TWINMIND_NLM_NOTEBOOK_ID not set — skipping infographics");
-    return true;
+    return "complete";
   }
 
-  const sourceId = await addSourceAndGetId(
-    NLM_NOTEBOOK_ID,
-    meeting.meeting_title,
-    meeting.summary + (meeting.action_items ? `\n\nAction Items:\n${meeting.action_items}` : "")
-  );
+  // Reuse source ID from previous attempt if available
+  let sourceId = meta.nlm_source_id as string | null;
+  if (sourceId) {
+    console.log(`  Reusing NLM source: ${sourceId} (from previous run)`);
+  } else {
+    sourceId = await addSourceAndGetId(
+      NLM_NOTEBOOK_ID,
+      meeting.meeting_title,
+      meeting.summary + (meeting.action_items ? `\n\nAction Items:\n${meeting.action_items}` : "")
+    );
 
-  if (!sourceId) {
-    console.error("  Failed to add source to NotebookLM — skipping infographics");
-    return true; // Still return true — summary was sent
+    if (!sourceId) {
+      console.error("  Failed to add source to NotebookLM — skipping infographics");
+      return "complete"; // Summary sent, infographics optional
+    }
+
+    console.log(`  Source added: ${sourceId}`);
+    await updateMetadata(meeting.meeting_id, { nlm_source_id: sourceId });
   }
 
-  console.log(`  Source added: ${sourceId}`);
-
-  // 3. Standard infographic
-  const stdPath = `/tmp/twinmind-${meeting.meeting_id}-standard.png`;
-  const stdOk = await createInfographic(NLM_NOTEBOOK_ID, sourceId, "standard", stdPath);
-  if (stdOk && existsSync(stdPath)) {
-    await sendTelegramPhoto(BOT_TOKEN, chatId, stdPath, {
-      caption: `Infographic: ${meeting.meeting_title}`,
-      parseMode: "Markdown",
-      messageThreadId: THREAD_ID,
-    });
-    await unlink(stdPath).catch(() => {});
-    console.log("  Standard infographic sent");
+  // 3. Standard visual (infographic → slide deck fallback)
+  let stdOk = !!meta.standard_sent;
+  if (stdOk) {
+    console.log("  Standard visual already sent — skipping");
+  } else {
+    const stdImgPath = `/tmp/twinmind-${meeting.meeting_id}-standard.png`;
+    const stdOkInfographic = await createInfographic(NLM_NOTEBOOK_ID, sourceId, "standard", stdImgPath);
+    if (stdOkInfographic && existsSync(stdImgPath)) {
+      await sendTelegramPhoto(BOT_TOKEN, chatId, stdImgPath, {
+        caption: `Infographic: ${meeting.meeting_title}`,
+        parseMode: "Markdown",
+        messageThreadId: THREAD_ID,
+      });
+      await unlink(stdImgPath).catch(() => {});
+      console.log("  Standard infographic sent");
+      stdOk = true;
+      await updateMetadata(meeting.meeting_id, { standard_sent: true, standard_type: "infographic" });
+    } else {
+      // Fallback: create slide deck instead
+      console.log("  Infographic rate-limited — falling back to slide deck");
+      const stdSlidePath = `/tmp/twinmind-${meeting.meeting_id}-standard.pdf`;
+      const stdOkSlides = await createSlideDeck(NLM_NOTEBOOK_ID, sourceId, "standard", stdSlidePath);
+      if (stdOkSlides && existsSync(stdSlidePath)) {
+        await sendTelegramDocument(BOT_TOKEN, chatId, stdSlidePath, {
+          caption: `Slides: ${meeting.meeting_title}`,
+          parseMode: "Markdown",
+          messageThreadId: THREAD_ID,
+          filename: `${meeting.meeting_title.slice(0, 60).replace(/[^a-zA-Z0-9 ]/g, "")}.pdf`,
+        });
+        await unlink(stdSlidePath).catch(() => {});
+        console.log("  Standard slide deck sent (fallback)");
+        stdOk = true;
+        await updateMetadata(meeting.meeting_id, { standard_sent: true, standard_type: "slides" });
+      }
+    }
   }
 
-  // 4. Sketchnote infographic
-  const sketchPath = `/tmp/twinmind-${meeting.meeting_id}-sketchnote.png`;
-  const sketchOk = await createInfographic(NLM_NOTEBOOK_ID, sourceId, "sketchnote", sketchPath);
-  if (sketchOk && existsSync(sketchPath)) {
-    await sendTelegramPhoto(BOT_TOKEN, chatId, sketchPath, {
-      caption: `Sketchnote: ${meeting.meeting_title}`,
-      parseMode: "Markdown",
-      messageThreadId: THREAD_ID,
-    });
-    await unlink(sketchPath).catch(() => {});
-    console.log("  Sketchnote infographic sent");
+  // 4. Sketchnote visual (infographic → slide deck fallback)
+  let sketchOk = !!meta.sketchnote_sent;
+  if (sketchOk) {
+    console.log("  Sketchnote visual already sent — skipping");
+  } else {
+    const sketchImgPath = `/tmp/twinmind-${meeting.meeting_id}-sketchnote.png`;
+    const sketchOkInfographic = await createInfographic(NLM_NOTEBOOK_ID, sourceId, "sketchnote", sketchImgPath);
+    if (sketchOkInfographic && existsSync(sketchImgPath)) {
+      await sendTelegramPhoto(BOT_TOKEN, chatId, sketchImgPath, {
+        caption: `Sketchnote: ${meeting.meeting_title}`,
+        parseMode: "Markdown",
+        messageThreadId: THREAD_ID,
+      });
+      await unlink(sketchImgPath).catch(() => {});
+      console.log("  Sketchnote infographic sent");
+      sketchOk = true;
+      await updateMetadata(meeting.meeting_id, { sketchnote_sent: true, sketchnote_type: "infographic" });
+    } else {
+      // Fallback: create slide deck with sketchnote focus
+      console.log("  Sketchnote rate-limited — falling back to slide deck");
+      const sketchSlidePath = `/tmp/twinmind-${meeting.meeting_id}-sketchnote.pdf`;
+      const sketchOkSlides = await createSlideDeck(NLM_NOTEBOOK_ID, sourceId, "sketchnote", sketchSlidePath);
+      if (sketchOkSlides && existsSync(sketchSlidePath)) {
+        await sendTelegramDocument(BOT_TOKEN, chatId, sketchSlidePath, {
+          caption: `Sketchnote Slides: ${meeting.meeting_title}`,
+          parseMode: "Markdown",
+          messageThreadId: THREAD_ID,
+          filename: `${meeting.meeting_title.slice(0, 50).replace(/[^a-zA-Z0-9 ]/g, "")} Sketchnote.pdf`,
+        });
+        await unlink(sketchSlidePath).catch(() => {});
+        console.log("  Sketchnote slide deck sent (fallback)");
+        sketchOk = true;
+        await updateMetadata(meeting.meeting_id, { sketchnote_sent: true, sketchnote_type: "slides" });
+      }
+    }
   }
 
-  return true;
+  // Mark complete if both visuals succeeded (either infographic or slide fallback)
+  if (stdOk && sketchOk) {
+    return "complete";
+  }
+  console.log("  Visual(s) failed — will retry next run");
+  return "partial";
 }
 
 // ============================================================
@@ -324,6 +629,16 @@ async function main() {
   console.log(`NLM Notebook: ${NLM_NOTEBOOK_ID || "(not configured)"}`);
   console.log(`Supabase: ${SUPABASE_URL ? "configured" : "NOT configured"}`);
 
+  // Sync latest meetings from TwinMind API directly (no Claude Code needed)
+  console.log("Step 1/3: Syncing from TwinMind API...");
+  const synced = await syncFromTwinmindDirect(getSupabase()!);
+  if (synced > 0) {
+    console.log(`  ↳ Synced ${synced} new meeting(s) from TwinMind`);
+  } else {
+    console.log("  ↳ No new meetings synced (token issue or already up to date)");
+  }
+
+  console.log("Step 2/3: Fetching unprocessed meetings from Supabase...");
   const meetings = await fetchUnprocessedMeetings();
   console.log(`Found ${meetings.length} unprocessed meeting(s)`);
 
@@ -332,15 +647,31 @@ async function main() {
     return;
   }
 
+  let completed = 0;
+  let partial = 0;
+  let failed = 0;
+
   for (const meeting of meetings) {
-    const ok = await processMeeting(meeting);
-    if (ok) {
-      await markProcessed(meeting.meeting_id);
-      console.log(`  Marked ${meeting.meeting_id} as processed`);
+    const result = await processMeeting(meeting);
+    switch (result) {
+      case "complete":
+        await markProcessed(meeting.meeting_id);
+        console.log(`  ✅ Marked ${meeting.meeting_id} as processed`);
+        completed++;
+        break;
+      case "partial":
+        console.log(`  ⏳ ${meeting.meeting_id} partially done — will retry infographics next run`);
+        partial++;
+        break;
+      case "failed":
+        console.log(`  ❌ ${meeting.meeting_id} failed — will retry next run`);
+        failed++;
+        break;
     }
   }
 
-  console.log(`\nTwinMind Monitor complete. Processed ${meetings.length} meeting(s).`);
+  console.log(`\nTwinMind Monitor complete.`);
+  console.log(`  ${completed} fully processed, ${partial} partial (will retry), ${failed} failed`);
 }
 
 main().catch(err => {
