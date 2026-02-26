@@ -1295,6 +1295,13 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
       return "I wasn't able to process that image (the file may be too large or in an unsupported format). Try sending it as a document, or send a smaller version.";
     }
 
+    // Prompt too long — clear session so next message starts fresh
+    if (errText.includes("prompt is too long") || errText.includes("context_length_exceeded") || errText.includes("tokens > ")) {
+      console.log("Clearing session due to prompt too long error");
+      sessionState.sessionId = null;
+      await saveSessionState();
+    }
+
     await sbLog("warn", "bot", "Claude failed, using fallback LLM", {
       error: errText.substring(0, 200),
     });
@@ -1509,6 +1516,13 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
     // Image processing errors — don't pass the image prompt to fallback LLM
     if (errText.includes("Could not process image") || errText.includes("API Error: 400")) {
       return "I wasn't able to process that image (the file may be too large or in an unsupported format). Try sending it as a document, or send a smaller version.";
+    }
+
+    // Prompt too long — clear session so next message starts fresh
+    if (errText.includes("prompt is too long") || errText.includes("context_length_exceeded") || errText.includes("tokens > ")) {
+      console.log("Clearing session due to prompt too long error (streaming)");
+      sessionState.sessionId = null;
+      await saveSessionState();
     }
 
     await sbLog("warn", "bot", "Claude streaming failed, using fallback LLM", {

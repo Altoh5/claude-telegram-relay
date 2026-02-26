@@ -58,6 +58,9 @@ export function isClaudeErrorResponse(text: string): boolean {
     "billing",
     "insufficient_quota",
     "payment_required",
+    "prompt is too long",
+    "context_length_exceeded",
+    "tokens > ",
   ];
   return errorPatterns.some((p) => text.includes(p));
 }

@@ -157,6 +157,56 @@ export async function sendTelegramPhoto(
   }
 }
 
+export async function sendTelegramDocument(
+  botToken: string,
+  chatId: string,
+  documentPath: string,
+  options?: {
+    caption?: string;
+    parseMode?: "Markdown" | "HTML";
+    messageThreadId?: number;
+    filename?: string;
+  }
+): Promise<boolean> {
+  const url = `https://api.telegram.org/bot${botToken}/sendDocument`;
+  const form = new FormData();
+  form.append("chat_id", chatId);
+
+  const file = Bun.file(documentPath);
+  const blob = new Blob([await file.arrayBuffer()], { type: file.type || "application/pdf" });
+  form.append("document", blob, options?.filename || documentPath.split("/").pop() || "document.pdf");
+
+  if (options?.caption) {
+    form.append(
+      "caption",
+      options.parseMode ? sanitizeForTelegram(options.caption) : options.caption
+    );
+  }
+  if (options?.parseMode) form.append("parse_mode", options.parseMode);
+  if (options?.messageThreadId)
+    form.append("message_thread_id", String(options.messageThreadId));
+
+  try {
+    const response = await fetch(url, { method: "POST", body: form });
+    if (!response.ok && options?.messageThreadId) {
+      // Retry without thread ID (forum topic may not exist)
+      const retry = new FormData();
+      retry.append("chat_id", chatId);
+      const retryBlob = new Blob([await Bun.file(documentPath).arrayBuffer()], { type: Bun.file(documentPath).type || "application/pdf" });
+      retry.append("document", retryBlob, options?.filename || documentPath.split("/").pop() || "document.pdf");
+      if (options?.caption) {
+        retry.append("caption", options.parseMode ? sanitizeForTelegram(options.caption) : options.caption);
+      }
+      if (options?.parseMode) retry.append("parse_mode", options.parseMode);
+      const fallback = await fetch(url, { method: "POST", body: retry });
+      return fallback.ok;
+    }
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Send a long response, splitting into chunks if needed.
  * Telegram has a 4096 character limit per message.
