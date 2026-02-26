@@ -7,6 +7,7 @@
 import { spawn } from "bun";
 import { writeFile, readFile, unlink } from "fs/promises";
 import { join } from "path";
+import { randomUUID } from "crypto";
 
 const VOICE_PROVIDER = process.env.VOICE_PROVIDER || "";
 
@@ -51,11 +52,11 @@ async function transcribeLocal(audioBuffer: Buffer): Promise<string> {
     throw new Error("WHISPER_MODEL_PATH not set");
   }
 
-  const timestamp = Date.now();
+  const uid = randomUUID();
   const tmpDir = process.env.TMPDIR || "/tmp";
-  const oggPath = join(tmpDir, `voice_${timestamp}.ogg`);
-  const wavPath = join(tmpDir, `voice_${timestamp}.wav`);
-  const txtPath = join(tmpDir, `voice_${timestamp}.txt`);
+  const oggPath = join(tmpDir, `voice_${uid}.ogg`);
+  const wavPath = join(tmpDir, `voice_${uid}.wav`);
+  const txtPath = join(tmpDir, `voice_${uid}.txt`);
 
   try {
     // Write OGG to temp file
@@ -74,7 +75,7 @@ async function transcribeLocal(audioBuffer: Buffer): Promise<string> {
 
     // Transcribe via whisper.cpp
     const whisper = spawn(
-      [whisperBinary, "--model", modelPath, "--file", wavPath, "--output-txt", "--output-file", join(tmpDir, `voice_${timestamp}`), "--no-prints"],
+      [whisperBinary, "--model", modelPath, "--file", wavPath, "--output-txt", "--output-file", join(tmpDir, `voice_${uid}`), "--no-prints"],
       { stdout: "pipe", stderr: "pipe" }
     );
     const whisperExit = await whisper.exited;

@@ -176,40 +176,25 @@ CREATE POLICY "Service role full access" ON node_heartbeat
 CREATE POLICY "Service role full access" ON assets
   FOR ALL USING (auth.role() = 'service_role');
 
--- Allow anon key read access (for dashboard, if you build one)
+-- Allow anon key read-only access (for dashboard/observatory)
+-- Write operations should use service_role key for security
 CREATE POLICY "Anon read access" ON messages
   FOR SELECT USING (auth.role() = 'anon');
 
 CREATE POLICY "Anon read access" ON memory
   FOR SELECT USING (auth.role() = 'anon');
 
--- Allow anon key insert (for the bot when using anon key)
-CREATE POLICY "Anon insert access" ON messages
-  FOR INSERT WITH CHECK (auth.role() = 'anon');
+CREATE POLICY "Anon read access" ON logs
+  FOR SELECT USING (auth.role() = 'anon');
 
-CREATE POLICY "Anon insert access" ON memory
-  FOR INSERT WITH CHECK (auth.role() = 'anon');
+CREATE POLICY "Anon read access" ON async_tasks
+  FOR SELECT USING (auth.role() = 'anon');
 
-CREATE POLICY "Anon insert access" ON logs
-  FOR INSERT WITH CHECK (auth.role() = 'anon');
-
-CREATE POLICY "Anon insert access" ON async_tasks
-  FOR INSERT WITH CHECK (auth.role() = 'anon');
-
-CREATE POLICY "Anon update access" ON async_tasks
-  FOR UPDATE USING (auth.role() = 'anon');
-
-CREATE POLICY "Anon insert access" ON node_heartbeat
-  FOR INSERT WITH CHECK (auth.role() = 'anon');
-
-CREATE POLICY "Anon update access" ON node_heartbeat
-  FOR UPDATE USING (auth.role() = 'anon');
+CREATE POLICY "Anon read access" ON node_heartbeat
+  FOR SELECT USING (auth.role() = 'anon');
 
 CREATE POLICY "Anon read access" ON assets
   FOR SELECT USING (auth.role() = 'anon');
-
-CREATE POLICY "Anon insert access" ON assets
-  FOR INSERT WITH CHECK (auth.role() = 'anon');
 
 -- ============================================================
 -- MIGRATION: If upgrading from an older schema

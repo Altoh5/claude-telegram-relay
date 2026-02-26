@@ -9,16 +9,16 @@
 import { existsSync, statSync, readFileSync } from "fs";
 import { join } from "path";
 
-// Load .env
+// Load .env (only fill missing vars, validate key names)
 const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 const envPath = join(PROJECT_ROOT, ".env");
 if (existsSync(envPath)) {
   readFileSync(envPath, "utf-8")
     .split("\n")
     .forEach((line) => {
-      const [key, ...valueParts] = line.split("=");
-      if (key && valueParts.length > 0 && !key.trim().startsWith("#")) {
-        process.env[key.trim()] = valueParts.join("=").trim();
+      const match = line.match(/^([A-Z][A-Z0-9_]*)=(.+)$/);
+      if (match && !process.env[match[1]]) {
+        process.env[match[1]] = match[2].trim();
       }
     });
 }
