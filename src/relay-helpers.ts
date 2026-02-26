@@ -40,13 +40,13 @@ export async function saveMessage(
 }
 
 /**
- * Check if a user is authorized.
+ * Check if a user is authorized. Denies by default if allowedUserId is not set.
  */
 export function isAuthorizedUser(
   userId: string | undefined,
   allowedUserId: string
 ): boolean {
-  if (!allowedUserId) return true; // No restriction set
+  if (!allowedUserId) return false;
   return userId === allowedUserId;
 }
 

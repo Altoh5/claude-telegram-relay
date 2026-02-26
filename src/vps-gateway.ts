@@ -12,7 +12,7 @@ import { Bot, InputFile } from "grammy";
 import type { Context } from "grammy";
 import { readFile } from "fs/promises";
 import { join } from "path";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { spawn } from "child_process";
 import {
   isMacAlive,
@@ -101,10 +101,14 @@ bot.catch((err) => {
   console.error(`BotError [update ${err.ctx?.update?.update_id}]: ${errMsg}`);
 });
 
-// Security: only accept messages from allowed user
+// Security: only accept messages from allowed user (deny by default)
 bot.use(async (ctx, next) => {
+  if (!ALLOWED_USER_ID) {
+    console.error("TELEGRAM_USER_ID not set — blocking all messages for security");
+    return;
+  }
   const userId = ctx.from?.id?.toString();
-  if (ALLOWED_USER_ID && userId !== ALLOWED_USER_ID) {
+  if (userId !== ALLOWED_USER_ID) {
     console.log(`Blocked message from unauthorized user: ${userId}`);
     return;
   }
@@ -1247,7 +1251,9 @@ const server = Bun.serve({
         "sha256=" +
         createHmac("sha256", DEPLOY_SECRET).update(body).digest("hex");
 
-      if (signature !== expected) {
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
         console.log("Deploy webhook: invalid signature");
         return new Response("Invalid signature", { status: 401 });
       }
@@ -1284,10 +1290,15 @@ const server = Bun.serve({
 
     // Telegram webhook
     if (url.pathname === "/telegram") {
+      if (!GATEWAY_SECRET) {
+        return new Response("Webhook secret not configured", { status: 503 });
+      }
       const secretToken = req.headers.get(
         "x-telegram-bot-api-secret-token"
-      );
-      if (GATEWAY_SECRET && secretToken !== GATEWAY_SECRET) {
+      ) || "";
+      const secretBuf = Buffer.from(GATEWAY_SECRET);
+      const tokenBuf = Buffer.from(secretToken);
+      if (secretBuf.length !== tokenBuf.length || !timingSafeEqual(secretBuf, tokenBuf)) {
         return new Response("Unauthorized", { status: 401 });
       }
 

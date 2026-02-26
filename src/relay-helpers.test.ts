@@ -280,8 +280,8 @@ describe("saveMessage", () => {
 // ============================================================
 
 describe("isAuthorizedUser", () => {
-  it("returns true when no allowed user ID is set", () => {
-    expect(isAuthorizedUser("12345", "")).toBe(true);
+  it("returns false when no allowed user ID is set (deny by default)", () => {
+    expect(isAuthorizedUser("12345", "")).toBe(false);
   });
 
   it("returns true when user ID matches", () => {
@@ -296,7 +296,7 @@ describe("isAuthorizedUser", () => {
     expect(isAuthorizedUser(undefined, "12345")).toBe(false);
   });
 
-  it("returns true when both are empty (no restriction)", () => {
-    expect(isAuthorizedUser("any-id", "")).toBe(true);
+  it("returns false when both are empty (deny by default)", () => {
+    expect(isAuthorizedUser("any-id", "")).toBe(false);
   });
 });
