@@ -538,6 +538,7 @@ happens when your local machine handles the message (hybrid mode).
 src/
   bot.ts                 # Main relay daemon (local mode, polling)
   vps-gateway.ts         # VPS gateway (webhook mode, Anthropic API)
+  openclaw-gateway.ts    # OpenClaw WebSocket gateway (AR glasses via Clawsses)
   smart-checkin.ts       # Proactive check-ins
   morning-briefing.ts    # Daily briefing
   watchdog.ts            # Health monitor
@@ -567,6 +568,10 @@ src/
         custom.example.ts # Template for custom sources
     voice.ts             # ElevenLabs TTS/calls/context
     transcribe.ts        # Gemini transcription (file + buffer)
+    openclaw/            # OpenClaw protocol (AR glasses gateway)
+      protocol.ts        # Wire format types + send helpers
+      session-manager.ts # Agent-to-session mapping
+      chat-handler.ts    # Chat processing (bridges OpenClaw → Claude)
   agents/                # Multi-agent system
     base.ts              # Agent interface + routing
     index.ts             # Registry
@@ -608,6 +613,9 @@ bun run start
 
 # VPS mode (webhook, uses Anthropic API directly)
 bun run vps
+
+# OpenClaw mode (WebSocket for AR glasses via Clawsses)
+bun run openclaw
 
 # Run check-in manually
 bun run checkin
