@@ -6,6 +6,7 @@
   "scripts": {
     "start": "bun run src/bot.ts",
     "vps": "bun run src/vps-gateway.ts",
+    "openclaw": "bun run src/openclaw-gateway.ts",
     "checkin": "bun run src/smart-checkin.ts",
     "briefing": "bun run src/morning-briefing.ts",
     "twinmind": "bun run src/twinmind-monitor.ts",
