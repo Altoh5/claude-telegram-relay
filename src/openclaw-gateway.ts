@@ -118,7 +118,12 @@ function handleRequest(
       handleChat(ws, req);
       break;
 
+    case Methods.CHAT_HISTORY:
+      handleChatHistory(ws, req);
+      break;
+
     case Methods.SESSION_LIST:
+    case Methods.SESSIONS_LIST:
       handleSessionList(ws, req);
       break;
 
@@ -131,7 +136,8 @@ function handleRequest(
       break;
 
     default:
-      sendError(ws, req.id, "unknown_method", `Unknown method: ${req.method}`);
+      console.log(`[openclaw] Unhandled method: ${req.method}`);
+      sendResponse(ws, req.id, true, {});
   }
 }
 
@@ -178,6 +184,14 @@ function handleConnect(
     sessions: listSessions(sessions),
     currentSessionKey: ws.data.activeSessionKey || null,
   });
+}
+
+function handleChatHistory(
+  ws: import("bun").ServerWebSocket<ConnectionData>,
+  req: OpenClawRequest
+): void {
+  // Clawsses requests chat history on connect — return empty for now
+  sendResponse(ws, req.id, true, { messages: [] });
 }
 
 function handleChat(
@@ -340,9 +354,13 @@ const server = Bun.serve<ConnectionData>({
     },
 
     message(ws, message) {
+      // Debug: log raw incoming messages
+      const raw = typeof message === "string" ? message : message.toString("utf-8");
+      console.log(`[openclaw] RAW IN: ${raw.substring(0, 500)}`);
+
       const req = parseMessage(message);
       if (!req) {
-        console.warn("[openclaw] Invalid message received");
+        console.warn("[openclaw] Invalid message received (not a valid req)");
         return;
       }
 

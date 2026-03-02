@@ -160,6 +160,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
         ws,
         fullPrompt,
         runId,
+        sessionKey,
         agentConfig?.allowedTools,
         session?.claudeSessionId
       );
@@ -172,8 +173,16 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
       );
     }
 
-    // Send final response
-    sendEvent(ws, "chat", { state: "final", text: responseText, runId });
+    // Send final response — Clawsses expects message.content[] format
+    sendEvent(ws, "chat", {
+      state: "final",
+      runId,
+      sessionKey,
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: responseText }],
+      },
+    });
 
     // Update Claude session ID for resumption
     const result = await getLastSessionId();
@@ -194,9 +203,14 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
   } catch (err) {
     console.error("[openclaw] Chat handler error:", err);
     sendEvent(ws, "chat", {
-      state: "final",
-      text: "Something went wrong processing your message. Please try again.",
+      state: "error",
       runId,
+      sessionKey,
+      errorMessage: "Something went wrong processing your message. Please try again.",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Something went wrong processing your message. Please try again." }],
+      },
     });
   } finally {
     // Cleanup temp images
@@ -223,6 +237,7 @@ async function processStreaming(
   ws: ServerWebSocket<ConnectionData>,
   prompt: string,
   runId: string,
+  sessionKey: string,
   allowedTools?: string[],
   resumeSessionId?: string
 ): Promise<string> {
@@ -240,8 +255,12 @@ async function processStreaming(
       try {
         sendEvent(ws, "chat", {
           state: "delta",
-          text: accumulatedText,
           runId,
+          sessionKey,
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: accumulatedText }],
+          },
         }, ++seq);
       } catch {
         // Connection may have closed
@@ -254,8 +273,12 @@ async function processStreaming(
         try {
           sendEvent(ws, "chat", {
             state: "delta",
-            text: accumulatedText,
             runId,
+            sessionKey,
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: accumulatedText }],
+            },
           }, ++seq);
         } catch {}
       }

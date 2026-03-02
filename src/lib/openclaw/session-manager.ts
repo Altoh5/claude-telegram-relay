@@ -28,13 +28,15 @@ const AGENT_NAMES = [
 
 /**
  * Create the default set of sessions — one per GoBot agent.
+ * The "general" agent gets key "main" to match Clawsses' default session.
  */
 export function createDefaultSessions(): Map<string, Session> {
   const sessions = new Map<string, Session>();
 
   for (const agentName of AGENT_NAMES) {
     const config = getAgentConfig(agentName);
-    const key = crypto.randomUUID();
+    // Clawsses uses "main" as the default session key
+    const key = agentName === "general" ? "main" : crypto.randomUUID();
     sessions.set(key, {
       key,
       name: config?.name || agentName,

@@ -44,7 +44,9 @@ export interface OpenClawEvent {
 export const Methods = {
   CONNECT: "connect",
   CHAT_SEND: "chat.send",
+  CHAT_HISTORY: "chat.history",
   SESSION_LIST: "session.list",
+  SESSIONS_LIST: "sessions.list",   // Clawsses uses plural
   SESSION_CREATE: "session.create",
   SESSION_RUN: "session.run",
 } as const;
@@ -124,7 +126,9 @@ export function sendResponse<T extends Record<string, unknown>>(
 ): void {
   const msg: OpenClawResponse = { type: "res", id, ok };
   if (payload) msg.payload = payload;
-  ws.send(JSON.stringify(msg));
+  const raw = JSON.stringify(msg);
+  console.log(`[openclaw] RAW OUT: ${raw.substring(0, 500)}`);
+  ws.send(raw);
 }
 
 export function sendError(
@@ -150,7 +154,9 @@ export function sendEvent(
 ): void {
   const msg: OpenClawEvent = { type: "event", event, payload };
   if (seq !== undefined) msg.seq = seq;
-  ws.send(JSON.stringify(msg));
+  const raw = JSON.stringify(msg);
+  console.log(`[openclaw] RAW OUT: ${raw.substring(0, 500)}`);
+  ws.send(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -163,8 +169,9 @@ export function parseMessage(
   try {
     const data = typeof raw === "string" ? raw : raw.toString("utf-8");
     const parsed = JSON.parse(data);
-    if (parsed && parsed.type === "req" && parsed.id && parsed.method) {
-      return parsed as OpenClawRequest;
+    // Accept messages with or without type:"req" — Clawsses sometimes omits it
+    if (parsed && parsed.id && parsed.method) {
+      return { ...parsed, type: "req" } as OpenClawRequest;
     }
     return null;
   } catch {
