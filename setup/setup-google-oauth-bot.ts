@@ -3,7 +3,7 @@
  *
  * Gets a refresh token for the bot's Google account.
  * Uses existing GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET from .env.
- * Requests: gmail.readonly + documents (to read comments + post replies)
+ * Requests: gmail.readonly + drive (to list/post comment replies + export doc text)
  *
  * Run: bun run setup/setup-google-oauth-bot.ts
  *
@@ -23,7 +23,7 @@ const REDIRECT_PORT = 8977; // Different port from main OAuth script
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/drive",
 ].join(" ");
 
 const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -40,7 +40,7 @@ if (!clientId || !clientSecret) {
 console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║       Google OAuth Setup — Bot Account                      ║
-║   Enables: Gmail read + Google Docs comment replies         ║
+║   Enables: Gmail read + Google Drive API (comments/replies) ║
 ╚══════════════════════════════════════════════════════════════╝
 
 Using existing Cloud project credentials from .env.
