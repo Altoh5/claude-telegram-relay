@@ -19,6 +19,9 @@ You ──▶ Telegram ──▶ Bot ─┤
 
 - **Relay**: Send messages on Telegram, get Claude responses back (and connect from Google Chat, Microsoft Teams, Discord, WhatsApp, Slack, and more)
 - **Multi-Agent**: Route messages to specialized agents via Telegram forum topics
+- **Multi-Bot Identities**: Each agent can have its own Telegram bot for visual separation
+- **Board Meetings**: `/board` command triggers multi-agent discussion with synthesis
+- **Cross-Agent**: Agents consult each other mid-conversation automatically
 - **Memory**: Persistent facts, goals, and conversation history via Supabase
 - **Image Storage**: Photos stored persistently with AI-generated descriptions, tags, and semantic search
 - **Smart Routing**: Messages auto-classified by complexity — Haiku (fast), Sonnet (medium), Opus (powerful)
@@ -33,26 +36,31 @@ You ──▶ Telegram ──▶ Bot ─┤
 
 ## What's New
 
-### v2.5.1 — Fallback Fixes
-Billing errors ("credit balance too low", "add funds") now properly trigger the fallback chain instead of being sent as bot responses. Fallback tag now shows which backend answered (`via ollama` or `via openrouter`). New `FALLBACK_OFFLINE_ONLY=true` env var skips OpenRouter entirely for fully offline operation.
+### v2.7.0 — Resilient API Fallback + Cost-Optimized Routing
+**Automatic Anthropic → OpenRouter failover.** If Anthropic API goes down (credit depletion, rate limits, outages), all API calls seamlessly route through OpenRouter using the same Anthropic SDK — zero format conversion, zero disruption. Re-checks Anthropic every 15 minutes. Fully optional: works without `OPENROUTER_API_KEY`, errors propagate normally.
+
+**Cost-optimized model routing.** Default model tier changed from Sonnet to Haiku. Most messages (greetings, questions, status checks) now route to Haiku (~$0.003/msg) instead of Sonnet (~$0.15/msg). Sonnet activates for tool-requiring tasks, Opus for complex analysis. Estimated **~42% cost reduction** with no quality loss for simple messages.
+
+### v2.6.1 — Universal Fallback (OpenRouter/Ollama everywhere)
+Fallback to OpenRouter and Ollama now works on **all modes** (local, VPS, hybrid). Previously only local had fallback — VPS returned generic errors when Anthropic API failed. Also catches Claude Pro/Max subscription limits (was silently passing them through as responses).
+
+### v2.6.0 — Multi-Bot Agent Identities + Board Meetings
+Each agent can now have its own Telegram bot — messages from Research, Finance, Content etc. appear from separate bot accounts. New `/board` command triggers a full multi-agent discussion on any topic. Agents can consult each other mid-conversation. All optional, fully backward compatible.
+
+### v2.5.3 — ZIP-to-Git Upgrade
+`bun run upgrade` connects ZIP downloads to the official repo. Future updates are just `git pull`.
 
 ### v2.5.0 — Reliability & VPS Hardening
-Fixed 6 bugs discovered in production: ElevenLabs voice calls no longer fail on empty context, call transcripts are deduped (no more double messages), morning briefings can't send twice, AI news is validated against search results, the bot can no longer promise to fix itself, and intent detection is less trigger-happy. Also added VPS hardening docs (fail2ban recovery, SSH key management, budget guidance) and raised the default API budget to $15.
-
-### v2.4.0 — Pluggable Data Sources for Morning Briefings
-Morning briefings now use direct REST APIs instead of a Claude subprocess (~3s vs ~90s). Sources auto-enable from env vars — no config files. Built-in: Goals, Gmail, Calendar, Notion Tasks, AI News (Grok). Add your own with the custom source template. Works on local, VPS, and hybrid equally.
+Fixed 6 production bugs (voice context, dedup, intent detection). Added VPS hardening docs and raised default API budget to $15.
 
 ### v2.3.0 — Call-to-Task Auto-Execution
-When you end a phone call with the bot, it detects actionable tasks in the transcript (e.g. "create a presentation", "research X") and automatically starts executing them with live progress updates in Telegram. Works on both Mac and VPS.
-
-### v2.2.0 — Persistent Image Storage
-Photos sent to the bot are stored in Supabase Storage with AI-generated descriptions, tags, and optional semantic search. Images survive restarts and can be recalled later.
+Phone calls auto-detect actionable tasks and execute them with live progress updates.
 
 ### v2.1.0 — Smart Routing + Streaming Progress
-Messages auto-classified by complexity (Haiku/Sonnet/Opus). Complex tasks show real-time progress in Telegram — which tools are being used, Claude's initial plan. Simple messages respond instantly.
+Messages auto-classified by complexity (Haiku/Sonnet/Opus). Complex tasks show real-time progress.
 
 ### v2.0.0 — VPS Gateway + Hybrid Mode
-Always-on VPS processing with Anthropic API, hybrid forwarding to local machine, human-in-the-loop confirmations, and auto-deploy via GitHub webhook.
+Always-on VPS processing with Anthropic API, hybrid forwarding, human-in-the-loop, auto-deploy.
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 
@@ -117,10 +125,11 @@ Claude Code reads the `CLAUDE.md` file and walks you through a guided conversati
 1. Create a Telegram bot via BotFather
 2. Set up Supabase for persistent memory
 3. Personalize your profile and agents
-4. Test the bot
-5. Configure always-on services
-6. Set up optional integrations (voice, fallback LLMs)
-7. Deploy to VPS (optional)
+4. Customize agents + optional multi-bot identities and `/board` meetings
+5. Test the bot
+6. Configure always-on services
+7. Set up optional integrations (voice, fallback LLMs)
+8. Deploy to VPS (optional)
 
 ## Tech Stack
 

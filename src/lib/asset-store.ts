@@ -304,9 +304,8 @@ export async function describeImageFromBuffer(
   caption?: string,
   recentContext?: string
 ): Promise<VisionResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.warn("⚠️ No ANTHROPIC_API_KEY — skipping vision description");
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENROUTER_API_KEY) {
+    console.warn("⚠️ No ANTHROPIC_API_KEY or OPENROUTER_API_KEY — skipping vision description");
     return {
       description: caption || "Image (no description available)",
       tags: [],
@@ -334,6 +333,8 @@ export async function describeImageFromBuffer(
         suggestedProject: null,
       };
     }
+
+    const { createResilientMessage, getModelForProvider } = await import("./resilient-client");
 
     const ext = filename.split(".").pop()?.toLowerCase() || "jpg";
     const mimeMap: Record<string, string> = {
@@ -405,50 +406,34 @@ Respond in JSON only:
   "suggestedProject": "project name or null"
 }`);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
-        max_tokens: 400,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: promptParts.join("\n\n"),
+    const response = await createResilientMessage({
+      model: getModelForProvider("claude-haiku-4-5-20251001"),
+      max_tokens: 400,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: promptParts.join("\n\n"),
+            },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: detectedMediaType as any,
+                data: base64,
               },
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: detectedMediaType,
-                  data: base64,
-                },
-              },
-            ],
-          },
-        ],
-      }),
+            },
+          ],
+        },
+      ],
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error(`Vision API error (${response.status}): ${err} | buffer=${imageBuffer.length}b mediaType=${mediaType}`);
-      return {
-        description: caption || "Image (vision API error)",
-        tags: [],
-        suggestedProject: null,
-      };
-    }
-
-    const result = await response.json();
-    const text = result.content?.[0]?.text || "";
+    const textBlock = response.content.find(
+      (b) => b.type === "text"
+    );
+    const text = (textBlock as any)?.text || "";
 
     // Parse JSON from response (handle markdown fences)
     const jsonStr = text

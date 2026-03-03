@@ -1,5 +1,137 @@
 # Gobot Changelog
 
+## v2.7.0 — 2026-03-03
+
+**Resilient API Fallback (Anthropic → OpenRouter) + Cost-Optimized Model Routing**
+
+When Anthropic API goes down (credit depletion, rate limits, outages), all API calls now seamlessly failover to OpenRouter using the same `@anthropic-ai/sdk` — zero format conversion, zero disruption. The system re-checks Anthropic every 15 minutes and automatically switches back when it recovers. Additionally, the model classifier has been tuned to default to Haiku instead of Sonnet, saving ~42% on API costs with no quality loss for simple messages.
+
+### New Features
+
+- **Resilient client** — New `resilient-client.ts` module provides automatic Anthropic → OpenRouter failover. All 6 files that make Anthropic API calls now route through this single module. Detects credit errors (401, 402, 429, 529) and message patterns (`credit balance is too low`, `insufficient_quota`, etc.).
+- **OpenRouter is optional** — If `OPENROUTER_API_KEY` is not set, the resilient client gracefully degrades: no failover, errors propagate normally. Safe for community members without OpenRouter accounts.
+- **Agent SDK failover** — When the Agent SDK (Sonnet/Opus tier) hits a credit error, it automatically retries with OpenRouter env vars (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`). Same Claude Code capabilities, different billing backend.
+- **Cost-optimized classifier** — Default model tier changed from Sonnet to Haiku. New `TOOL_PATTERNS` escalate to Sonnet only for tool-requiring tasks (WordPress, email, calendar, GitHub, Notion, etc.). Target distribution: 65% Haiku, 25% Sonnet, 10% Opus.
+- **Web search stripping** — `web_search_20250305` tool (Anthropic-only) is automatically removed from tool arrays when routing through OpenRouter.
+
+### New Files
+- `src/lib/resilient-client.ts` — Resilient Anthropic client with automatic OpenRouter failover
+
+### Updated Files
+- `src/lib/model-router.ts` — Added `toOpenRouterModel()` export, replaced `SIMPLE_PATTERNS` with `TOOL_PATTERNS`, default tier changed to Haiku
+- `src/lib/anthropic-processor.ts` — Uses `getResilientClient()` and `createResilientMessage()` instead of direct `new Anthropic()`
+- `src/lib/agent-session.ts` — Pre-checks `isAnthropicAvailable()`, routes Agent SDK env vars through OpenRouter when needed, catches credit errors with auto-retry
+- `src/lib/voice.ts` — `summarizeTranscript()` and `extractTaskFromTranscript()` use resilient client; accepts `OPENROUTER_API_KEY` as fallback
+- `src/lib/asset-store.ts` — `describeImageFromBuffer()` migrated from raw `fetch()` to SDK via `createResilientMessage()`; accepts `OPENROUTER_API_KEY`
+- `src/vps-gateway.ts` — `processCallTaskOnVPS()` uses resilient client instead of dynamic `import("@anthropic-ai/sdk")`
+
+### How It Works
+
+```
+API call needed?
+  ├── Anthropic available? → Use Anthropic (direct)
+  │     └── Credit/auth error? → Mark down, retry via OpenRouter
+  └── Anthropic down? → Use OpenRouter (same SDK, different baseURL)
+        └── Re-check Anthropic every 15 minutes
+```
+
+### Setup
+
+To enable failover, add to your `.env`:
+```bash
+OPENROUTER_API_KEY=sk-or-v1-your_key   # Optional — enables automatic failover
+```
+
+No other changes needed. Anthropic remains the primary provider. OpenRouter activates only on failure.
+
+### Compatibility
+- Fully backward compatible. No config changes required.
+- Without `OPENROUTER_API_KEY`: behaves exactly as before (no failover).
+- Existing `OPENROUTER_API_KEY` (from fallback-llm setup) is reused automatically.
+
+---
+
+## v2.6.1 — 2026-02-24
+
+**Universal Fallback — OpenRouter/Ollama now works on VPS + catches subscription limits**
+
+Fallback to OpenRouter and Ollama was only wired up for local (Mac) mode. If Anthropic API failed on VPS, the bot returned a generic error instead of trying backup LLMs. Additionally, Claude Pro/Max subscription limit messages weren't detected as errors, so fallback never triggered even on local.
+
+### Fixes
+
+- **VPS fallback** — `anthropic-processor.ts` and `agent-session.ts` now call `callFallbackLLM()` when Anthropic API or Agent SDK fails. Previously only the local Claude Code subprocess paths had fallback.
+- **VPS resume fallback** — Both Agent SDK and Anthropic API resume paths in `bot.ts` now try fallback LLMs before returning "Error resuming task."
+- **Subscription limit detection** — Added 12 new error patterns to `isClaudeErrorResponse()` covering Pro, Max, and any subscription tier limits: `hit your limit`, `usage limit`, `usage cap`, `message limit`, `reached your limit`, `out of messages`, `no messages remaining`, `upgrade to`, `exceeds your plan`, `plan limit`, `token limit reached`, `conversation limit`.
+- **Case-insensitive matching** — Error pattern detection now uses case-insensitive comparison (was case-sensitive before).
+
+### Updated Files
+- `src/lib/claude.ts` — Extended error patterns + case-insensitive matching
+- `src/lib/anthropic-processor.ts` — Import + call `callFallbackLLM()` on API failure
+- `src/lib/agent-session.ts` — Import + call `callFallbackLLM()` on SDK failure
+- `src/bot.ts` — VPS resume catch blocks now try fallback before returning errors
+
+### How It Works Now
+
+```
+Any mode (Local / VPS / Hybrid):
+  Claude fails? (API error, subscription limit, timeout)
+    ├── Try OpenRouter (if OPENROUTER_API_KEY is set)
+    ├── Try Ollama (if running locally)
+    └── Return error message (only if both fail)
+```
+
+### Setup Reminder
+
+To enable fallback, set these in your `.env`:
+```bash
+OPENROUTER_API_KEY=sk-or-v1-your_key
+OPENROUTER_MODEL=moonshotai/kimi-k2.5      # or any model
+OLLAMA_MODEL=qwen3-coder                    # if running Ollama locally
+```
+
+---
+
+## v2.6.0 — 2026-02-23
+
+**Multi-Bot Agent Identities + Cross-Agent Consultation + Board Meetings**
+
+Each agent can now have its own Telegram bot, so messages appear from separate identities (Research Bot, Finance Bot, etc.) instead of all coming from the main bot. Agents can consult each other mid-conversation, and the new `/board` command triggers a full multi-agent discussion on any topic.
+
+### New Features
+
+- **Multi-bot agent identities** — Create separate Telegram bots for Research, Content, Finance, Strategy, and Critic agents. Each agent sends messages from its own bot account. Falls back to main bot for any unconfigured agent.
+- **Cross-agent consultation** — Agents can invoke each other mid-conversation using `[INVOKE:agent|question]` tags. Visible inter-agent communication with responses shown in the chat.
+- **Board meetings (`/board`)** — Triggers a sequential multi-agent discussion. All configured agents weigh in on a topic, then a synthesis is generated. Example: `/board Should we launch a paid newsletter?`
+- **Knowledge base framework** (WIP) — Embedding-based knowledge retrieval via Supabase edge function. Foundation for future RAG capabilities.
+
+### Setup Flow
+
+- **CLAUDE.md Phase 4** now includes full multi-bot setup instructions: BotFather walkthrough, env var names, cross-agent explanation, `/board` usage
+- **`bun run setup:verify`** now checks agent bot tokens (new section `[5/6] Multi-Bot Agent Identities`) — validates each token against Telegram API, reports graceful fallback for missing ones
+
+### New Files
+- `src/lib/bot-registry.ts` — `BotRegistry` class mapping agent names to individual Grammy Bot instances (outbound-only, no polling)
+- `src/lib/cross-agent.ts` — `[INVOKE:agent|question]` parser and executor
+- `src/lib/knowledge-base.ts` — Embedding framework (WIP)
+- `supabase/functions/embed-knowledge/index.ts` — Edge function for embeddings
+
+### Updated Files
+- `src/bot.ts` — Board meeting mode, cross-agent invocation, BotRegistry integration
+- `src/vps-gateway.ts` — VPS-native board meeting support
+- `src/lib/supabase.ts` — `getBoardMeetingContext()` function
+- `src/lib/agent-session.ts` — Skip progress on HITL resume
+- `src/agents/general.ts`, `content.ts`, `finance.ts`, `research.ts`, `strategy.ts` — Cross-agent consultation instructions in system prompts
+- `.env.example` — Documents `TELEGRAM_BOT_TOKEN_RESEARCH/CONTENT/FINANCE/STRATEGY/CRITIC`
+- `CLAUDE.md` — Phase 4 multi-bot setup, cross-agent docs, `/board` usage
+- `setup/verify.ts` — Agent bot token validation (section 5/6)
+
+### Compatibility
+- Fully backward compatible. All features are optional.
+- Without agent bot tokens: everything works exactly as before, all agents use the main bot.
+- Add 1, 3, or all 5 agent tokens — missing ones fall back to the main bot.
+
+---
+
 ## v2.5.3 — 2026-02-19
 
 **ZIP-to-Git Upgrade + Setup Detection**

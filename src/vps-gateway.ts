@@ -48,6 +48,10 @@ import {
   stripAssetDescTag,
 } from "./lib/asset-store";
 import * as supabase from "./lib/supabase";
+import { BotRegistry } from "./lib/bot-registry";
+import { getAgentByTopicId, getAgentConfig } from "./agents";
+import { gatherBoardData } from "./lib/board-data";
+import { stripInvocationTags } from "./lib/cross-agent";
 
 // ============================================================
 // LOAD ENVIRONMENT
@@ -93,6 +97,10 @@ const bot = new Bot(BOT_TOKEN);
 // Initialize bot (required for webhook mode — bot.start() does this for polling)
 await bot.init();
 console.log(`Bot initialized: @${bot.botInfo.username}`);
+
+// Multi-bot registry (agent-specific bots for visible identities)
+const botRegistry = new BotRegistry(bot);
+await botRegistry.initialize();
 
 // Global error handler — prevents Grammy from dumping full Context objects
 bot.catch((err) => {
@@ -465,17 +473,17 @@ async function processCallTaskOnVPS(
   taskDescription: string,
   chatId: string
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return "Cannot process task — no API key configured.";
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENROUTER_API_KEY) {
+    return "Cannot process task — no API key configured.";
+  }
 
   try {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey });
+    const { createResilientMessage, getModelForProvider } = await import("./lib/resilient-client");
 
     const { model } = selectModelForMessage(taskDescription);
 
-    const response = await client.messages.create({
-      model,
+    const response = await createResilientMessage({
+      model: getModelForProvider(model),
       max_tokens: 4096,
       messages: [
         {
@@ -623,6 +631,93 @@ bot.on("message:text", async (ctx) => {
     })
     .catch(() => {});
 
+  // ---- Board Meeting: intercept /board before generic routing ----
+  if (/^\/board\b|^board meeting/i.test(text)) {
+    // If Mac is alive, forward — Mac handles multi-bot board meeting
+    if (isMacAlive()) {
+      console.log("📊 Board meeting → forwarding to Mac");
+      const localResult = await forwardToLocal(text, chatId, threadId);
+      if (localResult.async || (localResult.success && localResult.response)) {
+        if (localResult.response) {
+          await botRegistry.sendAsAgent("general", chatId, localResult.response, { threadId });
+        }
+        return;
+      }
+      console.log("Mac forwarding failed, running board meeting on VPS...");
+    }
+
+    // VPS-native board meeting (Mac down or forwarding failed)
+    console.log("📊 Running board meeting on VPS");
+    const extraContext = text.replace(/^\/board\s*/i, "").replace(/^board meeting\s*/i, "").trim();
+
+    await botRegistry.sendAsAgent("general", chatId,
+      `*Board Meeting Starting*\n\nGathering perspectives from all agents...${extraContext ? `\n\nContext: ${extraContext}` : ""}`,
+      { threadId }
+    );
+
+    const [boardContext, boardData] = await Promise.all([
+      supabase.getBoardMeetingContext(7),
+      gatherBoardData(),
+    ]);
+    console.log(`[BoardMeeting] Data gathered in ${boardData.fetchDurationMs}ms (errors: ${boardData.errors.join(", ") || "none"})`);
+
+    const boardAgents = ["research", "content", "finance", "strategy", "cto", "coo", "critic"];
+    const agentResponses: { agent: string; response: string }[] = [];
+
+    for (const agent of boardAgents) {
+      await botRegistry.sendTypingAsAgent(agent, chatId, threadId);
+
+      const previousInput = agentResponses
+        .map((r) => `**${r.agent}**: ${r.response.substring(0, 300)}`)
+        .join("\n\n");
+
+      const agentConfig = getAgentConfig(agent);
+      const dataBlock = boardData.agentData[agent] || "";
+      const boardPrompt = `${agentConfig?.systemPrompt || ""}
+
+${dataBlock}
+
+${boardContext}
+
+${previousInput ? `## PREVIOUS AGENT INPUTS\n${previousInput}` : ""}
+
+You are participating in a board meeting. Reference specific numbers and data from your LIVE DATA section above. Provide a concise analysis from your domain. Focus on what matters most from your perspective. Keep it to 2-4 key points.${extraContext ? `\n\nAdditional context: ${extraContext}` : ""}`;
+
+      try {
+        const response = await processWithAnthropic(boardPrompt, chatId, ctx);
+        const cleanResponse = stripInvocationTags(response);
+        agentResponses.push({ agent, response: cleanResponse });
+        await botRegistry.sendAsAgent(agent, chatId, cleanResponse, { threadId });
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (err) {
+        console.error(`[BoardMeeting] ${agent} failed:`, err);
+        agentResponses.push({ agent, response: "(unavailable)" });
+      }
+    }
+
+    // Orchestrator synthesizes
+    await botRegistry.sendTypingAsAgent("general", chatId, threadId);
+    const synthesisPrompt = `Board meeting synthesis. All agent contributions:
+
+${agentResponses.map((r) => `**${r.agent.toUpperCase()}**:\n${r.response}`).join("\n\n---\n\n")}
+
+${boardData.sharedSummary ? `## CURRENT METRICS SNAPSHOT\n${boardData.sharedSummary}\n` : ""}
+Synthesize key themes, identify conflicts or alignments, and propose 3-5 concrete action items with clear ownership. Ground your action items in the specific numbers above.`;
+
+    const synthesis = await processWithAnthropic(synthesisPrompt, chatId, ctx);
+    await botRegistry.sendAsAgent("general", chatId, synthesis, { threadId });
+
+    // Persist full meeting
+    await supabase.saveMessage({
+      chat_id: chatId,
+      role: "assistant",
+      content: `[Board Meeting]\n\n${agentResponses.map((r) => `${r.agent}: ${r.response}`).join("\n\n")}\n\n[Synthesis]\n${synthesis}`,
+      metadata: { type: "board_meeting", thread_id: threadId, processed_by: NODE_ID },
+    }).catch(() => {});
+
+    return;
+  }
+
   const typingInterval = setInterval(() => {
     ctx.replyWithChatAction("typing").catch(() => {});
   }, 4000);
@@ -657,6 +752,9 @@ bot.on("message:text", async (ctx) => {
   }
 
   if (response) {
+    // Determine agent from topic (if forum mode)
+    const agentName = threadId ? getAgentByTopicId(threadId) || "general" : "general";
+
     await supabase
       .saveMessage({
         chat_id: chatId,
@@ -666,12 +764,14 @@ bot.on("message:text", async (ctx) => {
           telegram_chat_id: ctx.chat.id,
           thread_id: threadId,
           processed_by: processedBy,
+          agent: agentName,
         },
       })
       .catch(() => {});
-  }
 
-  await sendResponse(ctx, response);
+    // Route response through agent's bot (falls back to primary if no agent token)
+    await botRegistry.sendAsAgent(agentName, chatId, response, { threadId });
+  }
 });
 
 // ============================================================
@@ -1052,7 +1152,43 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
 
-    // Fallback: no snapshot, start fresh with context
+    // Mac-originated task or no snapshot: forward to Mac if alive
+    if (isMacAlive() && MAC_PROCESS_URL) {
+      const macResumeUrl = MAC_PROCESS_URL.replace("/process", "/resume");
+      console.log(`[HYBRID] Forwarding HITL callback to Mac: task=${result.taskId}`);
+      await ctx
+        .editMessageText(`Got it: "${result.choice}". Resuming...`)
+        .catch(() => {});
+
+      try {
+        const res = await fetch(macResumeUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${GATEWAY_SECRET}`,
+          },
+          body: JSON.stringify({
+            taskId: result.taskId,
+            choice: result.choice,
+            sessionId: result.task?.session_id || null,
+            originalPrompt: result.task?.original_prompt || "",
+            pendingQuestion: result.task?.pending_question || null,
+            chatId,
+            threadId: result.task?.metadata?.topicId,
+          }),
+        });
+
+        if (res.ok) {
+          console.log(`[HYBRID] Mac accepted HITL resume for task=${result.taskId}`);
+          return;
+        }
+        console.warn(`[HYBRID] Mac /resume returned ${res.status}, falling back to VPS`);
+      } catch (err: any) {
+        console.warn(`[HYBRID] Mac /resume failed: ${err.message}, falling back to VPS`);
+      }
+    }
+
+    // Fallback: no snapshot, start fresh with context on VPS
     await ctx
       .editMessageText(`Got it: "${result.choice}". Resuming...`)
       .catch(() => {});
@@ -1064,11 +1200,6 @@ bot.on("callback_query:data", async (ctx) => {
     );
     await sendResponse(ctx, response);
     return;
-  }
-
-  // Forward other callbacks to local if alive
-  if (isMacAlive()) {
-    // TODO: Forward callback to local machine's /callback endpoint
   }
 });
 

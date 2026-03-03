@@ -6,7 +6,7 @@
 
 ### How do the three deployment modes handle authentication?
 
-GoBot supports three deployment modes. All three are compliant with Anthropic's Terms of Service.
+GoBot supports three deployment modes. Local mode uses the official Claude Code CLI directly — you're running Anthropic's own product. VPS and Hybrid modes use standard API keys under the Commercial Terms, which is the clearest path for any production or always-on deployment.
 
 **Local mode** uses your Claude Code CLI directly. You authenticate Claude Code on your machine (subscription login), and GoBot spawns `claude -p` subprocesses. This works while your machine is on.
 
@@ -21,7 +21,9 @@ GoBot supports three deployment modes. All three are compliant with Anthropic's 
 | **Cost** | Pro ($20/mo) to start, Max ($100-200/mo) for full power | VPS (~$5/mo) + API costs vary by usage and model | VPS + API costs + subscription |
 | **Best for** | Personal use, testing | Always-on reliability | Best of both worlds |
 
-**A note on Anthropic's January 2026 ToS enforcement:** Anthropic cracked down on third-party tools that were extracting OAuth tokens from Claude subscriptions and using them in their own API clients. GoBot does not do this — it calls `claude -p`, which is Claude Code itself. Your Claude Code handles its own authentication. GoBot never touches, extracts, or forwards any OAuth tokens.
+**A note on Anthropic's ToS (Updated February 20, 2026):** In January 2026, Anthropic cracked down on third-party tools that extracted OAuth tokens from Claude subscriptions and used them in their own API clients. GoBot does not do this — it calls `claude -p`, which is Claude Code itself. Your Claude Code handles its own authentication. GoBot never touches, extracts, or forwards any OAuth tokens.
+
+On February 19, 2026, Anthropic published updated [Legal and Compliance docs](https://code.claude.com/docs/en/legal-and-compliance) stating that subscription OAuth tokens are intended exclusively for Claude Code and Claude.ai, and that the Agent SDK requires API key authentication. For local use on your own computer, Claude Code works as it always has. If you're using GoBot for business or always-on deployments, use API keys (VPS mode) with GoBot's smart routing (Haiku for simple, Sonnet for medium, Opus for complex) to keep costs manageable.
 
 ---
 
@@ -116,4 +118,4 @@ GoBot starts with Telegram as the primary interface, but it can be connected to 
 - [Troubleshooting Guide](./troubleshooting.md)
 - [Autonomee Community](https://skool.com/autonomee)
 
-<!-- Updated February 19, 2026: Clarified deployment modes and authentication following Anthropic's January 2026 ToS enforcement. -->
+<!-- Updated February 20, 2026: Updated ToS section to reflect Anthropic's Feb 19 Legal and Compliance docs update. Added Agent SDK API key requirement and smart routing recommendation. -->

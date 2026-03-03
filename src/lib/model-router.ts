@@ -5,7 +5,11 @@
  * into a standalone module. Used by both the legacy processor
  * and the new Agent SDK session manager.
  *
- * Distribution target: ~60% Haiku, ~30% Sonnet, ~10% Opus
+ * Cost-optimized: Default to Haiku (~$0.003/msg), only escalate
+ * to Sonnet (~$0.15/msg) when tools are clearly needed, and to
+ * Opus (~$0.50+/msg) for deep reasoning/strategy tasks.
+ *
+ * Distribution target: ~65% Haiku, ~25% Sonnet, ~10% Opus
  */
 
 // ============================================================
@@ -32,26 +36,28 @@ export const MODEL_COSTS: Record<ModelTier, { input: number; output: number }> =
 // PATTERNS
 // ============================================================
 
-// Patterns that indicate simple requests (→ Haiku)
-const SIMPLE_PATTERNS = [
-  /^(hi|hey|hello|morning|good morning|gm|thanks|ok|yes|no|sure|got it)/i,
-  /what('s| is) (the )?(time|date|day)/i,
-  /^(check|show|list|get|find|search|look up)\b/i,
-  /^(status|how many|count)\b/i,
-  /unread email/i,
-  /calendar today/i,
-  /what('s| is) on my (plate|calendar|schedule)/i,
-  /^remind me/i,
+// Patterns that indicate tool usage is needed (→ Sonnet)
+const TOOL_PATTERNS = [
+  /\b(wordpress|wp|blog post|website|theme|deploy|rollback)\b/i,
+  /\b(publish|staging|production)\b.*\b(post|page|site)\b/i,
+  /\b(send|reply|forward|draft)\b.*\b(email|message|whatsapp|linkedin)\b/i,
+  /\b(email|message|whatsapp|linkedin)\b.*\b(send|reply|forward|draft)\b/i,
+  /\b(create|add|update|delete|move|edit)\b.*\b(task|project|page|post|event)\b/i,
+  /\b(task|project|page|post|event)\b.*\b(create|add|update|delete|move|edit)\b/i,
+  /\b(schedule|book|block|cancel)\b.*\b(meeting|call|event|time)\b/i,
+  /\b(github|pr|pull request|issue|commit|push|merge)\b/i,
+  /\b(skool|community|members|analytics)\b/i,
+  /\b(notion|database)\b.*\b(query|search|update|create)\b/i,
 ];
 
-// Patterns that indicate complex requests (→ Opus)
+// Patterns that indicate complex reasoning (→ Opus)
 const COMPLEX_PATTERNS = [
   /\b(analyze|analysis|evaluate|compare|contrast)\b/i,
   /\b(strategy|strategic|plan|roadmap|architecture)\b/i,
   /\b(write|draft|compose) .{50,}/i, // long writing requests
   /\b(research|investigate|deep dive)\b/i,
   /\b(decide|decision|should I|pros and cons)\b/i,
-  /\b(explain|why|how does .{30,})\b/i, // complex explanations
+  /\b(explain in detail|why should|how does .{50,})\b/i, // complex explanations
   /\b(refactor|redesign|optimize|improve)\b/i,
   /\b(sponsor|partnership|brand deal|negotiate)\b/i,
   /\b(content strategy|video idea|script)\b/i,
@@ -64,6 +70,9 @@ const COMPLEX_PATTERNS = [
 /**
  * Classify message complexity to select the right model tier.
  * Zero overhead — pure regex matching, no API calls.
+ *
+ * Cost-optimized: defaults to Haiku. Only escalates when
+ * tool usage or deep reasoning is clearly needed.
  */
 export function classifyComplexity(message: string): ModelTier {
   // Check complex patterns first (Opus)
@@ -71,16 +80,21 @@ export function classifyComplexity(message: string): ModelTier {
     if (pattern.test(message)) return "opus";
   }
 
-  // Check simple patterns (Haiku)
-  for (const pattern of SIMPLE_PATTERNS) {
-    if (pattern.test(message)) return "haiku";
+  // Check tool patterns (Sonnet)
+  for (const pattern of TOOL_PATTERNS) {
+    if (pattern.test(message)) return "sonnet";
   }
 
-  // Short messages (< 40 chars) → Haiku
-  if (message.length < 40) return "haiku";
+  // Default: Haiku (conversational, greetings, short questions, status checks)
+  return "haiku";
+}
 
-  // Medium-length or unclear → Sonnet (good default)
-  return "sonnet";
+/**
+ * Map a model ID for OpenRouter (adds "anthropic/" prefix).
+ */
+export function toOpenRouterModel(model: string): string {
+  if (model.startsWith("anthropic/")) return model;
+  return `anthropic/${model}`;
 }
 
 /**

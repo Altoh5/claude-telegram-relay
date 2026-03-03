@@ -21,11 +21,12 @@ export interface AgentConfig {
 // Default topic-to-agent mapping. Update these with your Telegram forum topic IDs.
 // Find topic IDs by sending a message in each topic and checking the bot logs.
 export const topicAgentMap: Record<number, string> = {
-  // Example:
-  // 3: "research",
-  // 4: "content",
-  // 5: "finance",
-  // 6: "strategy",
+  3: "research",
+  4: "content",
+  5: "finance",
+  6: "strategy",
+  122: "coo",
+  123: "cto",
 };
 
 export function getAgentByTopicId(topicId: number): string | undefined {
@@ -49,6 +50,14 @@ export function getAgentConfig(agentName: string): AgentConfig | undefined {
     case "critic":
     case "devils-advocate":
       return require("./critic").default;
+    case "cto":
+    case "dev":
+    case "development":
+      return require("./cto").default;
+    case "coo":
+    case "ops":
+    case "operations":
+      return require("./coo").default;
     case "general":
     case "orchestrator":
     default:
@@ -61,8 +70,10 @@ export const AGENT_INVOCATION_MAP: Record<string, string[]> = {
   research: ["critic"],
   content: ["critic", "research"],
   finance: ["critic"],
-  strategy: ["critic", "finance", "research"],
-  general: ["critic", "finance", "research", "content", "strategy"],
+  strategy: ["critic", "finance", "research", "cto"],
+  general: ["critic", "finance", "research", "content", "strategy", "cto", "coo"],
+  cto: ["critic", "research"],
+  coo: ["critic", "finance", "cto"],
   critic: [], // Critic doesn't invoke others (prevents loops)
 };
 

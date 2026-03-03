@@ -40,7 +40,7 @@ git push origin master
 
 An always-on Telegram agent that:
 - Relays your messages to Claude and sends back responses
-- **Two processing engines**: Claude Code CLI (local, uses your subscription) or Anthropic API (VPS, pay-per-token). Both are fully compliant with Anthropic's Terms of Service.
+- **Two processing engines**: Claude Code CLI (local, uses your subscription) or Anthropic API (VPS, pay-per-token). Local mode runs Anthropic's official Claude Code CLI directly — nothing changes there. For production/always-on deployments, we recommend API keys with smart routing to manage costs. See [Anthropic's Legal and Compliance page](https://code.claude.com/docs/en/legal-and-compliance) for the latest authentication policies.
 - **Hybrid mode**: VPS always on, forwards to local when your machine is awake
 - Runs multiple specialized AI agents (Research, Content, Finance, Strategy, Critic)
 - **Extensible via MCP**: Connect any MCP servers you use (email, calendar, project management, etc.)
@@ -277,8 +277,49 @@ The bot includes 6 pre-configured agents. You can customize them or use defaults
 4. Send a message in each topic -- check logs for the topic ID numbers
 5. Tell me the topic IDs and I'll update `src/agents/base.ts`
 
+### Multi-Bot Agent Identities (Optional)
+
+Each agent can have its own Telegram bot, so messages appear from separate identities (e.g., "Research Bot", "Finance Bot") instead of all coming from the main bot.
+
+**Without multi-bot:** Everything works fine — all agents respond through your main bot.
+**With multi-bot:** Each agent sends messages from its own bot account for visual separation.
+
+#### Setup steps:
+1. Open [@BotFather](https://t.me/BotFather) on Telegram
+2. Create up to 5 agent bots with `/newbot`. Suggested names:
+   - `YourName Research Bot` → `yourname_research_bot`
+   - `YourName Content Bot` → `yourname_content_bot`
+   - `YourName Finance Bot` → `yourname_finance_bot`
+   - `YourName Strategy Bot` → `yourname_strategy_bot`
+   - `YourName Critic Bot` → `yourname_critic_bot`
+3. Copy each bot token and add to `.env`:
+   ```
+   TELEGRAM_BOT_TOKEN_RESEARCH=token_here
+   TELEGRAM_BOT_TOKEN_CONTENT=token_here
+   TELEGRAM_BOT_TOKEN_FINANCE=token_here
+   TELEGRAM_BOT_TOKEN_STRATEGY=token_here
+   TELEGRAM_BOT_TOKEN_CRITIC=token_here
+   ```
+4. You don't need to set up webhooks — agent bots are outbound-only (send messages, no polling).
+
+Any tokens you skip will gracefully fall back to the main bot. You can add 1, 3, or all 5.
+
+### Cross-Agent Consultation
+
+When enabled (via multi-bot tokens), agents can consult each other during conversations. For example, the General agent can ask Research for data, or Strategy can ask Finance for numbers. This happens automatically through `[INVOKE:agent|question]` tags in the agent's thinking.
+
+### Board Meetings (`/board`)
+
+The `/board` command triggers a multi-agent discussion. All configured agents weigh in on a topic sequentially, then a synthesis is generated. Useful for major decisions.
+
+Example: `/board Should we launch a paid newsletter?`
+
+Each agent responds from its own perspective (Research provides data, Finance runs numbers, Critic stress-tests, etc.).
+
+**Note:** Board meetings work with or without multi-bot tokens. Without them, all responses come from the main bot.
+
 ### Tell me:
-"Use defaults" or "I want to customize agents" or provide your topic IDs.
+"Use defaults" or "I want to customize agents" or provide your topic IDs. For multi-bot, share the tokens you created.
 
 ---
 

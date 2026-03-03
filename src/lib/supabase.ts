@@ -265,6 +265,56 @@ export async function getConversationContext(
 }
 
 /**
+ * Get recent messages across all channels/topics for board meeting context.
+ */
+export async function getBoardMeetingContext(days: number = 7): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) return "\n\nNo conversation data available.";
+
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const { data, error } = await sb
+      .from("messages")
+      .select("role, content, metadata, created_at")
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error || !data || data.length === 0) {
+      return "\n\nNo recent conversations across topics.";
+    }
+
+    // Group by channel (thread_id from metadata)
+    const byChannel: Record<string, typeof data> = {};
+    for (const msg of data) {
+      const threadId = (msg.metadata as any)?.thread_id;
+      const channel = threadId ? `topic_${threadId}` : "general";
+      if (!byChannel[channel]) byChannel[channel] = [];
+      if (byChannel[channel].length < 15) byChannel[channel].push(msg);
+    }
+
+    let context = `\n\n## BOARD MEETING CONTEXT (Last ${days} days)\n`;
+    context += "Review of conversations across all agents:\n\n";
+
+    for (const [channel, messages] of Object.entries(byChannel)) {
+      context += `### ${channel}\n`;
+      const exchanges = messages.map((m: any) => {
+        const role = m.role === "user" ? "Goda" : "Agent";
+        const preview = m.content.substring(0, 200) + (m.content.length > 200 ? "..." : "");
+        return `- ${role}: ${preview}`;
+      });
+      context += exchanges.join("\n") + "\n\n";
+    }
+
+    return context;
+  } catch {
+    return "\n\nFailed to load conversation context.";
+  }
+}
+
+/**
  * Semantic search across messages using the edge function.
  * Falls back to basic text search (ilike) when edge function is unavailable.
  */

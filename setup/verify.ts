@@ -70,7 +70,7 @@ async function runCommand(
 // ---------------------------------------------------------------------------
 
 function checkRequiredEnv() {
-  console.log(`\n${cyan("  [1/5] Required Environment Variables")}`);
+  console.log(`\n${cyan("  [1/6] Required Environment Variables")}`);
 
   const required: [string, string][] = [
     ["TELEGRAM_BOT_TOKEN", "Telegram bot token"],
@@ -92,7 +92,7 @@ function checkRequiredEnv() {
 }
 
 async function checkTelegram() {
-  console.log(`\n${cyan("  [2/5] Telegram Connectivity")}`);
+  console.log(`\n${cyan("  [2/6] Telegram Connectivity")}`);
 
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token || token.includes("your_")) {
@@ -119,7 +119,7 @@ async function checkTelegram() {
 }
 
 async function checkSupabase() {
-  console.log(`\n${cyan("  [3/5] Supabase Connectivity")}`);
+  console.log(`\n${cyan("  [3/6] Supabase Connectivity")}`);
 
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -175,7 +175,7 @@ async function checkServices() {
   const services = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog"];
 
   if (process.platform === "darwin") {
-    console.log(`\n${cyan("  [4/5] launchd Services")}`);
+    console.log(`\n${cyan("  [4/6] launchd Services")}`);
 
     const result = await runCommand(["launchctl", "list"]);
     if (!result.ok) {
@@ -204,7 +204,7 @@ async function checkServices() {
       }
     }
   } else {
-    console.log(`\n${cyan("  [4/5] Background Services")}`);
+    console.log(`\n${cyan("  [4/6] Background Services")}`);
 
     // Check PM2 for daemon services
     const pm2Result = await runCommand(["npx", "pm2", "jlist"]);
@@ -237,8 +237,49 @@ async function checkServices() {
   }
 }
 
+async function checkAgentBots() {
+  console.log(`\n${cyan("  [5/6] Multi-Bot Agent Identities (Optional)")}`);
+
+  const agentTokens: [string, string][] = [
+    ["TELEGRAM_BOT_TOKEN_RESEARCH", "Research agent bot"],
+    ["TELEGRAM_BOT_TOKEN_CONTENT", "Content agent bot"],
+    ["TELEGRAM_BOT_TOKEN_FINANCE", "Finance agent bot"],
+    ["TELEGRAM_BOT_TOKEN_STRATEGY", "Strategy agent bot"],
+    ["TELEGRAM_BOT_TOKEN_CRITIC", "Critic agent bot"],
+  ];
+
+  let configured = 0;
+  for (const [key, label] of agentTokens) {
+    const value = process.env[key];
+    if (!value || value.includes("your_")) {
+      record(label, "skip", "Not configured (will use main bot)");
+      continue;
+    }
+
+    configured++;
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${value}/getMe`);
+      const data = (await response.json()) as { ok: boolean; result?: { username: string; id: number } };
+      if (data.ok && data.result) {
+        record(label, "pass", `@${data.result.username} (ID: ${data.result.id})`);
+      } else {
+        record(label, "fail", `${key} token invalid — getMe returned ok=false`);
+      }
+    } catch (err: any) {
+      record(label, "fail", `${key} connection error: ${err.message}`);
+    }
+  }
+
+  if (configured === 0) {
+    console.log(dim(`        No agent bot tokens configured — all agents will use the main bot.`));
+    console.log(dim(`        To enable multi-bot identities, see CLAUDE.md Phase 4.`));
+  } else {
+    console.log(dim(`        ${configured}/5 agent bots configured. Missing ones fall back to main bot.`));
+  }
+}
+
 function checkOptionalIntegrations() {
-  console.log(`\n${cyan("  [5/5] Optional Integrations")}`);
+  console.log(`\n${cyan("  [6/6] Optional Integrations")}`);
 
   const optional: [string, string][] = [
     ["ELEVENLABS_API_KEY", "ElevenLabs (voice)"],
@@ -273,6 +314,7 @@ async function main() {
   await checkTelegram();
   await checkSupabase();
   await checkServices();
+  await checkAgentBots();
   checkOptionalIntegrations();
 
   // Summary
