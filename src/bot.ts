@@ -44,7 +44,7 @@ import {
   log as sbLog,
   createTask,
   updateTask,
-} from "./lib/supabase";
+} from "./lib/db";
 
 // Task Queue (Human-in-the-Loop)
 import {
@@ -60,6 +60,9 @@ import {
   processWithAnthropic,
   type ResumeState,
 } from "./lib/anthropic-processor";
+
+// Docs comment bot (Drive API replies)
+import { postCommentReply } from "./lib/docs-api";
 import {
   processWithAgentSDK,
   type AgentResumeState,
@@ -521,6 +524,29 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     return;
   }
 
+  // ----- Docs Comment Bot Commands -----
+
+  // /post <taskId> — publish a docs comment draft
+  if (lowerText.startsWith("/post ")) {
+    const taskId = text.slice(6).trim();
+    await handleDocsPost(ctx, taskId);
+    return;
+  }
+
+  // /skip <taskId> — dismiss a docs comment task
+  if (lowerText.startsWith("/skip ")) {
+    const taskId = text.slice(6).trim();
+    await handleDocsSkip(ctx, taskId);
+    return;
+  }
+
+  // Reply to a docs draft message — update the draft
+  const replyToId = ctx.message?.reply_to_message?.message_id;
+  if (replyToId) {
+    const handled = await handleDocsDraftEdit(ctx, replyToId, text);
+    if (handled) return;
+  }
+
   // ----- Default: Claude Processing -----
 
   // Enrich with YouTube transcripts if URLs detected
@@ -625,6 +651,94 @@ async function handleTwinmindCommand(ctx: Context, command: string): Promise<voi
   }
 
   await ctx.reply(`Processed ${unprocessed.length} meeting(s).`);
+}
+
+// --- Docs Comment Bot Handlers ---
+
+async function handleDocsPost(ctx: Context, taskId: string): Promise<void> {
+  const sb = (await import("./lib/supabase")).getSupabase();
+  if (!sb || !taskId) {
+    await ctx.reply("❌ Invalid task ID.");
+    return;
+  }
+
+  const { data: task } = await sb
+    .from("async_tasks")
+    .select("*")
+    .eq("id", taskId)
+    .single();
+
+  if (!task || task.metadata?.type !== "docs_comment") {
+    await ctx.reply("❌ Task not found or already completed.");
+    return;
+  }
+
+  const { docId, commentId, docTitle, draft } = task.metadata;
+
+  try {
+    await postCommentReply(docId, commentId, draft);
+    await sb
+      .from("async_tasks")
+      .update({ status: "completed" })
+      .eq("id", taskId);
+    await ctx.reply(
+      `✅ Reply posted to *${docTitle}*\n\n> ${draft}`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (err: any) {
+    await ctx.reply(`❌ Failed to post reply: ${err.message}`);
+  }
+}
+
+async function handleDocsSkip(ctx: Context, taskId: string): Promise<void> {
+  const sb = (await import("./lib/supabase")).getSupabase();
+  if (!sb || !taskId) return;
+
+  await sb
+    .from("async_tasks")
+    .update({ status: "failed", result: "skipped by user" })
+    .eq("id", taskId);
+
+  await ctx.reply("↩️ Comment dismissed.");
+}
+
+async function handleDocsDraftEdit(
+  ctx: Context,
+  replyToMessageId: number,
+  newDraft: string
+): Promise<boolean> {
+  const sb = (await import("./lib/supabase")).getSupabase();
+  if (!sb) return false;
+
+  const chatId = String(ctx.chat?.id || "");
+
+  const { data: tasks } = await sb
+    .from("async_tasks")
+    .select("*")
+    .eq("status", "needs_input")
+    .eq("chat_id", chatId);
+
+  const task = (tasks || []).find(
+    (t: any) =>
+      t.metadata?.telegramMessageId === replyToMessageId &&
+      t.metadata?.type === "docs_comment"
+  );
+
+  if (!task) return false;
+
+  await sb
+    .from("async_tasks")
+    .update({
+      metadata: { ...task.metadata, draft: newDraft },
+    })
+    .eq("id", task.id);
+
+  await ctx.reply(
+    `✏️ Draft updated.\n\n> ${newDraft}\n\n\`/post ${task.id}\` to publish • \`/skip ${task.id}\` to dismiss`,
+    { parse_mode: "Markdown" }
+  );
+
+  return true;
 }
 
 // --- Voice Messages ---
