@@ -383,28 +383,46 @@ async function handleNewReply(
   await sb.from("processed_comments").insert(inserts);
 }
 
+async function callLlm(prompt: string): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return "(No LLM API key — write your reply above)";
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "anthropic/claude-sonnet-4-5",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 1000,
+    }),
+  });
+  if (!res.ok) throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content?.trim() || "";
+}
+
 async function draftFollowUp(
   docTitle: string,
   threadContext: string,
   docText: string
 ): Promise<string> {
   try {
-    const { runClaudeWithTimeout } = await import("./lib/claude");
     const contextSection = docText
       ? `\n\nDocument content:\n<doc>\n${docText.slice(0, 6000)}\n</doc>`
       : "";
-
     const prompt =
       `You are a helpful AI assistant for Alvin Toh. Draft a concise, professional reply to the following follow-up question in a Google Doc comment thread.${contextSection}\n\n` +
       `Document: "${docTitle}"\n` +
       `${threadContext}\n\n` +
       `Write only the reply text, no preamble. Be helpful and specific.`;
-
-    const result = await runClaudeWithTimeout(prompt, 120_000);
-    return result?.trim() || "(Draft unavailable — write your reply above)";
+    const result = await callLlm(prompt);
+    return result || "(Draft unavailable — write your reply above)";
   } catch (err) {
-    console.error("Claude follow-up draft failed:", err);
-    return "(Claude unavailable — write your reply above)";
+    console.error("Draft follow-up failed:", err);
+    return "(Draft unavailable — write your reply above)";
   }
 }
 
@@ -414,22 +432,19 @@ async function draftReply(
   docText: string
 ): Promise<string> {
   try {
-    const { runClaudeWithTimeout } = await import("./lib/claude");
     const contextSection = docText
       ? `\n\nDocument content:\n<doc>\n${docText.slice(0, 6000)}\n</doc>`
       : "";
-
     const prompt =
       `You are a helpful AI assistant for Alvin Toh. Draft a concise, professional reply to the following comment left in a Google Doc.${contextSection}\n\n` +
       `Document: "${docTitle}"\n` +
       `Comment from ${comment.author}: "${comment.content}"\n\n` +
       `Write only the reply text, no preamble. Be helpful and specific.`;
-
-    const result = await runClaudeWithTimeout(prompt, 120_000);
-    return result?.trim() || "(Draft unavailable — write your reply above)";
+    const result = await callLlm(prompt);
+    return result || "(Draft unavailable — write your reply above)";
   } catch (err) {
-    console.error("Claude draft failed:", err);
-    return "(Claude unavailable — write your reply above)";
+    console.error("Draft reply failed:", err);
+    return "(Draft unavailable — write your reply above)";
   }
 }
 
