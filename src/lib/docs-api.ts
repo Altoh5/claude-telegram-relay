@@ -7,12 +7,20 @@
 
 import { getBotAccessToken } from "./google-bot-auth";
 
+export interface DocReply {
+  id: string;
+  content: string;
+  author: string;
+  createdTime: string;
+}
+
 export interface DocComment {
   id: string;
   content: string;
   author: string;
   resolved: boolean;
   createdTime: string;
+  replies: DocReply[];
 }
 
 /**
@@ -52,7 +60,7 @@ export async function fetchDocTitle(docId: string): Promise<string> {
 export async function listComments(docId: string): Promise<DocComment[]> {
   const token = await getBotAccessToken();
   const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${docId}/comments?fields=comments(id,content,author,resolved,createdTime)&includeDeleted=false`,
+    `https://www.googleapis.com/drive/v3/files/${docId}/comments?fields=comments(id,content,author,resolved,createdTime,replies(id,content,author,createdTime))&includeDeleted=false&pageSize=100`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!response.ok) {
@@ -65,6 +73,12 @@ export async function listComments(docId: string): Promise<DocComment[]> {
     author: c.author?.displayName || "Unknown",
     resolved: c.resolved || false,
     createdTime: c.createdTime || "",
+    replies: (c.replies || []).map((r: any) => ({
+      id: r.id,
+      content: r.content || "",
+      author: r.author?.displayName || "Unknown",
+      createdTime: r.createdTime || "",
+    })),
   }));
   return comments.filter((c) => !c.resolved);
 }

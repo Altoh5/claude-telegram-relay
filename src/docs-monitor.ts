@@ -16,6 +16,7 @@ import {
   listComments,
   postCommentReply,
   type DocComment,
+  type DocReply,
 } from "./lib/docs-api";
 import { getSupabase } from "./lib/supabase";
 
@@ -181,17 +182,37 @@ async function processDoc(docId: string, docTitle: string): Promise<void> {
 
   if (!comments.length) return;
 
-  const commentIds = comments.map((c) => c.id);
+  // Collect all IDs to check: top-level comments + all reply IDs
+  const allIds: string[] = [];
+  for (const c of comments) {
+    allIds.push(c.id);
+    for (const r of c.replies) allIds.push(r.id);
+  }
+
   const { data: processed } = await sb
     .from("processed_comments")
     .select("comment_id")
-    .in("comment_id", commentIds);
+    .in("comment_id", allIds);
 
   const processedIds = new Set((processed || []).map((r: any) => r.comment_id));
-  const newComments = comments.filter((c) => !processedIds.has(c.id));
 
-  for (const comment of newComments) {
-    await handleNewComment(docId, docTitle, comment);
+  // Handle new top-level comments
+  for (const comment of comments) {
+    if (!processedIds.has(comment.id)) {
+      await handleNewComment(docId, docTitle, comment);
+      processedIds.add(comment.id); // avoid double-processing within same run
+    }
+  }
+
+  // Handle new user replies within already-processed comment threads
+  for (const comment of comments) {
+    if (!processedIds.has(comment.id)) continue; // only in threads we've handled
+    for (const reply of comment.replies) {
+      if (!processedIds.has(reply.id) && reply.author !== "alt bot") {
+        await handleNewReply(docId, docTitle, comment, reply);
+        processedIds.add(reply.id);
+      }
+    }
   }
 }
 
@@ -276,11 +297,115 @@ async function handleNewComment(
       .eq("id", task.id);
   }
 
-  await sb.from("processed_comments").insert({
-    comment_id: comment.id,
-    doc_id: docId,
-    task_id: String(task.id),
-  });
+  // Mark the top-level comment and our bot reply as processed
+  const inserts: any[] = [{ comment_id: comment.id, doc_id: docId, task_id: String(task.id) }];
+  if (replyId) inserts.push({ comment_id: replyId, doc_id: docId, task_id: String(task.id) });
+  await sb.from("processed_comments").insert(inserts);
+}
+
+async function handleNewReply(
+  docId: string,
+  docTitle: string,
+  comment: DocComment,
+  reply: DocReply
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+
+  console.log(`New reply in "${docTitle}" from ${reply.author}: ${reply.content.slice(0, 80)}`);
+
+  let docText = "";
+  try {
+    docText = await fetchDocAsText(docId);
+  } catch {}
+
+  // Include the full thread context in the prompt
+  const threadContext = `Original comment from ${comment.author}: "${comment.content}"\nFollow-up from ${reply.author}: "${reply.content}"`;
+  const draft = await draftFollowUp(docTitle, threadContext, docText);
+
+  let replyId: string | null = null;
+  try {
+    replyId = await postCommentReply(docId, comment.id, draft);
+    console.log(`Posted follow-up reply to doc (replyId: ${replyId})`);
+  } catch (err) {
+    console.error("Failed to post follow-up reply to doc:", err);
+  }
+
+  const { data: task } = await sb
+    .from("async_tasks")
+    .insert({
+      chat_id: CHAT_ID,
+      original_prompt: `Follow-up reply in "${docTitle}"`,
+      status: "needs_input",
+      metadata: {
+        type: "docs_comment",
+        docId,
+        docTitle,
+        commentId: comment.id,
+        commentAuthor: reply.author,
+        commentText: reply.content,
+        draft,
+        replyId,
+      },
+    })
+    .select()
+    .single();
+
+  if (!task) {
+    console.error("Failed to create async task for reply");
+    return;
+  }
+
+  const postedNote = replyId
+    ? `_Draft posted to doc\\. Reply here to update it in the doc\\._`
+    : `_Could not post to doc — reply here to set a draft\\._`;
+
+  const msgText =
+    `📄 Follow\\-up in *${escapeMarkdown(docTitle)}*\n` +
+    `From: ${escapeMarkdown(reply.author)}\n\n` +
+    `> ${escapeMarkdown(reply.content)}\n\n` +
+    `*Drafted reply:*\n${escapeMarkdown(draft)}\n\n` +
+    `${postedNote}\n` +
+    `\`/skip ${task.id}\` to delete from doc`;
+
+  const sentMsg = await sendMessage(msgText);
+
+  if (sentMsg?.message_id) {
+    await sb
+      .from("async_tasks")
+      .update({ metadata: { ...task.metadata, telegramMessageId: sentMsg.message_id } })
+      .eq("id", task.id);
+  }
+
+  // Mark the user's reply and the bot's reply as processed
+  const inserts: any[] = [{ comment_id: reply.id, doc_id: docId, task_id: String(task.id) }];
+  if (replyId) inserts.push({ comment_id: replyId, doc_id: docId, task_id: String(task.id) });
+  await sb.from("processed_comments").insert(inserts);
+}
+
+async function draftFollowUp(
+  docTitle: string,
+  threadContext: string,
+  docText: string
+): Promise<string> {
+  try {
+    const { runClaudeWithTimeout } = await import("./lib/claude");
+    const contextSection = docText
+      ? `\n\nDocument content:\n<doc>\n${docText.slice(0, 6000)}\n</doc>`
+      : "";
+
+    const prompt =
+      `You are a helpful AI assistant for Alvin Toh. Draft a concise, professional reply to the following follow-up question in a Google Doc comment thread.${contextSection}\n\n` +
+      `Document: "${docTitle}"\n` +
+      `${threadContext}\n\n` +
+      `Write only the reply text, no preamble. Be helpful and specific.`;
+
+    const result = await runClaudeWithTimeout(prompt, 120_000);
+    return result?.trim() || "(Draft unavailable — write your reply above)";
+  } catch (err) {
+    console.error("Claude follow-up draft failed:", err);
+    return "(Claude unavailable — write your reply above)";
+  }
 }
 
 async function draftReply(
