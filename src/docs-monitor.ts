@@ -285,7 +285,7 @@ async function draftReply(
       `Comment from ${comment.author}: "${comment.content}"\n\n` +
       `Write only the reply text, no preamble. Be helpful and specific.`;
 
-    const result = await runClaudeWithTimeout(prompt, 30_000);
+    const result = await runClaudeWithTimeout(prompt, 120_000);
     return result?.trim() || "(Draft unavailable — write your reply above)";
   } catch (err) {
     console.error("Claude draft failed:", err);

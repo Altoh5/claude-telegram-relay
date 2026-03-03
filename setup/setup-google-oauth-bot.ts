@@ -22,7 +22,7 @@ const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 const REDIRECT_PORT = 8977; // Different port from main OAuth script
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`;
 const SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/drive",
 ].join(" ");
 
