@@ -34,14 +34,15 @@ const cx = new ConvexHttpClient(CONVEX_URL);
 async function fetchAll(
   table: string,
   select = "*",
-  extraParams = ""
+  extraParams = "",
+  orderCol = "id"
 ): Promise<any[]> {
   const all: any[] = [];
   let offset = 0;
   const limit = 1000;
 
   while (true) {
-    const url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}&limit=${limit}&offset=${offset}&order=id.asc${extraParams ? "&" + extraParams : ""}`;
+    const url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}&limit=${limit}&offset=${offset}&order=${orderCol}.asc${extraParams ? "&" + extraParams : ""}`;
     const res = await fetch(url, {
       headers: {
         apikey: SUPABASE_KEY,
@@ -133,7 +134,7 @@ async function migrateTwinmindMeetings() {
 
 async function migrateNodeHeartbeat() {
   console.log("Migrating node_heartbeat...");
-  const rows = await fetchAll("node_heartbeat");
+  const rows = await fetchAll("node_heartbeat", "*", "", "node_id");
   console.log(`  Found ${rows.length} rows`);
 
   for (let i = 0; i < rows.length; i++) {
