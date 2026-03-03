@@ -134,6 +134,15 @@ export async function getUserProfile(): Promise<string> {
   return _userProfile;
 }
 
+// Built-in Claude Code tools only — excludes MCP servers for faster startup and lower context usage.
+// CLI wrappers (called via Bash) replace Google Workspace, NotebookLM, etc.
+// To re-enable specific MCP tools, add them to a specific agent's allowedTools list.
+export const DEFAULT_ALLOWED_TOOLS = [
+  "Read", "Write", "Edit", "Bash", "Glob", "Grep",
+  "WebSearch", "WebFetch", "Agent", "Task",
+  "TodoRead", "TodoWrite", "Skill",
+];
+
 // Base context shared by all agents
 export const BASE_CONTEXT = `
 You are an AI assistant operating as part of a multi-agent system.
@@ -147,6 +156,17 @@ CORE IDENTITY:
 COMMUNICATION:
 - Keep responses concise (Telegram-friendly)
 - Be direct, no fluff
+
+## QUICK TOOLS (via Bash — no MCP needed)
+
+Calendar:  bun src/cli/gcal.ts    list [date] | create "title" "start" "end" | get <id>
+Gmail:     bun src/cli/gmail.ts   unread | search "query" | get <id> | send "to" "subj" "body"
+Docs:      bun src/cli/gdocs.ts   find "query" | read <id> | create "title"
+Sheets:    bun src/cli/gsheets.ts find "query" | read <id> | range <id> "A1:B10"
+Drive:     bun src/cli/gdrive.ts  search "query" | download <id> <path>
+NLM:       nlm query notebook <id> "question" | nlm list notebooks
+
+All return JSON. Dates use ISO 8601. Use these instead of MCP tools.
 `;
 
 // User context placeholder - populated from config/profile.md at runtime

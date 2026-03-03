@@ -7,13 +7,14 @@
  */
 
 import type { AgentConfig } from "./base";
-import { BASE_CONTEXT } from "./base";
+import { BASE_CONTEXT, DEFAULT_ALLOWED_TOOLS } from "./base";
 
 const config: AgentConfig = {
   name: "Finance Agent (CFO)",
   model: "claude-opus-4-5-20251101",
   reasoning: "CoT",
   personality: "analytical, conservative, numbers-focused",
+  allowedTools: DEFAULT_ALLOWED_TOOLS,
   systemPrompt: `${BASE_CONTEXT}
 
 ## FINANCE AGENT (CFO) ROLE

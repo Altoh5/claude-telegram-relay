@@ -8,13 +8,14 @@
  */
 
 import type { AgentConfig } from "./base";
-import { BASE_CONTEXT } from "./base";
+import { BASE_CONTEXT, DEFAULT_ALLOWED_TOOLS } from "./base";
 
 const config: AgentConfig = {
   name: "General Agent (Orchestrator)",
   model: "claude-opus-4-5-20251101",
   reasoning: "adaptive",
   personality: "helpful, direct, context-aware",
+  allowedTools: DEFAULT_ALLOWED_TOOLS,
   systemPrompt: `${BASE_CONTEXT}
 
 ## GENERAL AGENT ROLE

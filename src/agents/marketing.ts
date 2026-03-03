@@ -13,7 +13,7 @@
 import { readFile } from "fs/promises";
 import { join } from "path";
 import type { AgentConfig } from "./base";
-import { BASE_CONTEXT } from "./base";
+import { BASE_CONTEXT, DEFAULT_ALLOWED_TOOLS } from "./base";
 
 // Load full reference material at runtime
 let _skillReference: string | null = null;
@@ -36,6 +36,7 @@ const config: AgentConfig = {
   model: "claude-opus-4-5-20251101",
   reasoning: "RoT",
   personality: "direct, specific, conversion-focused, internet-native voice",
+  allowedTools: DEFAULT_ALLOWED_TOOLS,
   systemPrompt: `${BASE_CONTEXT}
 
 ## MARKETING AGENT (DIRECT RESPONSE COPYWRITER) ROLE
