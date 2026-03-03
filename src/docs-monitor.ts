@@ -38,7 +38,7 @@ async function sendMessage(text: string): Promise<{ message_id?: number } | null
       body: JSON.stringify({
         chat_id: CHAT_ID,
         text,
-        parse_mode: "Markdown",
+        parse_mode: "MarkdownV2",
       }),
     });
     if (!res.ok) return null;
