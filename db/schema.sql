@@ -352,7 +352,7 @@ CREATE TABLE IF NOT EXISTS watched_docs (
 
 CREATE TABLE IF NOT EXISTS processed_comments (
   comment_id    TEXT PRIMARY KEY,
-  doc_id        TEXT NOT NULL REFERENCES watched_docs(doc_id),
+  doc_id        TEXT NOT NULL REFERENCES watched_docs(doc_id) ON DELETE CASCADE,
   task_id       TEXT,
   processed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
