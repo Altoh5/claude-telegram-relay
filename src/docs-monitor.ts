@@ -244,7 +244,7 @@ async function handleNewComment(
     `From: ${escapeMarkdown(comment.author)}\n\n` +
     `> ${escapeMarkdown(comment.content)}\n\n` +
     `*Draft reply:*\n${escapeMarkdown(draft)}\n\n` +
-    `_Reply to this message to edit the draft._\n` +
+    `_Reply to this message to edit the draft\\._\n` +
     `\`/post ${task.id}\` to publish • \`/skip ${task.id}\` to dismiss`;
 
   const sentMsg = await sendMessage(msgText);
