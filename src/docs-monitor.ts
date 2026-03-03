@@ -383,25 +383,14 @@ async function handleNewReply(
   await sb.from("processed_comments").insert(inserts);
 }
 
-async function callLlm(prompt: string): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return "(No LLM API key — write your reply above)";
-
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "anthropic/claude-sonnet-4-5",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1000,
-    }),
+async function callClaude(prompt: string): Promise<string> {
+  const { runClaudeWithTimeout } = await import("./lib/claude");
+  // Pass empty MCP config + --strict-mcp-config to skip MCP server initialization,
+  // which otherwise takes 60-180s and causes timeouts in background scripts.
+  const result = await runClaudeWithTimeout(prompt, 60_000, {
+    extraArgs: ["--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config"],
   });
-  if (!res.ok) throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "";
+  return result?.trim() || "";
 }
 
 async function draftFollowUp(
@@ -418,7 +407,7 @@ async function draftFollowUp(
       `Document: "${docTitle}"\n` +
       `${threadContext}\n\n` +
       `Write only the reply text, no preamble. Be helpful and specific.`;
-    const result = await callLlm(prompt);
+    const result = await callClaude(prompt);
     return result || "(Draft unavailable — write your reply above)";
   } catch (err) {
     console.error("Draft follow-up failed:", err);
@@ -440,7 +429,7 @@ async function draftReply(
       `Document: "${docTitle}"\n` +
       `Comment from ${comment.author}: "${comment.content}"\n\n` +
       `Write only the reply text, no preamble. Be helpful and specific.`;
-    const result = await callLlm(prompt);
+    const result = await callClaude(prompt);
     return result || "(Draft unavailable — write your reply above)";
   } catch (err) {
     console.error("Draft reply failed:", err);
