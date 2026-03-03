@@ -45,10 +45,25 @@ export async function handleChatSend(
   params: ChatSendParams,
   sessions: Map<string, Session>
 ): Promise<void> {
-  const { sessionKey, message, images } = params;
+  const { sessionKey, message } = params;
   const runId = crypto.randomUUID();
   const deviceToken = ws.data.deviceToken || "unknown";
   const chatId = `openclaw:${deviceToken}`;
+
+  // Normalize images — Clawsses sends "attachments" with content/mimeType fields
+  const normalizedImages: Array<{ base64: string; mediaType: string }> = [];
+  if (params.images && params.images.length > 0) {
+    for (const img of params.images) {
+      normalizedImages.push({ base64: img.base64, mediaType: img.mediaType });
+    }
+  }
+  if (params.attachments && params.attachments.length > 0) {
+    for (const att of params.attachments) {
+      if (att.type === "image" && att.content) {
+        normalizedImages.push({ base64: att.content, mediaType: att.mimeType || "image/jpeg" });
+      }
+    }
+  }
 
   // Look up the session to find the agent
   const session = sessions.get(sessionKey);
@@ -61,15 +76,16 @@ export async function handleChatSend(
   const tempImagePaths: string[] = [];
   let imagePromptParts: string[] = [];
 
-  if (images && images.length > 0) {
+  if (normalizedImages.length > 0) {
+    console.log(`[openclaw] Processing ${normalizedImages.length} image(s)`);
     const uploadDir = join(PROJECT_ROOT, "uploads");
     await mkdir(uploadDir, { recursive: true });
 
-    for (let i = 0; i < images.length; i++) {
-      const img = images[i];
+    for (let i = 0; i < normalizedImages.length; i++) {
+      const img = normalizedImages[i];
       try {
         const buffer = Buffer.from(img.base64, "base64");
-        const ext = img.mediaType?.includes("png") ? "png" : "jpg";
+        const ext = img.mediaType?.includes("png") ? "png" : img.mediaType?.includes("webp") ? "webp" : "jpg";
         const filename = `openclaw-${Date.now()}-${i}.${ext}`;
         const filepath = join(uploadDir, filename);
         await writeFile(filepath, buffer);

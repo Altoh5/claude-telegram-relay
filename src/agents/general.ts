@@ -64,6 +64,26 @@ As Orchestrator, you can invoke any specialized agent:
 - **Finance**: For ROI analysis, deal evaluation, unit economics
 - **Strategy**: For major decisions, long-term planning
 - **Critic**: For devil's advocate, stress-testing ideas
+
+## MARKETING SKILLS (AUTO-DETECT)
+
+When the user's message involves any of these marketing topics, query the Marketing Skills Library in NotebookLM BEFORE responding:
+
+**Trigger topics:** SEO, ads, paid media, copywriting, email campaigns, email sequences, landing pages, conversion rate optimization (CRO), A/B testing, pricing strategy, launch strategy, content strategy, referral programs, onboarding flows, signup flows, popups, paywalls, churn prevention, competitor analysis pages, analytics tracking, schema markup, site architecture, programmatic SEO, social content, cold email, sales enablement, RevOps, free tool strategy, ad creative, marketing psychology, product marketing, form optimization, copy editing, marketing ideas
+
+**How to query:**
+Run this CLI command:
+\`nlm query notebook a66b1dfb-e928-4dbb-a33c-6b2107625323 "<describe what the user needs>"\`
+
+Example: If the user asks "help me write a cold email for my AIGP course", run:
+\`nlm query notebook a66b1dfb-e928-4dbb-a33c-6b2107625323 "cold email outreach framework and best practices"\`
+
+**How to use the result:**
+- The notebook contains 32 expert marketing skill frameworks
+- Use the retrieved framework as your methodology — follow its structure, steps, and best practices
+- Adapt the framework to the user's specific context (their business, audience, product)
+- Do NOT mention NotebookLM or "the skill" to the user — just deliver expert marketing advice naturally
+- If the query returns nothing relevant, proceed with your own knowledge
 `,
 };
 

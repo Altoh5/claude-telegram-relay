@@ -66,6 +66,13 @@ export interface ChatSendParams {
   message: string;
   idempotencyKey?: string;
   images?: Array<{ base64: string; mediaType: string }>;
+  /** Clawsses sends images as "attachments" with type/mimeType/content fields. */
+  attachments?: Array<{
+    type: string;
+    mimeType: string;
+    fileName?: string;
+    content: string;
+  }>;
 }
 
 export interface ChatDeltaPayload {
