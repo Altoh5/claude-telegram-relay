@@ -70,13 +70,13 @@ export async function listComments(docId: string): Promise<DocComment[]> {
 }
 
 /**
- * Post a reply to a comment thread.
+ * Post a reply to a comment thread. Returns the new reply ID.
  */
 export async function postCommentReply(
   docId: string,
   commentId: string,
   text: string
-): Promise<void> {
+): Promise<string> {
   const token = await getBotAccessToken();
   const response = await fetch(
     `https://www.googleapis.com/drive/v3/files/${docId}/comments/${commentId}/replies?fields=id`,
@@ -91,5 +91,54 @@ export async function postCommentReply(
   );
   if (!response.ok) {
     throw new Error(`Post reply failed (${response.status}): ${await response.text()}`);
+  }
+  const data = await response.json();
+  return data.id as string;
+}
+
+/**
+ * Update an existing reply in a comment thread.
+ */
+export async function updateCommentReply(
+  docId: string,
+  commentId: string,
+  replyId: string,
+  text: string
+): Promise<void> {
+  const token = await getBotAccessToken();
+  const response = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${docId}/comments/${commentId}/replies/${replyId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ content: text }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Update reply failed (${response.status}): ${await response.text()}`);
+  }
+}
+
+/**
+ * Delete a reply from a comment thread.
+ */
+export async function deleteCommentReply(
+  docId: string,
+  commentId: string,
+  replyId: string
+): Promise<void> {
+  const token = await getBotAccessToken();
+  const response = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${docId}/comments/${commentId}/replies/${replyId}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Delete reply failed (${response.status}): ${await response.text()}`);
   }
 }

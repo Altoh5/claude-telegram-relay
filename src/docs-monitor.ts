@@ -14,6 +14,7 @@ import {
   fetchDocAsText,
   fetchDocTitle,
   listComments,
+  postCommentReply,
   type DocComment,
 } from "./lib/docs-api";
 import { getSupabase } from "./lib/supabase";
@@ -215,6 +216,15 @@ async function handleNewComment(
 
   const draft = await draftReply(docTitle, comment, docText);
 
+  // Post draft immediately to the doc comment thread
+  let replyId: string | null = null;
+  try {
+    replyId = await postCommentReply(docId, comment.id, draft);
+    console.log(`Posted draft reply to doc (replyId: ${replyId})`);
+  } catch (err) {
+    console.error("Failed to post draft to doc:", err);
+  }
+
   const { data: task } = await sb
     .from("async_tasks")
     .insert({
@@ -229,6 +239,7 @@ async function handleNewComment(
         commentAuthor: comment.author,
         commentText: comment.content,
         draft,
+        replyId,
       },
     })
     .select()
@@ -239,13 +250,17 @@ async function handleNewComment(
     return;
   }
 
+  const postedNote = replyId
+    ? `_Draft posted to doc\\. Reply here to update it in the doc\\._`
+    : `_Could not post to doc — reply here to set a draft\\._`;
+
   const msgText =
     `📄 New comment in *${escapeMarkdown(docTitle)}*\n` +
     `From: ${escapeMarkdown(comment.author)}\n\n` +
     `> ${escapeMarkdown(comment.content)}\n\n` +
-    `*Draft reply:*\n${escapeMarkdown(draft)}\n\n` +
-    `_Reply to this message to edit the draft\\._\n` +
-    `\`/post ${task.id}\` to publish • \`/skip ${task.id}\` to dismiss`;
+    `*Drafted reply:*\n${escapeMarkdown(draft)}\n\n` +
+    `${postedNote}\n` +
+    `\`/skip ${task.id}\` to delete from doc`;
 
   const sentMsg = await sendMessage(msgText);
 

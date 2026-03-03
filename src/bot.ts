@@ -62,7 +62,7 @@ import {
 } from "./lib/anthropic-processor";
 
 // Docs comment bot (Drive API replies)
-import { postCommentReply } from "./lib/docs-api";
+import { postCommentReply, updateCommentReply, deleteCommentReply } from "./lib/docs-api";
 import {
   processWithAgentSDK,
   type AgentResumeState,
@@ -656,6 +656,7 @@ async function handleTwinmindCommand(ctx: Context, command: string): Promise<voi
 // --- Docs Comment Bot Handlers ---
 
 async function handleDocsPost(ctx: Context, taskId: string): Promise<void> {
+  // Draft is already in the doc — /post now resolves (closes) the comment thread.
   const sb = (await import("./lib/supabase")).getSupabase();
   if (!sb || !taskId) {
     await ctx.reply("❌ Invalid task ID.");
@@ -673,33 +674,38 @@ async function handleDocsPost(ctx: Context, taskId: string): Promise<void> {
     return;
   }
 
-  const { docId, commentId, docTitle, draft } = task.metadata;
-
-  try {
-    await postCommentReply(docId, commentId, draft);
-    await sb
-      .from("async_tasks")
-      .update({ status: "completed" })
-      .eq("id", taskId);
-    await ctx.reply(
-      `✅ Reply posted to *${docTitle}*\n\n> ${draft}`,
-      { parse_mode: "Markdown" }
-    );
-  } catch (err: any) {
-    await ctx.reply(`❌ Failed to post reply: ${err.message}`);
-  }
+  await sb.from("async_tasks").update({ status: "completed" }).eq("id", taskId);
+  await ctx.reply(`✅ Done — task marked complete.`);
 }
 
 async function handleDocsSkip(ctx: Context, taskId: string): Promise<void> {
+  // Delete the draft reply from the doc, then dismiss the task.
   const sb = (await import("./lib/supabase")).getSupabase();
   if (!sb || !taskId) return;
+
+  const { data: task } = await sb
+    .from("async_tasks")
+    .select("*")
+    .eq("id", taskId)
+    .single();
+
+  if (task?.metadata?.type === "docs_comment") {
+    const { docId, commentId, replyId } = task.metadata;
+    if (replyId) {
+      try {
+        await deleteCommentReply(docId, commentId, replyId);
+      } catch (err: any) {
+        await ctx.reply(`⚠️ Could not delete from doc: ${err.message}`);
+      }
+    }
+  }
 
   await sb
     .from("async_tasks")
     .update({ status: "failed", result: "skipped by user" })
     .eq("id", taskId);
 
-  await ctx.reply("↩️ Comment dismissed.");
+  await ctx.reply("↩️ Draft deleted from doc and dismissed.");
 }
 
 async function handleDocsDraftEdit(
@@ -707,6 +713,7 @@ async function handleDocsDraftEdit(
   replyToMessageId: number,
   newDraft: string
 ): Promise<boolean> {
+  // Update the existing reply in the doc with the new text.
   const sb = (await import("./lib/supabase")).getSupabase();
   if (!sb) return false;
 
@@ -726,17 +733,22 @@ async function handleDocsDraftEdit(
 
   if (!task) return false;
 
+  const { docId, commentId, replyId } = task.metadata;
+
+  if (replyId) {
+    try {
+      await updateCommentReply(docId, commentId, replyId, newDraft);
+    } catch (err: any) {
+      await ctx.reply(`⚠️ Could not update doc: ${err.message}`);
+    }
+  }
+
   await sb
     .from("async_tasks")
-    .update({
-      metadata: { ...task.metadata, draft: newDraft },
-    })
+    .update({ metadata: { ...task.metadata, draft: newDraft } })
     .eq("id", task.id);
 
-  await ctx.reply(
-    `✏️ Draft updated.\n\n> ${newDraft}\n\n\`/post ${task.id}\` to publish • \`/skip ${task.id}\` to dismiss`,
-    { parse_mode: "Markdown" }
-  );
+  await ctx.reply(`✏️ Updated reply in doc.\n\n> ${newDraft}`, { parse_mode: "Markdown" });
 
   return true;
 }
