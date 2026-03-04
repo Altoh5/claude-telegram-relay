@@ -417,13 +417,24 @@ async function handleNewReply(
 
 async function callClaude(prompt: string): Promise<string> {
   const { runClaudeWithTimeout } = await import("./lib/claude");
-  // Use empty MCP config + --strict-mcp-config to skip MCP server initialization
-  // (otherwise 60-180s of MCP init causes timeouts in background scripts).
-  // 120s gives Claude enough time for auth check + actual API call.
-  const result = await runClaudeWithTimeout(prompt, 120_000, {
-    extraArgs: ["--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config"],
-  });
-  return result?.trim() || "";
+
+  // --mcp-config requires a file path (not inline JSON).
+  // Write an empty config so --strict-mcp-config skips all MCP server init
+  // (otherwise 60-180s of MCP loading causes timeouts in background scripts).
+  const tmpConfig = `/tmp/docs-monitor-mcp-${process.pid}.json`;
+  await Bun.write(tmpConfig, JSON.stringify({ mcpServers: {} }));
+
+  try {
+    const result = await runClaudeWithTimeout(prompt, 120_000, {
+      extraArgs: ["--mcp-config", tmpConfig, "--strict-mcp-config"],
+    });
+    return result?.trim() || "";
+  } finally {
+    try {
+      const { unlink } = await import("node:fs/promises");
+      await unlink(tmpConfig);
+    } catch {}
+  }
 }
 
 interface DraftResult {
