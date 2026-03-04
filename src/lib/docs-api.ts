@@ -137,6 +137,71 @@ export async function updateCommentReply(
 }
 
 /**
+ * Append text to the end of a Google Doc body.
+ * Requires the bot account to have Editor access on the doc.
+ */
+export async function appendToDoc(docId: string, text: string): Promise<void> {
+  const token = await getBotAccessToken();
+  const response = await fetch(
+    `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        requests: [{
+          insertText: {
+            endOfSegmentLocation: { segmentId: "" },
+            text: text.endsWith("\n") ? text : text + "\n",
+          },
+        }],
+      }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Append to doc failed (${response.status}): ${await response.text()}`);
+  }
+}
+
+/**
+ * Replace all occurrences of oldText with newText in a Google Doc body.
+ * Returns the number of replacements made.
+ * Requires the bot account to have Editor access on the doc.
+ */
+export async function replaceTextInDoc(
+  docId: string,
+  oldText: string,
+  newText: string
+): Promise<number> {
+  const token = await getBotAccessToken();
+  const response = await fetch(
+    `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        requests: [{
+          replaceAllText: {
+            containsText: { text: oldText, matchCase: false },
+            replaceText: newText,
+          },
+        }],
+      }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Replace in doc failed (${response.status}): ${await response.text()}`);
+  }
+  const data = await response.json();
+  return data.replies?.[0]?.replaceAllText?.occurrencesChanged ?? 0;
+}
+
+/**
  * Delete a reply from a comment thread.
  */
 export async function deleteCommentReply(

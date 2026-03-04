@@ -416,41 +416,14 @@ async function handleNewReply(
 }
 
 async function callClaude(prompt: string): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
-
-  const model = process.env.OPENROUTER_MODEL || "moonshotai/kimi-k2.5";
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
-
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://go-telegram-bot.local",
-        "X-Title": "Go Telegram Bot",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 2048,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`OpenRouter API failed (${response.status}): ${await response.text()}`);
-    }
-
-    const data = await response.json();
-    const msg = data.choices?.[0]?.message;
-    return ((msg?.content || msg?.reasoning || "") as string).trim();
-  } finally {
-    clearTimeout(timeout);
-  }
+  const { runClaudeWithTimeout } = await import("./lib/claude");
+  // Use empty MCP config + --strict-mcp-config to skip MCP server initialization
+  // (otherwise 60-180s of MCP init causes timeouts in background scripts).
+  // 120s gives Claude enough time for auth check + actual API call.
+  const result = await runClaudeWithTimeout(prompt, 120_000, {
+    extraArgs: ["--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config"],
+  });
+  return result?.trim() || "";
 }
 
 interface DraftResult {
