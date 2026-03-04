@@ -18,6 +18,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import * as supabase from "./supabase";
 import { initiatePhoneCall } from "./voice";
 import { buildTaskKeyboard } from "./task-queue";
+import { callFallbackLLM } from "./fallback-llm";
+import {
+  getResilientClient,
+  createResilientMessage,
+  getModelForProvider,
+  isAnthropicAvailable,
+} from "./resilient-client";
 import type { Context } from "grammy";
 
 // ============================================================
@@ -62,17 +69,8 @@ export interface ResumeState {
 // ANTHROPIC CLIENT
 // ============================================================
 
-let client: Anthropic | null = null;
-
 function getClient(): Anthropic {
-  if (!client) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error("ANTHROPIC_API_KEY not set");
-    }
-    client = new Anthropic({ apiKey });
-  }
-  return client;
+  return getResilientClient();
 }
 
 // ============================================================
@@ -303,9 +301,10 @@ export async function processWithAnthropic(
   onCallInitiated?: (conversationId: string) => void,
   model?: string
 ): Promise<string> {
-  const anthropic = getClient();
   const startTime = Date.now();
-  const effectiveModel = model || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
+  const useOpenRouter = !isAnthropicAvailable() && !!process.env.OPENROUTER_API_KEY;
+  const baseModel = model || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
+  const effectiveModel = getModelForProvider(baseModel, useOpenRouter);
 
   // Get conversation context from Supabase
   let contextStr = "";
@@ -364,7 +363,7 @@ export async function processWithAnthropic(
     while (iterations < MAX_ITERATIONS) {
       iterations++;
 
-      const response = await anthropic.messages.create({
+      const response = await createResilientMessage({
         model: effectiveModel,
         max_tokens: 4096,
         system: systemPrompt,
@@ -481,14 +480,20 @@ export async function processWithAnthropic(
   } catch (err: any) {
     console.error("Anthropic API error:", err.message);
 
-    if (err.status === 401) {
-      return "API authentication error. Check ANTHROPIC_API_KEY.";
+    // Try fallback LLM before returning error
+    try {
+      console.log("[anthropic-processor] Trying fallback LLM...");
+      return await callFallbackLLM(userMessage);
+    } catch {
+      // Fallback also failed — return specific error
+      if (err.status === 401) {
+        return "API authentication error. Check ANTHROPIC_API_KEY.";
+      }
+      if (err.status === 429) {
+        return "Rate limited. Please try again in a moment.";
+      }
+      return `Error: ${err.message}`;
     }
-    if (err.status === 429) {
-      return "Rate limited. Please try again in a moment.";
-    }
-
-    return `Error: ${err.message}`;
   } finally {
     clearInterval(typingInterval);
   }

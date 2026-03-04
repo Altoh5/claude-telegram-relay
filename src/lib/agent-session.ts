@@ -17,9 +17,16 @@
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
-import { selectModelForMessage } from "./model-router";
+import { selectModelForMessage, toOpenRouterModel } from "./model-router";
 import { AskUserSignal } from "./anthropic-processor";
 import { buildTaskKeyboard } from "./task-queue";
+import { callFallbackLLM } from "./fallback-llm";
+import {
+  isAnthropicAvailable,
+  markAnthropicDown,
+  isCreditError,
+  getOpenRouterEnv,
+} from "./resilient-client";
 import * as supabase from "./supabase";
 import type { Context } from "grammy";
 
@@ -170,8 +177,10 @@ export async function processWithAgentSDK(
   }
 
   // Select model tier based on complexity
-  const { tier, model } = selectModelForMessage(userMessage, budgetRemaining);
-  console.log(`[SDK] Model: ${tier.toUpperCase()} (${model})`);
+  const { tier, model: baseModel } = selectModelForMessage(userMessage, budgetRemaining);
+  const useOpenRouter = !isAnthropicAvailable() && !!process.env.OPENROUTER_API_KEY;
+  const model = useOpenRouter ? toOpenRouterModel(baseModel) : baseModel;
+  console.log(`[SDK] Model: ${tier.toUpperCase()} (${model})${useOpenRouter ? " via OpenRouter" : ""}`);
 
   // Load conversation context from Supabase
   let contextStr = "";
@@ -213,6 +222,8 @@ export async function processWithAgentSDK(
       HOME: process.env.HOME || "/root",
       // Ensure bun is in PATH for VPS environments
       PATH: `${process.env.HOME || "/root"}/.bun/bin:/usr/local/bin:/usr/bin:/bin`,
+      // Inject OpenRouter env if routing via OpenRouter
+      ...(useOpenRouter ? getOpenRouterEnv() : {}),
     } as Record<string, string>,
     stderr: (data: string) => {
       console.error(`[SDK:stderr] ${data.trim()}`);
@@ -426,6 +437,27 @@ export async function processWithAgentSDK(
       );
 
       return "";
+    }
+
+    // Credit error — mark Anthropic down and try fallback LLM
+    if (isCreditError(signal)) {
+      console.warn("[SDK] Credit error — marking Anthropic down");
+      markAnthropicDown();
+      try {
+        return await callFallbackLLM(userMessage);
+      } catch {
+        // Fallback failed too
+      }
+    }
+
+    // Other errors — try fallback LLM before re-throwing
+    if (!(signal instanceof Error) || !String((signal as any).message).includes("AskUser")) {
+      try {
+        console.log("[SDK] Trying fallback LLM after error...");
+        return await callFallbackLLM(userMessage);
+      } catch {
+        // Fallback also failed
+      }
     }
 
     throw signal;

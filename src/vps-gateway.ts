@@ -459,22 +459,23 @@ async function executeCallTask(
 }
 
 /**
- * Process a call task directly on VPS using Anthropic API.
+ * Process a call task directly on VPS using Anthropic API (with OpenRouter fallback).
  */
 async function processCallTaskOnVPS(
   taskDescription: string,
   chatId: string
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return "Cannot process task — no API key configured.";
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey && !openRouterKey) return "Cannot process task — no API key configured.";
 
   try {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey });
+    const { createResilientMessage, getModelForProvider, isAnthropicAvailable } = await import("./lib/resilient-client");
+    const useOpenRouter = !isAnthropicAvailable() && !!openRouterKey;
+    const { model: baseModel } = selectModelForMessage(taskDescription);
+    const model = getModelForProvider(baseModel, useOpenRouter);
 
-    const { model } = selectModelForMessage(taskDescription);
-
-    const response = await client.messages.create({
+    const response = await createResilientMessage({
       model,
       max_tokens: 4096,
       messages: [
@@ -487,13 +488,8 @@ async function processCallTaskOnVPS(
         "You are Go, a personal AI assistant. Execute the requested task thoroughly and provide a complete response.",
     });
 
-    const textBlocks = response.content.filter(
-      (b): b is { type: "text"; text: string } => b.type === "text"
-    );
-    return (
-      textBlocks.map((b) => b.text).join("\n") ||
-      "Task completed but no output generated."
-    );
+    const textBlock = response.content.find((b) => b.type === "text") as { type: "text"; text: string } | undefined;
+    return textBlock?.text || "Task completed but no output generated.";
   } catch (err: any) {
     console.error("VPS task processing error:", err.message);
     return `Task processing failed: ${err.message}`;

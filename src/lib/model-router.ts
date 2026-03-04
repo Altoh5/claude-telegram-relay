@@ -32,16 +32,18 @@ export const MODEL_COSTS: Record<ModelTier, { input: number; output: number }> =
 // PATTERNS
 // ============================================================
 
-// Patterns that indicate simple requests (→ Haiku)
-const SIMPLE_PATTERNS = [
-  /^(hi|hey|hello|morning|good morning|gm|thanks|ok|yes|no|sure|got it)/i,
-  /what('s| is) (the )?(time|date|day)/i,
+// Patterns that indicate tool-using requests (→ Sonnet)
+// Escalate when the message implies tool calls / external data access
+const TOOL_PATTERNS = [
   /^(check|show|list|get|find|search|look up)\b/i,
   /^(status|how many|count)\b/i,
   /unread email/i,
   /calendar today/i,
   /what('s| is) on my (plate|calendar|schedule)/i,
   /^remind me/i,
+  /^(create|make|add|set|update|delete|remove)\b/i,
+  /^(send|post|reply|forward)\b/i,
+  /^(run|execute|deploy|restart|start|stop)\b/i,
 ];
 
 // Patterns that indicate complex requests (→ Opus)
@@ -64,6 +66,10 @@ const COMPLEX_PATTERNS = [
 /**
  * Classify message complexity to select the right model tier.
  * Zero overhead — pure regex matching, no API calls.
+ *
+ * Default: Haiku (cost-optimized).
+ * Escalate to Sonnet only when tools are needed.
+ * Escalate to Opus for complex reasoning/research.
  */
 export function classifyComplexity(message: string): ModelTier {
   // Check complex patterns first (Opus)
@@ -71,16 +77,13 @@ export function classifyComplexity(message: string): ModelTier {
     if (pattern.test(message)) return "opus";
   }
 
-  // Check simple patterns (Haiku)
-  for (const pattern of SIMPLE_PATTERNS) {
-    if (pattern.test(message)) return "haiku";
+  // Check tool patterns (Sonnet — needs tool calls)
+  for (const pattern of TOOL_PATTERNS) {
+    if (pattern.test(message)) return "sonnet";
   }
 
-  // Short messages (< 40 chars) → Haiku
-  if (message.length < 40) return "haiku";
-
-  // Medium-length or unclear → Sonnet (good default)
-  return "sonnet";
+  // Default → Haiku (cost-optimized for simple queries and short chats)
+  return "haiku";
 }
 
 /**
@@ -102,4 +105,15 @@ export function selectModelForMessage(
     tier: effectiveTier,
     model: MODEL_IDS[effectiveTier],
   };
+}
+
+/**
+ * Convert an Anthropic model ID to its OpenRouter equivalent.
+ * OpenRouter uses the anthropic/ namespace prefix.
+ */
+export function toOpenRouterModel(model: string): string {
+  if (!model.startsWith("anthropic/")) {
+    return `anthropic/${model}`;
+  }
+  return model;
 }

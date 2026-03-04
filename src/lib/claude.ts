@@ -58,11 +58,24 @@ export function isClaudeErrorResponse(text: string): boolean {
     "billing",
     "insufficient_quota",
     "payment_required",
+    "hit your limit",
+    "usage limit",
+    "usage cap",
+    "message limit",
+    "reached your limit",
+    "out of messages",
+    "no messages remaining",
+    "upgrade to",
+    "exceeds your plan",
+    "plan limit",
+    "token limit reached",
+    "conversation limit",
     "prompt is too long",
     "context_length_exceeded",
     "tokens > ",
   ];
-  return errorPatterns.some((p) => text.includes(p));
+  const lower = text.toLowerCase();
+  return errorPatterns.some((p) => lower.includes(p.toLowerCase()));
 }
 
 /**

@@ -271,23 +271,25 @@ export function isCallEnabled(): boolean {
 }
 
 /**
- * Summarize a phone call transcript using Anthropic API.
+ * Summarize a phone call transcript using Anthropic API (with OpenRouter fallback).
  * Falls back to truncated transcript if API unavailable.
  */
 export async function summarizeTranscript(
   transcript: string
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey && !openRouterKey) {
     return transcript.substring(0, 500) + "\n\n(Full summary unavailable)";
   }
 
   try {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey });
+    const { createResilientMessage, getModelForProvider, isAnthropicAvailable } = await import("./resilient-client");
+    const useOpenRouter = !isAnthropicAvailable() && !!openRouterKey;
+    const model = getModelForProvider("claude-sonnet-4-5-20250929", useOpenRouter);
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-5-20250929",
+    const response = await createResilientMessage({
+      model,
       max_tokens: 1024,
       messages: [
         {
@@ -316,14 +318,16 @@ export async function extractTaskFromTranscript(
   summary: string
 ): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey && !openRouterKey) return null;
 
   try {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey });
+    const { createResilientMessage, getModelForProvider, isAnthropicAvailable } = await import("./resilient-client");
+    const useOpenRouter = !isAnthropicAvailable() && !!openRouterKey;
+    const model = getModelForProvider("claude-haiku-4-5-20251001", useOpenRouter);
 
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+    const response = await createResilientMessage({
+      model,
       max_tokens: 256,
       messages: [
         {
