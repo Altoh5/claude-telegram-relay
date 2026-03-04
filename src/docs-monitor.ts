@@ -15,6 +15,8 @@ import {
   fetchDocTitle,
   listComments,
   postCommentReply,
+  updateCommentReply,
+  appendToDoc,
   type DocComment,
   type DocReply,
 } from "./lib/docs-api";
@@ -237,10 +239,22 @@ async function handleNewComment(
 
   const draft = await draftReply(docTitle, comment, docText);
 
-  // Post draft immediately to the doc comment thread
+  // Apply doc body edit if Claude produced one
+  let docEdited = false;
+  if (draft.docEdit) {
+    try {
+      await appendToDoc(docId, draft.docEdit);
+      docEdited = true;
+      console.log(`Appended doc edit (${draft.docEdit.length} chars)`);
+    } catch (err) {
+      console.error("Failed to apply doc edit:", err);
+    }
+  }
+
+  // Post reply to the comment thread
   let replyId: string | null = null;
   try {
-    replyId = await postCommentReply(docId, comment.id, draft);
+    replyId = await postCommentReply(docId, comment.id, draft.reply);
     console.log(`Posted draft reply to doc (replyId: ${replyId})`);
   } catch (err) {
     console.error("Failed to post draft to doc:", err);
@@ -259,7 +273,8 @@ async function handleNewComment(
         commentId: comment.id,
         commentAuthor: comment.author,
         commentText: comment.content,
-        draft,
+        draft: draft.reply,
+        docEdit: draft.docEdit,
         replyId,
       },
     })
@@ -275,12 +290,14 @@ async function handleNewComment(
     ? `_Draft posted to doc\\. Reply here to update it in the doc\\._`
     : `_Could not post to doc — reply here to set a draft\\._`;
 
+  const editNote = docEdited ? `\n✏️ _Doc body updated_` : "";
+
   const msgText =
     `📄 New comment in *${escapeMarkdown(docTitle)}*\n` +
     `From: ${escapeMarkdown(comment.author)}\n\n` +
     `> ${escapeMarkdown(comment.content)}\n\n` +
-    `*Drafted reply:*\n${escapeMarkdown(draft)}\n\n` +
-    `${postedNote}\n` +
+    `*Drafted reply:*\n${escapeMarkdown(draft.reply)}\n\n` +
+    `${postedNote}${editNote}\n` +
     `\`/skip ${task.id}\` to delete from doc`;
 
   const sentMsg = await sendMessage(msgText);
@@ -323,9 +340,21 @@ async function handleNewReply(
   const threadContext = `Original comment from ${comment.author}: "${comment.content}"\nFollow-up from ${reply.author}: "${reply.content}"`;
   const draft = await draftFollowUp(docTitle, threadContext, docText);
 
+  // Apply doc body edit if Claude produced one
+  let docEdited = false;
+  if (draft.docEdit) {
+    try {
+      await appendToDoc(docId, draft.docEdit);
+      docEdited = true;
+      console.log(`Appended doc edit (${draft.docEdit.length} chars)`);
+    } catch (err) {
+      console.error("Failed to apply doc edit:", err);
+    }
+  }
+
   let replyId: string | null = null;
   try {
-    replyId = await postCommentReply(docId, comment.id, draft);
+    replyId = await postCommentReply(docId, comment.id, draft.reply);
     console.log(`Posted follow-up reply to doc (replyId: ${replyId})`);
   } catch (err) {
     console.error("Failed to post follow-up reply to doc:", err);
@@ -344,7 +373,8 @@ async function handleNewReply(
         commentId: comment.id,
         commentAuthor: reply.author,
         commentText: reply.content,
-        draft,
+        draft: draft.reply,
+        docEdit: draft.docEdit,
         replyId,
       },
     })
@@ -360,12 +390,14 @@ async function handleNewReply(
     ? `_Draft posted to doc\\. Reply here to update it in the doc\\._`
     : `_Could not post to doc — reply here to set a draft\\._`;
 
+  const editNote = docEdited ? `\n✏️ _Doc body updated_` : "";
+
   const msgText =
     `📄 Follow\\-up in *${escapeMarkdown(docTitle)}*\n` +
     `From: ${escapeMarkdown(reply.author)}\n\n` +
     `> ${escapeMarkdown(reply.content)}\n\n` +
-    `*Drafted reply:*\n${escapeMarkdown(draft)}\n\n` +
-    `${postedNote}\n` +
+    `*Drafted reply:*\n${escapeMarkdown(draft.reply)}\n\n` +
+    `${postedNote}${editNote}\n` +
     `\`/skip ${task.id}\` to delete from doc`;
 
   const sentMsg = await sendMessage(msgText);
@@ -384,34 +416,86 @@ async function handleNewReply(
 }
 
 async function callClaude(prompt: string): Promise<string> {
-  const { runClaudeWithTimeout } = await import("./lib/claude");
-  // Pass empty MCP config + --strict-mcp-config to skip MCP server initialization,
-  // which otherwise takes 60-180s and causes timeouts in background scripts.
-  const result = await runClaudeWithTimeout(prompt, 60_000, {
-    extraArgs: ["--mcp-config", '{"mcpServers":{}}', "--strict-mcp-config"],
-  });
-  return result?.trim() || "";
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
+
+  const model = process.env.OPENROUTER_MODEL || "moonshotai/kimi-k2.5";
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://go-telegram-bot.local",
+        "X-Title": "Go Telegram Bot",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 2048,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter API failed (${response.status}): ${await response.text()}`);
+    }
+
+    const data = await response.json();
+    const msg = data.choices?.[0]?.message;
+    return ((msg?.content || msg?.reasoning || "") as string).trim();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+interface DraftResult {
+  reply: string;
+  docEdit: string | null;
+}
+
+function parseDraftResult(raw: string): DraftResult {
+  // Strip markdown code fences if present
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      reply: parsed.reply || "(Draft unavailable — write your reply above)",
+      docEdit: parsed.docEdit || null,
+    };
+  } catch {
+    // Fallback: treat entire output as a reply with no doc edit
+    return { reply: raw || "(Draft unavailable — write your reply above)", docEdit: null };
+  }
 }
 
 async function draftFollowUp(
   docTitle: string,
   threadContext: string,
   docText: string
-): Promise<string> {
+): Promise<DraftResult> {
   try {
     const contextSection = docText
       ? `\n\nDocument content:\n<doc>\n${docText.slice(0, 6000)}\n</doc>`
       : "";
     const prompt =
-      `You are a helpful AI assistant for Alvin Toh. Draft a concise, professional reply to the following follow-up question in a Google Doc comment thread.${contextSection}\n\n` +
+      `You are a helpful AI assistant for Alvin Toh. Handle the following follow-up in a Google Doc comment thread.${contextSection}\n\n` +
       `Document: "${docTitle}"\n` +
       `${threadContext}\n\n` +
-      `Write only the reply text, no preamble. Be helpful and specific.`;
+      `Respond with a JSON object (no markdown fences) with two fields:\n` +
+      `- "reply": A concise, professional reply to post in the comment thread.\n` +
+      `- "docEdit": If the comment asks you to add, write, or change content in the document body, provide the text to append to the document. Otherwise null.\n\n` +
+      `Example: {"reply": "Done — added a conclusion section.", "docEdit": "## Conclusion\\n\\nIn summary..."}\n` +
+      `Example: {"reply": "Great point, I'll look into that.", "docEdit": null}`;
     const result = await callClaude(prompt);
-    return result || "(Draft unavailable — write your reply above)";
+    return parseDraftResult(result);
   } catch (err) {
     console.error("Draft follow-up failed:", err);
-    return "(Draft unavailable — write your reply above)";
+    return { reply: "(Draft unavailable — write your reply above)", docEdit: null };
   }
 }
 
@@ -419,25 +503,30 @@ async function draftReply(
   docTitle: string,
   comment: DocComment,
   docText: string
-): Promise<string> {
+): Promise<DraftResult> {
   try {
     const contextSection = docText
       ? `\n\nDocument content:\n<doc>\n${docText.slice(0, 6000)}\n</doc>`
       : "";
     const prompt =
-      `You are a helpful AI assistant for Alvin Toh. Draft a concise, professional reply to the following comment left in a Google Doc.${contextSection}\n\n` +
+      `You are a helpful AI assistant for Alvin Toh. Handle the following comment left in a Google Doc.${contextSection}\n\n` +
       `Document: "${docTitle}"\n` +
       `Comment from ${comment.author}: "${comment.content}"\n\n` +
-      `Write only the reply text, no preamble. Be helpful and specific.`;
+      `Respond with a JSON object (no markdown fences) with two fields:\n` +
+      `- "reply": A concise, professional reply to post in the comment thread.\n` +
+      `- "docEdit": If the comment asks you to add, write, or change content in the document body, provide the text to append to the document. Otherwise null.\n\n` +
+      `Example: {"reply": "Done — added the requested section.", "docEdit": "## New Section\\n\\nContent here..."}\n` +
+      `Example: {"reply": "Thanks for the feedback!", "docEdit": null}`;
     const result = await callClaude(prompt);
-    return result || "(Draft unavailable — write your reply above)";
+    return parseDraftResult(result);
   } catch (err) {
     console.error("Draft reply failed:", err);
-    return "(Draft unavailable — write your reply above)";
+    return { reply: "(Draft unavailable — write your reply above)", docEdit: null };
   }
 }
 
-function escapeMarkdown(text: string): string {
+function escapeMarkdown(text: string | undefined | null): string {
+  if (!text) return "";
   return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
 }
 
