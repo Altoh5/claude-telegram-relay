@@ -216,9 +216,9 @@ const HTML = `<!DOCTYPE html>
     --thinking-color: #888;
   }
 
-  html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  html, body { height: 100%; width: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
 
-  .app { display: flex; height: 100vh; }
+  .app { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
 
   /* ---- Sidebar ---- */
   .sidebar {
@@ -289,13 +289,13 @@ const HTML = `<!DOCTYPE html>
   .empty-state h2 { font-size: 20px; font-weight: 600; color: var(--text); }
   .empty-state p { font-size: 14px; text-align: center; max-width: 280px; }
 
-  .message { display: flex; flex-direction: column; max-width: 80%; }
+  .message { display: flex; flex-direction: column; max-width: min(80%, calc(100% - 32px)); min-width: 0; }
   .message.user { align-self: flex-end; align-items: flex-end; }
   .message.assistant { align-self: flex-start; align-items: flex-start; }
 
   .bubble {
     padding: 12px 16px; border-radius: 14px;
-    font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; min-width: 0;
   }
 
   .message.user .bubble {
