@@ -87,6 +87,7 @@ If the user wants to forget a stored fact, include: [FORGET: partial match]`);
 // ---------------------------------------------------------------------------
 
 const server = Bun.serve({
+  idleTimeout: 0,
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
@@ -143,66 +144,33 @@ const server = Bun.serve({
         metadata: { agent, source: "web" },
       });
 
-      // SSE stream
-      let controller: ReadableStreamDefaultController;
-      const stream = new ReadableStream({
-        start(c) { controller = c; },
-      });
+      // Run Claude and return JSON response
+      try {
+        const prompt = await buildPrompt(message, agent);
+        const agentConfig = getAgentConfig(agent);
 
-      const send = (data: object) => {
-        try {
-          controller.enqueue(
-            new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`)
-          );
-        } catch {}
-      };
+        const result = await callClaudeStreaming({
+          prompt,
+          cwd: PROJECT_ROOT,
+          timeoutMs: 1_800_000,
+          ...(agentConfig?.allowedTools ? { allowedTools: agentConfig.allowedTools } : {}),
+        });
 
-      // Run Claude in background, pipe events to SSE
-      (async () => {
-        try {
-          send({ type: "start" });
+        const responseText = result.text || "_(no response)_";
 
-          const prompt = await buildPrompt(message, agent);
-          const agentConfig = getAgentConfig(agent);
+        await processIntents(responseText, chatId);
 
-          const result = await callClaudeStreaming({
-            prompt,
-            cwd: PROJECT_ROOT,
-            timeoutMs: 1_800_000,
-            ...(agentConfig?.allowedTools ? { allowedTools: agentConfig.allowedTools } : {}),
-            onToolStart: (name) => send({ type: "tool", name }),
-            onFirstText: (snippet) => send({ type: "thinking", snippet }),
-          });
+        await saveMessage({
+          chat_id: chatId,
+          role: "assistant",
+          content: responseText,
+          metadata: { agent, source: "web" },
+        });
 
-          const responseText = result.text || "_(no response)_";
-
-          // Process memory intents
-          await processIntents(responseText, chatId);
-
-          // Save bot response
-          await saveMessage({
-            chat_id: chatId,
-            role: "assistant",
-            content: responseText,
-            metadata: { agent, source: "web" },
-          });
-
-          send({ type: "done", text: responseText });
-        } catch (err: any) {
-          send({ type: "error", message: err?.message || "Unknown error" });
-        } finally {
-          try { controller.close(); } catch {}
-        }
-      })();
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
+        return Response.json({ text: responseText });
+      } catch (err: any) {
+        return Response.json({ error: err?.message || "Unknown error" }, { status: 500 });
+      }
     }
 
     // CORS preflight
@@ -578,41 +546,18 @@ const HTML = `<!DOCTYPE html>
         body: JSON.stringify({ message: text, agent: activeAgent.id }),
       });
 
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer    = '';
+      const data = await res.json();
+      removeStatus();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\\n\\n');
-        buffer = parts.pop() || '';
-
-        for (const part of parts) {
-          if (!part.startsWith('data: ')) continue;
-          let evt;
-          try { evt = JSON.parse(part.slice(6)); } catch { continue; }
-
-          if (evt.type === 'tool') {
-            updateStatus(\`Using \${evt.name}...\`);
-          } else if (evt.type === 'thinking') {
-            updateStatus(\`Thinking: \${evt.snippet.slice(0, 60)}...\`);
-          } else if (evt.type === 'done') {
-            removeStatus();
-            appendMessage('assistant', evt.text, new Date().toISOString());
-            scrollBottom();
-          } else if (evt.type === 'error') {
-            removeStatus();
-            appendMessage('assistant', '⚠️ Error: ' + evt.message, new Date().toISOString());
-            scrollBottom();
-          }
-        }
+      if (data.error) {
+        appendMessage('assistant', '⚠️ Error: ' + data.error, new Date().toISOString());
+      } else {
+        appendMessage('assistant', data.text, new Date().toISOString());
       }
+      scrollBottom();
     } catch (err) {
       removeStatus();
-      appendMessage('assistant', '⚠️ Network error. Is the server running?', new Date().toISOString());
+      appendMessage('assistant', '⚠️ ' + (err?.message || 'fetch failed') + ' — is bun run web still running?', new Date().toISOString());
     }
 
     sending = false;
