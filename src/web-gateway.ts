@@ -77,10 +77,79 @@ If the user wants to cancel/abandon a goal, include: [CANCEL: partial match]
 If you learn a fact worth remembering, include: [REMEMBER: fact]
 If the user wants to forget a stored fact, include: [FORGET: partial match]`);
 
+  // Web-only: cross-agent invocation support
+  sections.push(`## CROSS-AGENT INVOCATION (WEB UI ONLY)
+If this request would clearly benefit from a specialized agent, append ONE tag at the END of your response (after all other content):
+[INVOKE: agent_name | specific task or question for that agent]
+Available agents: research, content, finance, strategy, cto, coo, critic
+Rules: only invoke when genuinely useful, max 1 invocation, omit the tag entirely if not needed.
+Example: [INVOKE: research | Find recent PDPA enforcement cases in Malaysia 2024-2025]`);
+
   sections.push(`## USER MESSAGE\n${userMessage}`);
 
   return sections.join("\n\n---\n\n");
 }
+
+// ---------------------------------------------------------------------------
+// Cross-agent invocation helpers
+// ---------------------------------------------------------------------------
+
+const INVOKE_RE = /\[INVOKE:\s*([\w-]+)\s*\|\s*([^\]]+)\]/i;
+
+function parseInvokeTag(text: string): { agent: string; task: string } | null {
+  const m = text.match(INVOKE_RE);
+  if (!m) return null;
+  const agent = m[1].trim().toLowerCase();
+  if (!AGENT_META[agent]) return null; // unknown agent
+  return { agent, task: m[2].trim() };
+}
+
+function stripInvokeTag(text: string): string {
+  return text.replace(INVOKE_RE, "").trim();
+}
+
+async function runCrossAgent(
+  sourceAgent: string,
+  targetAgent: string,
+  originalMessage: string,
+  sourceResponse: string,
+  task: string
+): Promise<string> {
+  const agentConfig = getAgentConfig(targetAgent);
+  const userProfile = await getUserProfile();
+  const memoryCtx  = await getMemoryContext();
+  const convCtx    = await getConversationContext(webChatId(targetAgent), 10);
+
+  const now = new Date().toLocaleString("en-US", {
+    timeZone: TIMEZONE,
+    weekday: "long", year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+  });
+
+  const sections: string[] = [];
+  sections.push(
+    agentConfig?.systemPrompt ??
+    "You are Go, a personal AI assistant. Be concise, direct, and helpful."
+  );
+  if (userProfile)  sections.push(`## USER PROFILE\n${userProfile}`);
+  sections.push(`## CURRENT TIME\n${now}`);
+  if (memoryCtx)    sections.push(`## MEMORY\n${memoryCtx}`);
+  if (convCtx)      sections.push(`## RECENT CONVERSATION\n${convCtx}`);
+
+  sections.push(`## CROSS-AGENT CONTEXT
+You were invoked by the ${sourceAgent} agent to handle a specific task.
+
+Original user question:
+${originalMessage}
+
+${sourceAgent} agent's analysis:
+${sourceResponse}
+
+Your specific task: ${task}`);
+
+  return sections.join("\n\n---\n\n");
+}
+
 
 // ---------------------------------------------------------------------------
 // HTTP Server
@@ -156,7 +225,11 @@ const server = Bun.serve({
           ...(agentConfig?.allowedTools ? { allowedTools: agentConfig.allowedTools } : {}),
         });
 
-        const responseText = result.text || "_(no response)_";
+        const rawText = result.text || "_(no response)_";
+
+        // Check for cross-agent invocation tag
+        const invocation = parseInvokeTag(rawText);
+        const responseText = invocation ? stripInvokeTag(rawText) : rawText;
 
         await processIntents(responseText, chatId);
 
@@ -166,6 +239,46 @@ const server = Bun.serve({
           content: responseText,
           metadata: { agent, source: "web" },
         });
+
+        // Handle cross-agent invocation
+        if (invocation) {
+          const targetChatId = webChatId(invocation.agent);
+
+          // Save the delegation note to target agent's history
+          await saveMessage({
+            chat_id: targetChatId,
+            role: "user",
+            content: `[From ${agent}] ${invocation.task}`,
+            metadata: { agent: invocation.agent, source: "web", invokedBy: agent },
+          });
+
+          const crossPrompt = await runCrossAgent(
+            agent, invocation.agent, message, responseText, invocation.task
+          );
+          const crossConfig = getAgentConfig(invocation.agent);
+          const crossResult = await callClaudeStreaming({
+            prompt: crossPrompt,
+            cwd: PROJECT_ROOT,
+            timeoutMs: 1_800_000,
+            ...(crossConfig?.allowedTools ? { allowedTools: crossConfig.allowedTools } : {}),
+          });
+
+          const crossText = crossResult.text || "_(no response)_";
+
+          await processIntents(crossText, targetChatId);
+
+          await saveMessage({
+            chat_id: targetChatId,
+            role: "assistant",
+            content: crossText,
+            metadata: { agent: invocation.agent, source: "web", invokedBy: agent },
+          });
+
+          return Response.json({
+            text: responseText,
+            invoked: { agent: invocation.agent, task: invocation.task, text: crossText },
+          });
+        }
 
         return Response.json({ text: responseText });
       } catch (err: any) {
@@ -367,6 +480,18 @@ const HTML = `<!DOCTYPE html>
 
   /* ---- Code blocks ---- */
   pre { background: #111; border: 1px solid #222; border-radius: 8px; padding: 12px; overflow-x: auto; margin: 8px 0; }
+
+  .cross-agent-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 10px; padding: 8px 14px;
+    background: #0f1f0f; border: 1px solid #1a3a1a;
+    border-radius: 10px; font-size: 12px; color: #6ee86e;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .cross-agent-pill:hover { background: #162716; }
+  .cross-agent-pill .pill-icon { font-size: 14px; }
+  .cross-agent-pill .pill-label { font-weight: 500; }
+  .cross-agent-pill .pill-arrow { opacity: 0.6; }
   code { font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; }
 </style>
 </head>
@@ -552,7 +677,18 @@ const HTML = `<!DOCTYPE html>
       if (data.error) {
         appendMessage('assistant', '⚠️ Error: ' + data.error, new Date().toISOString());
       } else {
-        appendMessage('assistant', data.text, new Date().toISOString());
+        const wrap = appendMessage('assistant', data.text, new Date().toISOString());
+        if (data.invoked) {
+          const pill = document.createElement('div');
+          pill.className = 'cross-agent-pill';
+          const meta = agents.find(a => a.id === data.invoked.agent);
+          const icon = meta ? meta.icon : '🤖';
+          const name = meta ? meta.name : data.invoked.agent;
+          pill.innerHTML = '<span class="pill-icon">' + icon + '</span><span class="pill-label">' + name + ' also responded</span><span class="pill-arrow">→ ' + name + ' tab</span>';
+          pill.addEventListener('click', () => selectAgent(meta || { id: data.invoked.agent, name: name, icon: icon, subtitle: '' }));
+          // Append pill after the bubble inside the wrap
+          wrap.parentElement.appendChild(pill);
+        }
       }
       scrollBottom();
     } catch (err) {
