@@ -1,5 +1,7 @@
 const port = parseInt(process.env.PORT ?? '3000');
-const htmlPath = import.meta.dir + '/../pdpa-readiness-check.html';
+const htmlPath = process.cwd() + '/pdpa-readiness-check.html';
+
+console.log(`Serving HTML from: ${htmlPath}`);
 
 Bun.serve({
   port,
