@@ -102,7 +102,7 @@ const server = Bun.serve({
     if (req.method === "GET" && url.pathname === "/api/agents") {
       const agents = AGENT_ORDER.map((id) => ({
         id,
-        name: id.charAt(0).toUpperCase() + id.slice(1),
+        name: id === 'cto' ? 'CTO' : id === 'coo' ? 'COO' : id.charAt(0).toUpperCase() + id.slice(1),
         ...AGENT_META[id],
       }));
       return Response.json(agents);
