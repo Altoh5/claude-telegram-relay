@@ -115,7 +115,7 @@ const server = Bun.serve({
       const chatId = webChatId(agent);
       const messages = await getRecentMessages(chatId, 50);
       return Response.json(
-        messages.reverse().map((m) => ({
+        messages.slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((m) => ({
           role: m.role,
           content: m.content,
           ts: m.created_at,
@@ -567,7 +567,7 @@ const HTML = `<!DOCTYPE html>
 
   // ---- Helpers ----
   function scrollBottom() {
-    messages.scrollTop = messages.scrollHeight;
+    requestAnimationFrame(() => { messages.scrollTop = messages.scrollHeight; });
   }
 
   // ---- Auto-resize textarea ----
