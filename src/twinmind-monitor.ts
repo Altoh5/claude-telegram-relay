@@ -16,21 +16,20 @@ import { loadEnv } from "./lib/env";
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramDocument } from "./lib/telegram";
 import { runClaudeWithTimeout } from "./lib/claude";
 import { createClient } from "@supabase/supabase-js";
-import { syncFromTwinmindDirect } from "./lib/twinmind-direct-sync";
 
 // Load environment
 await loadEnv();
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID || process.env.TELEGRAM_USER_ID || "";
-const GENERAL_TOPIC_ID = 1;
+const GENERAL_TOPIC_ID = undefined; // Group has no topic 1; undefined sends to General chat
 const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 const NLM_NOTEBOOK_ID = process.env.TWINMIND_NLM_NOTEBOOK_ID || "";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
 
-const THREAD_ID = process.env.TELEGRAM_GROUP_CHAT_ID ? GENERAL_TOPIC_ID : undefined;
+const THREAD_ID = GENERAL_TOPIC_ID;
 
 // ============================================================
 // SUPABASE CLIENT
@@ -629,14 +628,13 @@ async function main() {
   console.log(`NLM Notebook: ${NLM_NOTEBOOK_ID || "(not configured)"}`);
   console.log(`Supabase: ${SUPABASE_URL ? "configured" : "NOT configured"}`);
 
-  // Sync latest meetings from TwinMind API directly (no Claude Code needed)
-  console.log("Step 1/3: Syncing from TwinMind API...");
-  const synced = await syncFromTwinmindDirect(getSupabase()!);
-  if (synced > 0) {
-    console.log(`  ↳ Synced ${synced} new meeting(s) from TwinMind`);
-  } else {
-    console.log("  ↳ No new meetings synced (token issue or already up to date)");
-  }
+  // Step 1: Direct TwinMind sync disabled — OAuth token not available in background.
+  // Meetings are synced via interactive Claude Code sessions instead.
+  console.log("Step 1/3: Skipping direct TwinMind sync (use interactive session to sync).");
+
+
+
+
 
   console.log("Step 2/3: Fetching unprocessed meetings from Supabase...");
   const meetings = await fetchUnprocessedMeetings();

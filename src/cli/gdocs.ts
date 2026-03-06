@@ -6,6 +6,8 @@
  *   bun src/cli/gdocs.ts find "<query>"
  *   bun src/cli/gdocs.ts read <docId>
  *   bun src/cli/gdocs.ts create "<title>"
+ *   bun src/cli/gdocs.ts append <docId> "<text>"
+ *   bun src/cli/gdocs.ts replace <docId> "<oldText>" "<newText>"
  */
 
 import { init, getToken, output, error, run } from "./_google";
@@ -70,6 +72,48 @@ async function createDoc(title: string): Promise<void> {
   output({ id: doc.documentId, title: doc.title, link: `https://docs.google.com/document/d/${doc.documentId}/edit` });
 }
 
+async function appendToDoc(docId: string, text: string): Promise<void> {
+  const token = await getToken();
+
+  const res = await fetch(`${DOCS}/documents/${docId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      requests: [{
+        insertText: {
+          endOfSegmentLocation: { segmentId: "" },
+          text: text.endsWith("\n") ? text : text + "\n",
+        },
+      }],
+    }),
+  });
+
+  if (!res.ok) error(`Docs API ${res.status}: ${await res.text()}`);
+  output({ docId, appended: text });
+}
+
+async function replaceInDoc(docId: string, oldText: string, newText: string): Promise<void> {
+  const token = await getToken();
+
+  const res = await fetch(`${DOCS}/documents/${docId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      requests: [{
+        replaceAllText: {
+          containsText: { text: oldText, matchCase: false },
+          replaceText: newText,
+        },
+      }],
+    }),
+  });
+
+  if (!res.ok) error(`Docs API ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const occurrences = data.replies?.[0]?.replaceAllText?.occurrencesChanged ?? 0;
+  output({ docId, replaced: occurrences, oldText, newText });
+}
+
 // --- Main ---
 run(async () => {
   await init();
@@ -88,7 +132,15 @@ run(async () => {
       if (!args[0]) error("Usage: create <title>");
       await createDoc(args[0]);
       break;
+    case "append":
+      if (!args[0] || !args[1]) error("Usage: append <docId> <text>");
+      await appendToDoc(args[0], args[1]);
+      break;
+    case "replace":
+      if (!args[0] || !args[1] || args[2] === undefined) error("Usage: replace <docId> <oldText> <newText>");
+      await replaceInDoc(args[0], args[1], args[2]);
+      break;
     default:
-      error(`Unknown command: ${cmd || "(none)"}. Available: find, read, create`);
+      error(`Unknown command: ${cmd || "(none)"}. Available: find, read, create, append, replace`);
   }
 });

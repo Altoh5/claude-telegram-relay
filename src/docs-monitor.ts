@@ -20,7 +20,7 @@ import {
   type DocComment,
   type DocReply,
 } from "./lib/docs-api";
-import { getSupabase } from "./lib/supabase";
+import { getSupabase } from "./lib/db";
 
 await loadEnv();
 

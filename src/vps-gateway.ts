@@ -47,7 +47,7 @@ import {
   parseAssetDescTag,
   stripAssetDescTag,
 } from "./lib/asset-store";
-import * as supabase from "./lib/supabase";
+import * as supabase from "./lib/db";
 
 // ============================================================
 // LOAD ENVIRONMENT

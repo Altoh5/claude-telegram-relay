@@ -18,12 +18,14 @@ const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/documents",
 ].join(" ");
 
 console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║          Google OAuth Setup for Gobot                       ║
-║     Enables: Gmail + Calendar read & event creation         ║
+║   Enables: Gmail + Calendar + Drive (read) + Docs (edit)   ║
 ╚══════════════════════════════════════════════════════════════╝
 
 This script helps you get a Google OAuth refresh token.

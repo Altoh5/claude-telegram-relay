@@ -20,7 +20,7 @@ import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { selectModelForMessage } from "./model-router";
 import { AskUserSignal } from "./anthropic-processor";
 import { buildTaskKeyboard } from "./task-queue";
-import * as supabase from "./supabase";
+import * as supabase from "./db";
 import type { Context } from "grammy";
 
 // ============================================================

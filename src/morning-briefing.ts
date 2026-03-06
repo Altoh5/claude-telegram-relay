@@ -30,7 +30,7 @@ await loadEnv();
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const GROUP_CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID || "";
 const DM_CHAT_ID = process.env.TELEGRAM_USER_ID || "";
-const GENERAL_TOPIC_ID = 1; // Telegram forum "General" topic is always thread ID 1
+const GENERAL_TOPIC_ID = undefined; // Group has no topic 1; undefined sends to General chat
 const PROJECT_ROOT = process.env.GO_PROJECT_ROOT || process.cwd();
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "UTC";
 

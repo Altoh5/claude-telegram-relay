@@ -1324,7 +1324,7 @@ async function callClaude(
   const memoryCtx = await getMemoryContext();
 
   // Build conversation context (recent messages)
-  const conversationCtx = await getConversationContext(chatId, 10);
+  const conversationCtx = await getConversationContext(chatId, 20);
 
   // Current time in user's timezone
   const now = new Date().toLocaleString("en-US", {
@@ -1528,7 +1528,7 @@ async function callClaudeWithProgress(
   const agentConfig = getAgentConfig(agentName);
   const userProfile = await getUserProfile();
   const memoryCtx = await getMemoryContext();
-  const conversationCtx = await getConversationContext(chatId, 10);
+  const conversationCtx = await getConversationContext(chatId, 20);
 
   const now = new Date().toLocaleString("en-US", {
     timeZone: TIMEZONE,

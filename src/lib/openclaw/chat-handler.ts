@@ -17,7 +17,7 @@ import {
 } from "../claude";
 import { classifyComplexity } from "../model-router";
 import { getMemoryContext, processIntents } from "../memory";
-import { saveMessage, getConversationContext } from "../supabase";
+import { saveMessage, getConversationContext } from "../db";
 import { callFallbackLLM } from "../fallback-llm";
 import { getAgentConfig, getUserProfile } from "../../agents/base";
 

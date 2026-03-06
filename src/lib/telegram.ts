@@ -59,45 +59,71 @@ export async function sendTelegramMessage(
 ): Promise<boolean> {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
 
-  const body: Record<string, unknown> = {
-    chat_id: chatId,
-    text: options?.parseMode ? sanitizeForTelegram(message) : message,
-  };
+  const finalText = options?.parseMode ? sanitizeForTelegram(message) : message;
 
-  if (options?.messageThreadId) {
-    body.message_thread_id = options.messageThreadId;
-  }
-
-  if (options?.parseMode) {
-    body.parse_mode = options.parseMode;
-  }
-
-  if (options?.buttons && options.buttons.length > 0) {
-    body.reply_markup = { inline_keyboard: options.buttons };
+  // Split into chunks if over Telegram's 4096 char limit
+  const MAX_LENGTH = 4000;
+  const chunks: string[] = [];
+  if (finalText.length <= MAX_LENGTH) {
+    chunks.push(finalText);
+  } else {
+    let current = "";
+    for (const paragraph of finalText.split("\n\n")) {
+      if ((current + "\n\n" + paragraph).length > MAX_LENGTH) {
+        if (current) chunks.push(current);
+        current = paragraph.length > MAX_LENGTH ? paragraph.slice(0, MAX_LENGTH) : paragraph;
+      } else {
+        current = current ? current + "\n\n" + paragraph : paragraph;
+      }
+    }
+    if (current) chunks.push(current);
   }
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    for (let i = 0; i < chunks.length; i++) {
+      const body: Record<string, unknown> = {
+        chat_id: chatId,
+        text: chunks[i],
+      };
 
-    if (!response.ok) {
-      // Retry without formatting on parse errors
-      if (response.status === 400 && options?.parseMode) {
-        const fallback = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: message.replace(/\*/g, "").replace(/_/g, ""),
-            reply_markup: body.reply_markup,
-          }),
-        });
-        return fallback.ok;
+      if (options?.messageThreadId) {
+        body.message_thread_id = options.messageThreadId;
       }
-      return false;
+
+      if (options?.parseMode) {
+        body.parse_mode = options.parseMode;
+      }
+
+      // Only attach buttons to the last chunk
+      if (i === chunks.length - 1 && options?.buttons && options.buttons.length > 0) {
+        body.reply_markup = { inline_keyboard: options.buttons };
+      }
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        // Retry without formatting on parse errors
+        if (response.status === 400 && options?.parseMode) {
+          const plainText = chunks[i].replace(/\*/g, "").replace(/_/g, "");
+          const fallback = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: plainText,
+              message_thread_id: options?.messageThreadId,
+              reply_markup: body.reply_markup,
+            }),
+          });
+          if (!fallback.ok) return false;
+        } else {
+          return false;
+        }
+      }
     }
 
     return true;
