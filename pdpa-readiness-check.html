@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Malaysia PDPA Readiness Check | Straits Interactive</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #1a3a5c;
+      --accent: #e8501a;
+      --accent-light: #f97316;
+      --bg: #f8f9fa;
+      --white: #ffffff;
+      --text: #1a1a1a;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --success: #16a34a;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* HEADER */
+    .header {
+      background: var(--primary);
+      color: white;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header .logo-text {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .header .logo-sub {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      margin-top: 1px;
+    }
+
+    /* HERO */
+    .hero {
+      background: linear-gradient(135deg, var(--primary) 0%, #2c5282 100%);
+      color: white;
+      padding: 60px 24px 50px;
+      text-align: center;
+    }
+    .hero .badge {
+      display: inline-block;
+      background: rgba(232,80,26,0.9);
+      color: white;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 18px;
+    }
+    .hero h1 {
+      font-size: clamp(1.6rem, 4vw, 2.6rem);
+      font-weight: 800;
+      line-height: 1.2;
+      max-width: 720px;
+      margin: 0 auto 18px;
+    }
+    .hero h1 span { color: #fb923c; }
+    .hero p {
+      font-size: 1.1rem;
+      opacity: 0.88;
+      max-width: 580px;
+      margin: 0 auto 28px;
+    }
+    .btn-primary {
+      display: inline-block;
+      background: var(--accent);
+      color: white;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 14px 32px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-primary:hover { background: #c93f12; transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+
+    /* LAW CALLOUTS */
+    .law-strip {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 32px 24px;
+    }
+    .law-strip .inner {
+      max-width: 840px;
+      margin: 0 auto;
+    }
+    .law-strip h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+    .law-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+    .law-card {
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      background: #fafafa;
+    }
+    .law-card .rule-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+    .law-card .rule-detail {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+    .law-card .rule-detail strong { color: var(--accent); }
+
+    /* MAIN LAYOUT */
+    .main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 20px 60px;
+    }
+
+    /* CHECKLIST */
+    .checklist-wrap { display: block; }
+    .results-wrap { display: none; }
+
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .question-block {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      margin-bottom: 14px;
+    }
+    .question-block .q-num {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    .question-block .q-text {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+    .options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .option-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .option-label:hover { border-color: var(--accent); background: #fff5f2; }
+    .option-label input[type="radio"] { display: none; }
+    .option-label.selected {
+      border-color: var(--accent);
+      background: #fff5f2;
+      font-weight: 600;
+    }
+    .option-label .dot {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .option-label.selected .dot {
+      border-color: var(--accent);
+      background: var(--accent);
+    }
+    .option-label.selected .dot::after {
+      content: '';
+      width: 6px; height: 6px;
+      background: white;
+      border-radius: 50%;
+    }
+
+    .section-divider {
+      margin: 28px 0 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .section-divider .divider-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--primary);
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .section-divider::before, .section-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .progress-bar {
+      background: var(--border);
+      border-radius: 10px;
+      height: 5px;
+      margin-bottom: 28px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%);
+      border-radius: 10px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    .submit-row {
+      text-align: center;
+      margin-top: 28px;
+    }
+    .btn-submit {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 14px 40px;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-submit:not(:disabled):hover { background: #c93f12; }
+    .submit-note { font-size: 0.8rem; color: var(--muted); margin-top: 10px; }
+
+    /* RESULTS */
+    .result-hero {
+      text-align: center;
+      padding: 36px 20px 28px;
+      border-radius: var(--radius);
+      margin-bottom: 28px;
+    }
+    .result-hero.high { background: #fef2f2; border: 1px solid #fca5a5; }
+    .result-hero.partial { background: #fffbeb; border: 1px solid #fcd34d; }
+    .result-hero.good { background: #f0fdf4; border: 1px solid #86efac; }
+
+    .risk-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+    }
+    .high .risk-badge { background: var(--danger); color: white; }
+    .partial .risk-badge { background: var(--warning); color: white; }
+    .good .risk-badge { background: var(--success); color: white; }
+
+    .result-hero h2 { font-size: 1.5rem; font-weight: 800; margin-bottom: 10px; color: var(--text); }
+    .result-hero p { font-size: 0.95rem; color: var(--muted); max-width: 500px; margin: 0 auto; }
+
+    .score-meter {
+      max-width: 340px;
+      margin: 20px auto 0;
+    }
+    .score-meter .meter-track {
+      background: rgba(0,0,0,0.08);
+      border-radius: 10px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .score-meter .meter-fill {
+      height: 100%;
+      border-radius: 10px;
+      transition: width 1s ease;
+    }
+    .high .meter-fill { background: var(--danger); }
+    .partial .meter-fill { background: var(--warning); }
+    .good .meter-fill { background: var(--success); }
+    .score-meter .score-label {
+      display: flex; justify-content: space-between;
+      font-size: 0.78rem; color: var(--muted); margin-top: 6px;
+    }
+
+    .gaps-section {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .gaps-section h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 14px;
+    }
+    .gap-item {
+      display: flex;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .gap-item:last-child { border-bottom: none; }
+    .gap-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+    .gap-text strong { display: block; font-weight: 600; }
+    .gap-text span { color: var(--muted); font-size: 0.83rem; }
+
+    .cta-section {
+      background: var(--primary);
+      color: white;
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .cta-section h3 { font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; }
+    .cta-section p { font-size: 0.9rem; opacity: 0.85; margin-bottom: 22px; }
+    .btn-cta {
+      display: inline-block;
+      background: var(--accent);
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 12px 28px;
+      border-radius: 8px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-cta:hover { background: #c93f12; }
+    .btn-retake {
+      display: inline-block;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      font-size: 0.85rem;
+      padding: 9px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 14px;
+      transition: border-color 0.2s;
+    }
+    .btn-retake:hover { border-color: var(--muted); }
+
+    /* FOOTER */
+    .footer {
+      background: var(--primary);
+      color: rgba(255,255,255,0.6);
+      text-align: center;
+      font-size: 0.78rem;
+      padding: 20px;
+    }
+    .footer a { color: rgba(255,255,255,0.8); }
+
+    @media (max-width: 520px) {
+      .hero { padding: 44px 18px 36px; }
+      .main { padding: 28px 16px 48px; }
+      .question-block { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <div class="logo-text">Straits Interactive</div>
+    <div class="logo-sub">Data Protection &amp; AI Governance</div>
+  </div>
+</div>
+
+<!-- HERO -->
+<div class="hero" id="hero-section">
+  <div class="badge">Free 3-Minute Assessment</div>
+  <h1>Is Your Business Ready for<br><span>Malaysia's New PDPA Rules?</span></h1>
+  <p>Two new obligations are already law. Most Malaysian SMEs don't know if they qualify — or if they're already non-compliant.</p>
+  <button class="btn-primary" onclick="document.getElementById('checklist-section').scrollIntoView({behavior:'smooth'})">
+    Start My Free Readiness Check &rarr;
+  </button>
+</div>
+
+<!-- LAW CALLOUTS -->
+<div class="law-strip">
+  <div class="inner">
+    <h2>What Changed in 2025</h2>
+    <div class="law-cards">
+      <div class="law-card">
+        <div class="rule-title">Mandatory DPO Appointment</div>
+        <div class="rule-detail">If you handle data of <strong>20,000+ individuals</strong>, you must appoint a Data Protection Officer — registered with PDPD within 21 days.</div>
+      </div>
+      <div class="law-card">
+        <div class="rule-title">72-Hour Breach Notification</div>
+        <div class="rule-detail">A significant breach must be reported to the Commissioner within <strong>72 hours</strong>. Affected individuals notified within <strong>7 days</strong>.</div>
+      </div>
+      <div class="law-card">
+        <div class="rule-title">Already In Force</div>
+        <div class="rule-detail">These rules took effect <strong>1 June 2025</strong>. Malaysia's PDPD modelled enforcement on Singapore's PDPC. The question is whether you're covered.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHECKLIST -->
+<div class="main" id="checklist-section">
+
+  <div class="checklist-wrap" id="checklist-wrap">
+    <div class="section-label">Free Assessment</div>
+    <div class="section-title">PDPA Readiness Check</div>
+
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+
+    <form id="readiness-form">
+
+      <!-- Section 1 -->
+      <div class="section-divider"><span class="divider-label">Section 1 — Do the New Rules Apply?</span></div>
+
+      <div class="question-block" data-q="q1">
+        <div class="q-num">Question 1 of 7</div>
+        <div class="q-text">Approximately how many individuals' personal data does your business hold? (customer records, HR data, mailing lists)</div>
+        <div class="options">
+          <label class="option-label" data-val="0"><input type="radio" name="q1" value="0"><span class="dot"></span> Under 1,000</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q1" value="0"><span class="dot"></span> 1,000 – 10,000</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q1" value="0"><span class="dot"></span> 10,000 – 20,000</label>
+          <label class="option-label" data-val="1"><input type="radio" name="q1" value="1"><span class="dot"></span> Over 20,000</label>
+        </div>
+      </div>
+
+      <div class="question-block" data-q="q2">
+        <div class="q-num">Question 2 of 7</div>
+        <div class="q-text">Do you handle any sensitive data types? (financial info, health records, ID/passport numbers)</div>
+        <div class="options">
+          <label class="option-label" data-val="1"><input type="radio" name="q2" value="1"><span class="dot"></span> Yes</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q2" value="0"><span class="dot"></span> No</label>
+          <label class="option-label" data-val="1"><input type="radio" name="q2" value="1"><span class="dot"></span> Not sure</label>
+        </div>
+      </div>
+
+      <!-- Section 2 -->
+      <div class="section-divider"><span class="divider-label">Section 2 — DPO Readiness</span></div>
+
+      <div class="question-block" data-q="q3">
+        <div class="q-num">Question 3 of 7</div>
+        <div class="q-text">Do you have a designated Data Protection Officer or person responsible for PDPA compliance?</div>
+        <div class="options">
+          <label class="option-label" data-val="2"><input type="radio" name="q3" value="2"><span class="dot"></span> Yes, registered with PDPD</label>
+          <label class="option-label" data-val="1"><input type="radio" name="q3" value="1"><span class="dot"></span> Yes, but not registered</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q3" value="0"><span class="dot"></span> No</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q3" value="0"><span class="dot"></span> Not sure what a DPO is</label>
+        </div>
+      </div>
+
+      <div class="question-block" data-q="q4">
+        <div class="q-num">Question 4 of 7</div>
+        <div class="q-text">Is your DPO's contact information published on your company website?</div>
+        <div class="options">
+          <label class="option-label" data-val="1"><input type="radio" name="q4" value="1"><span class="dot"></span> Yes</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q4" value="0"><span class="dot"></span> No</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q4" value="0"><span class="dot"></span> We don't have a website</label>
+        </div>
+      </div>
+
+      <!-- Section 3 -->
+      <div class="section-divider"><span class="divider-label">Section 3 — Breach Response</span></div>
+
+      <div class="question-block" data-q="q5">
+        <div class="q-num">Question 5 of 7</div>
+        <div class="q-text">If your systems were breached tonight, how quickly would you realistically know?</div>
+        <div class="options">
+          <label class="option-label" data-val="2"><input type="radio" name="q5" value="2"><span class="dot"></span> Within hours — we have active monitoring</label>
+          <label class="option-label" data-val="1"><input type="radio" name="q5" value="1"><span class="dot"></span> Within 1–2 days</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q5" value="0"><span class="dot"></span> Likely days or weeks</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q5" value="0"><span class="dot"></span> Not sure</label>
+        </div>
+      </div>
+
+      <div class="question-block" data-q="q6">
+        <div class="q-num">Question 6 of 7</div>
+        <div class="q-text">Do you have a documented data breach response plan?</div>
+        <div class="options">
+          <label class="option-label" data-val="2"><input type="radio" name="q6" value="2"><span class="dot"></span> Yes, tested and up to date</label>
+          <label class="option-label" data-val="1"><input type="radio" name="q6" value="1"><span class="dot"></span> Yes, but never tested</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q6" value="0"><span class="dot"></span> No</label>
+        </div>
+      </div>
+
+      <div class="question-block" data-q="q7">
+        <div class="q-num">Question 7 of 7</div>
+        <div class="q-text">Do you know the PDPD Commissioner's data breach notification process and the 72-hour deadline?</div>
+        <div class="options">
+          <label class="option-label" data-val="2"><input type="radio" name="q7" value="2"><span class="dot"></span> Yes, and we have a process to meet the 72-hour window</label>
+          <label class="option-label" data-val="1"><input type="radio" name="q7" value="1"><span class="dot"></span> Aware of it, but no formal process yet</label>
+          <label class="option-label" data-val="0"><input type="radio" name="q7" value="0"><span class="dot"></span> No, this is new to me</label>
+        </div>
+      </div>
+
+      <div class="submit-row">
+        <button type="submit" class="btn-submit" id="btn-submit" disabled>View My Results &rarr;</button>
+        <div class="submit-note">No signup required. Takes under 3 minutes.</div>
+      </div>
+
+    </form>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="results-wrap" id="results-wrap">
+
+    <div class="section-label">Your Assessment Results</div>
+    <div class="section-title">PDPA Readiness Report</div>
+
+    <div class="result-hero" id="result-hero">
+      <div class="risk-badge" id="risk-badge">High Risk</div>
+      <h2 id="result-headline">Significant Gaps Identified</h2>
+      <p id="result-summary"></p>
+      <div class="score-meter">
+        <div class="meter-track">
+          <div class="meter-fill" id="meter-fill" style="width:0%"></div>
+        </div>
+        <div class="score-label">
+          <span>Non-compliant</span>
+          <span id="score-pct"></span>
+          <span>Compliant</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="gaps-section" id="gaps-section">
+      <h3>Key Gaps to Address</h3>
+      <div id="gaps-list"></div>
+    </div>
+
+    <div class="cta-section" id="cta-section">
+      <h3 id="cta-headline">Get Expert Guidance</h3>
+      <p id="cta-body"></p>
+      <a href="mailto:alvin@straitsinteractive.com?subject=PDPA Readiness Consultation&body=Hi Alvin, I just completed the PDPA Readiness Check and would like to book a free consultation." class="btn-cta">Book a Free 30-Min Consultation &rarr;</a>
+    </div>
+
+    <div style="text-align:center;">
+      <button class="btn-retake" onclick="retake()">Retake the Assessment</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <p>&copy; 2025 Straits Interactive Pte Ltd &middot; <a href="https://straitsinteractive.com">straitsinteractive.com</a></p>
+  <p style="margin-top:6px;">Trusted by enterprise and government clients across ASEAN for data protection training &amp; AI governance.</p>
+</div>
+
+<script>
+  const form = document.getElementById('readiness-form');
+  const btnSubmit = document.getElementById('btn-submit');
+  const totalQ = 7;
+
+  // Track selected options per question
+  const answered = {};
+
+  // Option click handler
+  document.querySelectorAll('.option-label').forEach(label => {
+    label.addEventListener('click', () => {
+      const input = label.querySelector('input[type="radio"]');
+      const name = input.name;
+      // Deselect siblings
+      document.querySelectorAll(`input[name="${name}"]`).forEach(r => {
+        r.closest('.option-label').classList.remove('selected');
+      });
+      label.classList.add('selected');
+      input.checked = true;
+      answered[name] = true;
+
+      // Update progress
+      const count = Object.keys(answered).length;
+      document.getElementById('progress-fill').style.width = (count / totalQ * 100) + '%';
+      btnSubmit.disabled = count < totalQ;
+    });
+  });
+
+  // Score lookup per question name & value
+  function getScore(name, val) {
+    return parseFloat(val);
+  }
+
+  function getGaps(answers) {
+    const gaps = [];
+    if (answers.q3 < 2) {
+      gaps.push({
+        icon: '⚠️',
+        title: 'No registered DPO',
+        detail: 'If you handle 20K+ records, a registered DPO is legally required. PDPD registration must happen within 21 days of appointment.'
+      });
+    }
+    if (answers.q4 < 1) {
+      gaps.push({
+        icon: '⚠️',
+        title: 'DPO contact not published',
+        detail: 'PDPA requires DPO contact details to be publicly visible on your website. This is a straightforward fix.'
+      });
+    }
+    if (answers.q5 < 2) {
+      gaps.push({
+        icon: '🔴',
+        title: 'Breach detection gap',
+        detail: 'You must notify the Commissioner within 72 hours. Without active monitoring, you may not detect a breach in time. 97% of Malaysian SMEs lack SOC coverage.'
+      });
+    }
+    if (answers.q6 < 2) {
+      gaps.push({
+        icon: '🔴',
+        title: 'No tested breach response plan',
+        detail: 'An untested plan is as risky as none. A breach scenario drill reveals gaps before regulators do.'
+      });
+    }
+    if (answers.q7 < 2) {
+      gaps.push({
+        icon: '⚠️',
+        title: 'Notification process unclear',
+        detail: 'The 72-hour window starts the moment you become aware. Without a documented process, meeting the deadline is unlikely.'
+      });
+    }
+    if (gaps.length === 0) {
+      gaps.push({
+        icon: '✅',
+        title: 'Good baseline compliance',
+        detail: 'Your business shows strong compliance awareness. A periodic review with a qualified DPO will confirm nothing has been missed.'
+      });
+    }
+    return gaps;
+  }
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+
+    // Collect answers
+    const answers = {};
+    ['q1','q2','q3','q4','q5','q6','q7'].forEach(name => {
+      const el = form.querySelector(`input[name="${name}"]:checked`);
+      answers[name] = el ? parseFloat(el.value) : 0;
+    });
+
+    // Max possible score: q1=1, q2=1, q3=2, q4=1, q5=2, q6=2, q7=2 = 11
+    const maxScore = 11;
+    const rawScore = answers.q1 + answers.q2 + answers.q3 + answers.q4 + answers.q5 + answers.q6 + answers.q7;
+    const pct = Math.round(rawScore / maxScore * 100);
+
+    // Determine risk tier
+    let tier;
+    if (pct <= 35) tier = 'high';
+    else if (pct <= 65) tier = 'partial';
+    else tier = 'good';
+
+    // Render results
+    const hero = document.getElementById('result-hero');
+    hero.className = 'result-hero ' + tier;
+
+    const badge = document.getElementById('risk-badge');
+    const headline = document.getElementById('result-headline');
+    const summary = document.getElementById('result-summary');
+    const ctaHeadline = document.getElementById('cta-headline');
+    const ctaBody = document.getElementById('cta-body');
+
+    if (tier === 'high') {
+      badge.textContent = 'High Risk';
+      headline.textContent = 'Significant Compliance Gaps Found';
+      summary.textContent = 'Your business has critical gaps under Malaysia\'s new PDPA rules. Given the 72-hour breach notification requirement and mandatory DPO obligations, immediate action is recommended.';
+      ctaHeadline.textContent = 'Book a Free PDPA Consultation';
+      ctaBody.textContent = 'Our experts will walk you through exactly what applies to your business and the fastest path to compliance — no obligation.';
+    } else if (tier === 'partial') {
+      badge.textContent = 'Partial Compliance';
+      headline.textContent = 'Some Gaps to Address';
+      summary.textContent = 'You have a compliance foundation, but there are specific areas that need attention before a PDPD inspection or a breach event. Review the gaps below.';
+      ctaHeadline.textContent = 'Close Your Compliance Gaps';
+      ctaBody.textContent = 'A 30-minute consultation with our team will identify the quickest wins and help you build a practical compliance roadmap.';
+    } else {
+      badge.textContent = 'Good Baseline';
+      headline.textContent = 'Strong Compliance Awareness';
+      summary.textContent = 'Your business shows solid PDPA readiness. A periodic review with a qualified DPO will confirm your compliance is complete and current.';
+      ctaHeadline.textContent = 'Verify Your Compliance Is Complete';
+      ctaBody.textContent = 'Even strong compliance can have blind spots. Book a review to confirm nothing has been missed and keep your DPO practices current.';
+    }
+
+    document.getElementById('score-pct').textContent = pct + '%';
+    setTimeout(() => {
+      document.getElementById('meter-fill').style.width = pct + '%';
+    }, 100);
+
+    // Gaps
+    const gaps = getGaps(answers);
+    const gapsList = document.getElementById('gaps-list');
+    gapsList.innerHTML = gaps.map(g => `
+      <div class="gap-item">
+        <span class="gap-icon">${g.icon}</span>
+        <div class="gap-text">
+          <strong>${g.title}</strong>
+          <span>${g.detail}</span>
+        </div>
+      </div>
+    `).join('');
+
+    // Show results
+    document.getElementById('checklist-wrap').style.display = 'none';
+    document.getElementById('results-wrap').style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.getElementById('hero-section').style.display = 'none';
+    document.querySelector('.law-strip').style.display = 'none';
+  });
+
+  function retake() {
+    // Reset form
+    form.reset();
+    document.querySelectorAll('.option-label').forEach(l => l.classList.remove('selected'));
+    Object.keys(answered).forEach(k => delete answered[k]);
+    document.getElementById('progress-fill').style.width = '0%';
+    btnSubmit.disabled = true;
+
+    document.getElementById('results-wrap').style.display = 'none';
+    document.getElementById('checklist-wrap').style.display = 'block';
+    document.getElementById('hero-section').style.display = '';
+    document.querySelector('.law-strip').style.display = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+</script>
+</body>
+</html>
