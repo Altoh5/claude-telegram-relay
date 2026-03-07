@@ -9,10 +9,11 @@
  */
 
 import { join } from "path";
+import { mkdir, writeFile } from "fs/promises";
 import { loadEnv } from "./lib/env";
 import { callClaudeStreaming } from "./lib/claude";
 import { getAgentConfig, getUserProfile } from "./agents";
-import { saveMessage, getRecentMessages, getConversationContext } from "./lib/db";
+import { saveMessage, getRecentMessages, getConversationContext, getSupabase } from "./lib/db";
 import { getMemoryContext, processIntents } from "./lib/memory";
 
 await loadEnv(join(process.cwd(), ".env"));
@@ -38,9 +39,34 @@ const AGENT_META: Record<string, { icon: string; subtitle: string }> = {
 
 const AGENT_ORDER = ["general", "research", "content", "finance", "strategy", "cto", "coo", "critic"];
 
-// Web uses its own chatId per agent so history is persistent and separate from Telegram
-function webChatId(agent: string) {
-  return `web-${agent}`;
+// Shared chat_id with Telegram — history visible in both interfaces
+// Falls back to "web" if TELEGRAM_USER_ID not set
+const WEB_CHAT_ID = process.env.TELEGRAM_USER_ID || "web";
+
+// For getConversationContext (used in prompt building) we still filter by agent
+// via metadata, but use the shared chat_id
+function webChatId(_agent: string) {
+  return WEB_CHAT_ID;
+}
+
+// Fetch messages filtered by metadata.agent from Supabase
+async function getMessagesByAgent(agent: string, limit = 50): Promise<Array<{role: string; content: string; created_at: string}>> {
+  const sb = getSupabase();
+  if (!sb) return [];
+
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await sb
+    .from("messages")
+    .select("role, content, created_at, metadata")
+    .eq("chat_id", WEB_CHAT_ID)
+    .filter("metadata->>agent", "eq", agent)
+    .gte("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (error || !data) return [];
+  return data as Array<{role: string; content: string; created_at: string}>;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,22 +207,21 @@ const server = Bun.serve({
     // --- GET /api/messages?agent=cto ---
     if (req.method === "GET" && url.pathname === "/api/messages") {
       const agent = url.searchParams.get("agent") || "general";
-      const chatId = webChatId(agent);
-      const messages = await getRecentMessages(chatId, 50);
-      return Response.json(
-        messages.slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((m) => ({
-          role: m.role,
-          content: m.content,
-          ts: m.created_at,
-        }))
-      );
+      const messages = await getMessagesByAgent(agent, 50);
+      return Response.json(messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        ts: m.created_at,
+      })));
     }
 
     // --- POST /api/chat → SSE stream ---
     if (req.method === "POST" && url.pathname === "/api/chat") {
-      const { message, agent = "general" } = (await req.json()) as {
+      const { message, agent = "general", fileUrl, fileName } = (await req.json()) as {
         message: string;
         agent?: string;
+        fileUrl?: string;
+        fileName?: string;
       };
 
       if (!message?.trim()) {
@@ -206,16 +231,17 @@ const server = Bun.serve({
       const chatId = webChatId(agent);
 
       // Save user message
+      const userContent = fileUrl ? `${message}\n[Attached file: ${fileName} — ${process.env.WEB_BASE_URL || "http://localhost:" + PORT}${fileUrl}]` : message;
       await saveMessage({
         chat_id: chatId,
         role: "user",
-        content: message,
-        metadata: { agent, source: "web" },
+        content: userContent,
+        metadata: { agent, source: "web", fileUrl, fileName },
       });
 
       // Run Claude and return JSON response
       try {
-        const prompt = await buildPrompt(message, agent);
+        const prompt = await buildPrompt(userContent, agent);
         const agentConfig = getAgentConfig(agent);
 
         const result = await callClaudeStreaming({
@@ -283,6 +309,42 @@ const server = Bun.serve({
         return Response.json({ text: responseText });
       } catch (err: any) {
         return Response.json({ error: err?.message || "Unknown error" }, { status: 500 });
+      }
+    }
+
+    // --- POST /api/upload → save file to /uploads ---
+    if (req.method === "POST" && url.pathname === "/api/upload") {
+      try {
+        const formData = await req.formData();
+        const file = formData.get("file") as File | null;
+        if (!file) return Response.json({ error: "no file" }, { status: 400 });
+
+        const uploadsDir = join(PROJECT_ROOT, "uploads");
+        await mkdir(uploadsDir, { recursive: true });
+
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filename = `${Date.now()}-${safeName}`;
+        const filepath = join(uploadsDir, filename);
+
+        const buffer = Buffer.from(await file.arrayBuffer());
+        await writeFile(filepath, buffer);
+
+        return Response.json({ filename, url: `/uploads/${filename}`, size: file.size, type: file.type });
+      } catch (err: any) {
+        return Response.json({ error: err?.message }, { status: 500 });
+      }
+    }
+
+    // --- GET /uploads/:file → serve uploaded files ---
+    if (req.method === "GET" && url.pathname.startsWith("/uploads/")) {
+      const filename = url.pathname.slice(9).replace(/\.\./g, ""); // prevent path traversal
+      try {
+        const filepath = join(PROJECT_ROOT, "uploads", filename);
+        const file = Bun.file(filepath);
+        if (!await file.exists()) return new Response("Not found", { status: 404 });
+        return new Response(file);
+      } catch {
+        return new Response("Not found", { status: 404 });
       }
     }
 
@@ -478,6 +540,15 @@ const HTML = `<!DOCTYPE html>
   .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .send-btn:hover:not(:disabled) { opacity: 0.85; }
 
+  .attach-btn {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: var(--input-bg); border: 1px solid var(--input-border);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; cursor: pointer; font-size: 18px;
+    transition: background 0.15s;
+  }
+  .attach-btn:hover { background: #222; }
+
   /* ---- Code blocks ---- */
   pre { background: #111; border: 1px solid #222; border-radius: 8px; padding: 12px; overflow-x: auto; margin: 8px 0; }
 
@@ -529,8 +600,13 @@ const HTML = `<!DOCTYPE html>
       <div class="input-wrap">
         <textarea id="input" rows="1" placeholder="Message General..." disabled></textarea>
       </div>
+      <label class="attach-btn" id="attachBtn" title="Attach file">
+        <input type="file" id="fileInput" style="display:none" accept="image/*,.pdf,.doc,.docx,.txt">
+        📎
+      </label>
       <button class="send-btn" id="sendBtn" disabled>➤</button>
     </div>
+    <div id="attachPreview" style="display:none; padding: 0 24px 8px; font-size:12px; color:#888;"></div>
   </main>
 </div>
 
@@ -656,11 +732,13 @@ const HTML = `<!DOCTYPE html>
     if (!text) return;
 
     sending = true;
+    const fileData = await uploadPendingFile();
     input.value = '';
     input.style.height = 'auto';
     sendBtn.disabled = true;
 
-    appendMessage('user', text, new Date().toISOString());
+    const displayText = fileData ? text + ' [file: ' + fileData.filename + ']' : text;
+    appendMessage('user', displayText, new Date().toISOString());
     const statusRow = addStatusRow();
     scrollBottom();
 
@@ -668,7 +746,7 @@ const HTML = `<!DOCTYPE html>
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, agent: activeAgent.id }),
+        body: JSON.stringify({ message: text, agent: activeAgent.id, fileUrl: fileData ? fileData.url : null, fileName: fileData ? fileData.filename : null }),
       });
 
       const data = await res.json();
@@ -721,6 +799,31 @@ const HTML = `<!DOCTYPE html>
   });
 
   sendBtn.addEventListener('click', send);
+
+  // ---- File upload ----
+  let pendingFile = null;
+  const fileInput  = document.getElementById('fileInput');
+  const attachPrev = document.getElementById('attachPreview');
+
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    if (!f) return;
+    pendingFile = f;
+    attachPrev.style.display = '';
+    attachPrev.textContent = '📎 ' + f.name + ' (' + (f.size / 1024).toFixed(1) + ' KB) — will send with next message';
+  });
+
+  async function uploadPendingFile() {
+    if (!pendingFile) return null;
+    const fd = new FormData();
+    fd.append('file', pendingFile);
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    pendingFile = null;
+    attachPrev.style.display = 'none';
+    fileInput.value = '';
+    return data.error ? null : data;
+  }
 
   init();
 </script>
