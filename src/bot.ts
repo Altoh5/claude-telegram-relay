@@ -1870,10 +1870,51 @@ async function processInBackground(
 // 10. Health Check HTTP Server
 // ---------------------------------------------------------------------------
 
+// Security headers added to every response
+const securityHeaders: Record<string, string> = {
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+  "Content-Security-Policy": "default-src 'none'",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+};
+
+// Simple in-memory rate limiter (per-IP, 30 requests per 60 seconds)
+const BOT_RATE_LIMIT_WINDOW = 60_000;
+const BOT_RATE_LIMIT_MAX = 30;
+const botRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function isBotRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = botRateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    botRateLimitMap.set(ip, { count: 1, resetAt: now + BOT_RATE_LIMIT_WINDOW });
+    return false;
+  }
+  entry.count++;
+  return entry.count > BOT_RATE_LIMIT_MAX;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of botRateLimitMap) {
+    if (now > entry.resetAt) botRateLimitMap.delete(ip);
+  }
+}, 300_000);
+
 const healthServer = Bun.serve({
   port: HEALTH_PORT,
   async fetch(req) {
     const url = new URL(req.url);
+
+    // Rate limiting
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || req.headers.get("x-real-ip")
+      || "unknown";
+    if (isBotRateLimited(clientIp)) {
+      return new Response("Too many requests", { status: 429, headers: securityHeaders });
+    }
 
     if (url.pathname === "/health" || url.pathname === "/") {
       return new Response(
@@ -1886,19 +1927,17 @@ const healthServer = Bun.serve({
           timestamp: new Date().toISOString(),
         }),
         {
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...securityHeaders },
         }
       );
     }
 
     // Process endpoint — VPS forwards messages here (async: returns 202 immediately)
     if (url.pathname === "/process" && req.method === "POST") {
-      // Auth check
-      if (GATEWAY_SECRET) {
-        const auth = req.headers.get("authorization") || "";
-        if (auth !== `Bearer ${GATEWAY_SECRET}`) {
-          return new Response("Unauthorized", { status: 401 });
-        }
+      // Auth check — fail closed: if GATEWAY_SECRET is not configured, deny all requests
+      const auth = req.headers.get("authorization") || "";
+      if (!GATEWAY_SECRET || auth !== `Bearer ${GATEWAY_SECRET}`) {
+        return new Response("Unauthorized", { status: 401, headers: securityHeaders });
       }
 
       let body: Record<string, any>;
@@ -1915,10 +1954,13 @@ const healthServer = Bun.serve({
         console.error("/process background error:", err);
       });
 
-      return Response.json({ accepted: true }, { status: 202 });
+      return new Response(JSON.stringify({ accepted: true }), {
+        status: 202,
+        headers: { "Content-Type": "application/json", ...securityHeaders },
+      });
     }
 
-    return new Response("Not Found", { status: 404 });
+    return new Response("Not Found", { status: 404, headers: securityHeaders });
   },
 });
 
