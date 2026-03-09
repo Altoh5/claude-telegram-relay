@@ -71,6 +71,20 @@ import {
 // Model Router (UX-only on Mac — controls progress updates, not model selection)
 import { classifyComplexity } from "./lib/model-router";
 
+// Board Meetings v2
+import {
+  createProject,
+  getProject,
+  listProjects,
+  archiveProject,
+  appendProjectContext,
+  formatProjectContext,
+  createBoardSession,
+  updateBoardSession,
+  getLastBoardSession,
+} from "./lib/projects";
+import { runBoardMeeting } from "./lib/board-meeting";
+
 // Agents
 import {
   getAgentConfig,
@@ -433,6 +447,13 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     }
   }
 
+  // ----- Project Commands (/project) -----
+
+  if (lowerText === "/project" || lowerText.startsWith("/project ")) {
+    await handleProjectCommand(ctx, chatId, text);
+    return;
+  }
+
   // ----- Critic Mode -----
 
   if (lowerText.startsWith("/critic ") || lowerText.startsWith("/critic\n")) {
@@ -443,19 +464,34 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     }
   }
 
-  // ----- Board Meeting -----
+  // ----- Board Meeting v2 -----
 
   if (
     lowerText === "/board" ||
     lowerText === "board meeting" ||
     lowerText.startsWith("/board ")
   ) {
-    const extraContext = text.replace(/^\/board\s*/i, "").replace(/^board meeting\s*/i, "").trim();
-    const boardPrompt = extraContext
-      ? `Board meeting requested. Additional context: ${extraContext}`
-      : "Board meeting requested. Review all recent activity and provide a synthesis.";
+    const projectName = text.replace(/^\/board\s*/i, "").replace(/^board meeting\s*/i, "").trim();
 
-    await callClaudeAndReply(ctx, chatId, boardPrompt, "general", topicId);
+    if (!projectName) {
+      // Show list of projects as suggestions
+      const projects = await listProjects(chatId);
+      if (projects.length === 0) {
+        await ctx.reply(
+          `*Board Meeting v2*\n\nNo projects yet. Create one first:\n\`/project new <name>\``,
+          { parse_mode: "Markdown" }
+        ).catch(() => ctx.reply("No projects yet. Create one first with /project new <name>"));
+      } else {
+        const list = projects.map((p) => `• ${p.name}`).join("\n");
+        await ctx.reply(
+          `*Board Meeting v2*\n\nChoose a project:\n${list}\n\nUsage: \`/board <project name>\``,
+          { parse_mode: "Markdown" }
+        ).catch(() => ctx.reply(`Board Meeting v2\n\nChoose a project:\n${list}\n\nUsage: /board <project name>`));
+      }
+      return;
+    }
+
+    await handleBoardMeetingV2(ctx, chatId, projectName, topicId);
     return;
   }
 
@@ -555,6 +591,245 @@ async function handleTextMessage(ctx: Context): Promise<void> {
   // Determine agent from topic (if forum mode)
   const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
   await callClaudeAndReply(ctx, chatId, enrichedText, agentName, topicId);
+}
+
+// --- Project Command Handler ---
+
+async function handleProjectCommand(ctx: Context, chatId: string, text: string): Promise<void> {
+  const args = text.replace(/^\/project\s*/i, "").trim();
+  const [subcommand, ...rest] = args.split(/\s+/);
+
+  if (!subcommand || subcommand === "help") {
+    await ctx.reply(
+      `*Project Commands*\n\n` +
+      `\`/project new <name>\` — create project\n` +
+      `\`/project list\` — list active projects\n` +
+      `\`/project show <name>\` — show project details\n` +
+      `\`/project context <name> | <text>\` — add context note\n` +
+      `\`/project archive <name>\` — archive project\n\n` +
+      `Then run: \`/board <name>\` to run a board meeting`,
+      { parse_mode: "Markdown" }
+    ).catch(() =>
+      ctx.reply("Project commands: /project new <name> | list | show <name> | context <name> | <text> | archive <name>")
+    );
+    return;
+  }
+
+  if (subcommand === "new") {
+    const name = rest.join(" ").trim();
+    if (!name) {
+      await ctx.reply("Usage: `/project new <name>`", { parse_mode: "Markdown" });
+      return;
+    }
+    const project = await createProject(chatId, name);
+    if (project) {
+      await ctx.reply(`✅ Project *${name}* created.\n\nAdd context: \`/project context ${name} | <notes>\``, {
+        parse_mode: "Markdown",
+      }).catch(() => ctx.reply(`Project "${name}" created.`));
+    } else {
+      await ctx.reply("Failed to create project. Is Convex configured?");
+    }
+    return;
+  }
+
+  if (subcommand === "list") {
+    const projects = await listProjects(chatId);
+    if (projects.length === 0) {
+      await ctx.reply("No active projects. Create one with `/project new <name>`", {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
+    const list = projects
+      .map((p) => `• *${p.name}*${p.description ? ` — ${p.description}` : ""}`)
+      .join("\n");
+    await ctx
+      .reply(`*Active Projects*\n\n${list}`, { parse_mode: "Markdown" })
+      .catch(() => ctx.reply(`Active Projects:\n\n${list}`));
+    return;
+  }
+
+  if (subcommand === "show") {
+    const name = rest.join(" ").trim();
+    if (!name) {
+      await ctx.reply("Usage: `/project show <name>`", { parse_mode: "Markdown" });
+      return;
+    }
+    const project = await getProject(chatId, name);
+    if (!project) {
+      await ctx.reply(`Project "${name}" not found.`);
+      return;
+    }
+    const formatted = formatProjectContext(project);
+    await ctx
+      .reply(formatted, { parse_mode: "Markdown" })
+      .catch(() => ctx.reply(formatted));
+    return;
+  }
+
+  if (subcommand === "context") {
+    // Format: /project context <name> | <text>
+    const full = rest.join(" ");
+    const pipeIdx = full.indexOf("|");
+    if (pipeIdx === -1) {
+      await ctx.reply("Usage: `/project context <name> | <notes to add>`", { parse_mode: "Markdown" });
+      return;
+    }
+    const name = full.slice(0, pipeIdx).trim();
+    const contextText = full.slice(pipeIdx + 1).trim();
+    if (!name || !contextText) {
+      await ctx.reply("Usage: `/project context <name> | <notes to add>`", { parse_mode: "Markdown" });
+      return;
+    }
+    const project = await getProject(chatId, name);
+    if (!project) {
+      await ctx.reply(`Project "${name}" not found.`);
+      return;
+    }
+    const ok = await appendProjectContext(project.id, contextText);
+    await ctx.reply(ok ? `✅ Context added to *${project.name}*.` : "Failed to update context.", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  if (subcommand === "archive") {
+    const name = rest.join(" ").trim();
+    if (!name) {
+      await ctx.reply("Usage: `/project archive <name>`", { parse_mode: "Markdown" });
+      return;
+    }
+    const ok = await archiveProject(chatId, name);
+    await ctx.reply(ok ? `Project "${name}" archived.` : `Project "${name}" not found.`);
+    return;
+  }
+
+  await ctx.reply(`Unknown subcommand: ${subcommand}. Try \`/project help\``, { parse_mode: "Markdown" });
+}
+
+// --- Board Meeting v2 Handler ---
+
+async function handleBoardMeetingV2(
+  ctx: Context,
+  chatId: string,
+  projectName: string,
+  topicId?: number
+): Promise<void> {
+  const typing = createTypingIndicator(ctx);
+  typing.start();
+
+  try {
+    // Look up project
+    const project = await getProject(chatId, projectName);
+    if (!project) {
+      await ctx.reply(
+        `Project "*${projectName}*" not found.\n\nCreate it first: \`/project new ${projectName}\``,
+        { parse_mode: "Markdown" }
+      ).catch(() => ctx.reply(`Project "${projectName}" not found. Create it first with /project new`));
+      return;
+    }
+
+    // Prepare context
+    const projectContext = formatProjectContext(project);
+
+    // Load parallel context
+    const [userProfile, memoryCtx] = await Promise.all([
+      getUserProfile(),
+      getMemoryContext(),
+    ]);
+
+    // Create board session in DB
+    const session = await createBoardSession(chatId, project);
+    if (!session) {
+      await ctx.reply("Failed to create board session. Is Convex configured?");
+      return;
+    }
+
+    typing.stop();
+
+    // Build per-agent prompt function (includes user profile + memory)
+    const buildPrompt = (
+      agentLabel: string,
+      agentQuestion: string,
+      projCtx: string,
+      focus?: string
+    ) => {
+      const sections = [
+        `You are the ${agentLabel} advisor in a board meeting. Be concise and decisive.`,
+        projCtx,
+      ];
+      if (userProfile) sections.push(`## USER PROFILE\n${userProfile}`);
+      if (memoryCtx) sections.push(`## MEMORY CONTEXT\n${memoryCtx}`);
+      if (focus) sections.push(`## FOCUS\n${focus}`);
+      sections.push(`## YOUR QUESTION\n${agentQuestion}\n\nAnswer in 2-4 sentences. No preamble.`);
+      return sections.join("\n\n---\n\n");
+    };
+
+    // Subprocess caller (wraps callClaude with agent routing)
+    const callSubprocess = async (prompt: string, agentName: string): Promise<string> => {
+      return callClaude(prompt, chatId, agentName, topicId, { maxTurns: "3" });
+    };
+
+    // Run board meeting
+    const result = await runBoardMeeting(
+      { chatId, sessionId: session.id, project, projectContext, ctx },
+      buildPrompt,
+      callSubprocess
+    );
+
+    // Send synthesis
+    const synthesisMsg = `📋 *Synthesis*\n\n${result.synthesis}`;
+    await ctx
+      .reply(synthesisMsg, { parse_mode: "Markdown" })
+      .catch(() => ctx.reply(`Synthesis\n\n${result.synthesis}`));
+
+    // Create async task for decision buttons
+    if (result.decisions.length > 0) {
+      const task = await createTask(chatId, `Board meeting: ${project.name}`, topicId, "mac");
+      if (task) {
+        await updateTask(task.id, {
+          status: "needs_input",
+          pending_question: `What's the next action for "${project.name}"?`,
+          pending_options: result.decisions,
+          metadata: {
+            type: "board_decision",
+            session_id: session.id,
+            project_id: project.id,
+            project_name: project.name,
+          },
+        });
+        // Update session with task reference
+        await updateBoardSession(session.id, { task_id: task.id });
+
+        const keyboard = buildTaskKeyboard(task.id, result.decisions);
+        await ctx
+          .reply(`*Next Action*\nWhat do you want to do?`, {
+            parse_mode: "Markdown",
+            reply_markup: keyboard,
+          })
+          .catch(() =>
+            ctx.reply("What do you want to do?", { reply_markup: keyboard })
+          );
+      }
+    }
+
+    // Save board summary to messages
+    await saveMessage({
+      chat_id: chatId,
+      role: "assistant",
+      content: `[Board Meeting: ${project.name}]\n${result.synthesis}`,
+      metadata: {
+        type: "board_meeting",
+        project_id: project.id,
+        session_id: session.id,
+      },
+    });
+  } catch (err) {
+    console.error("Board meeting error:", err);
+    await ctx.reply("Board meeting failed. Please try again.");
+  } finally {
+    typing.stop();
+  }
 }
 
 // --- TwinMind Command Handler ---
@@ -1147,6 +1422,29 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
       `${task.pending_question || "Question"}\n\n✅ You chose: ${result.choice}`
     )
     .catch(() => {});
+
+  // --- Board decision: record and trigger follow-up ---
+  if (task.metadata?.type === "board_decision") {
+    const { project_name, session_id } = task.metadata;
+
+    // Record decision in board session
+    if (session_id) {
+      await updateBoardSession(session_id, {
+        metadata: {
+          ...((task.metadata as any) || {}),
+          chosen_decision: result.choice,
+          decided_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    await updateTask(result.taskId, { status: "completed", result: result.choice });
+
+    // Trigger general agent follow-up with next steps
+    const followUp = `Board decision made for project "${project_name}": ${result.choice}\n\nWhat are the immediate next steps to execute this decision?`;
+    await callClaudeAndReply(ctx, chatId, followUp, "general");
+    return;
+  }
 
   // --- Agent SDK resume: task has session_id from Agent SDK ---
   if (task.metadata?.use_agent_sdk && task.metadata?.agent_sdk_session_id) {
