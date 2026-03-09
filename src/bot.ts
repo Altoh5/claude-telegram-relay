@@ -94,7 +94,7 @@ const ALLOWED_USER_ID = process.env.TELEGRAM_USER_ID;
 const PROJECT_ROOT = process.cwd();
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const TIMEZONE = process.env.USER_TIMEZONE || "UTC";
-const HEALTH_PORT = parseInt(process.env.HEALTH_PORT || "3000", 10);
+const HEALTH_PORT = parseInt(process.env.HEALTH_PORT || process.env.PORT || "3000", 10);
 const GATEWAY_SECRET = process.env.GATEWAY_SECRET || "";
 
 if (!BOT_TOKEN) {
