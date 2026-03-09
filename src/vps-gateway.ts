@@ -78,6 +78,9 @@ const PORT = parseInt(process.env.PORT || "3000");
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || "";
 const USER_NAME = process.env.USER_NAME || "User";
 const BOT_NAME = process.env.BOT_NAME || "Go";
+// Public URL for webhook registration — set WEBHOOK_URL or derive from Railway env
+const WEBHOOK_URL = process.env.WEBHOOK_URL
+  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "");
 
 // ============================================================
 // BOT SETUP
@@ -93,6 +96,15 @@ const bot = new Bot(BOT_TOKEN);
 // Initialize bot (required for webhook mode — bot.start() does this for polling)
 await bot.init();
 console.log(`Bot initialized: @${bot.botInfo.username}`);
+
+// Register webhook with Telegram if URL is configured
+if (WEBHOOK_URL) {
+  const webhookEndpoint = `${WEBHOOK_URL}/telegram`;
+  await bot.api.setWebhook(webhookEndpoint, { drop_pending_updates: false });
+  console.log(`Webhook registered: ${webhookEndpoint}`);
+} else {
+  console.warn("WEBHOOK_URL not set — Telegram will not push updates to this server. Set WEBHOOK_URL or RAILWAY_PUBLIC_DOMAIN.");
+}
 
 // Global error handler — prevents Grammy from dumping full Context objects
 bot.catch((err) => {
