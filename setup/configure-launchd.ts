@@ -8,7 +8,7 @@
  *   bun run setup/configure-launchd.ts --service telegram-relay
  *   bun run setup/configure-launchd.ts --service all
  *
- * Services: telegram-relay, smart-checkin, morning-briefing, watchdog, twinmind-monitor, all
+ * Services: telegram-relay, smart-checkin, morning-briefing, watchdog, twinmind-monitor, docs-monitor, all
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -22,7 +22,7 @@ const PROJECT_ROOT = dirname(import.meta.dir);
 const LAUNCHD_DIR = join(PROJECT_ROOT, "launchd");
 const LAUNCH_AGENTS_DIR = join(process.env.HOME!, "Library", "LaunchAgents");
 
-const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor"] as const;
+const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor", "docs-monitor"] as const;
 type ServiceName = (typeof SERVICES)[number];
 
 interface ScheduleInterval {
@@ -85,6 +85,16 @@ function generateHalfHourIntervals(startHour: number, endHour: number): Schedule
   for (let h = startHour; h <= endHour; h++) {
     intervals.push({ hour: h, minute: 0 });
     if (h < endHour) intervals.push({ hour: h, minute: 30 });
+  }
+  return intervals;
+}
+
+function generateMinuteIntervals(startHour: number, endHour: number): ScheduleInterval[] {
+  const intervals: ScheduleInterval[] = [];
+  for (let h = startHour; h <= endHour; h++) {
+    for (let m = 0; m < 60; m++) {
+      intervals.push({ hour: h, minute: m });
+    }
   }
   return intervals;
 }
@@ -221,6 +231,14 @@ async function configureService(service: ServiceName): Promise<boolean> {
     content = content.replace(/\{\{NLM_DIR\}\}/g, nlmDir);
 
     console.log(`    Schedule: ${tmConfig.intervals.length} intervals (every 30 min)`);
+  }
+
+  if (service === "docs-monitor") {
+    // Every minute from 8am-10pm
+    const intervals = generateMinuteIntervals(8, 22);
+    const xml = generateCalendarIntervalsXml(intervals);
+    content = content.replace(/\{\{CALENDAR_INTERVALS\}\}/g, xml);
+    console.log(`    Schedule: ${intervals.length} intervals (every 60s)`);
   }
 
   // Unload existing if present

@@ -197,6 +197,7 @@ export async function runClaudeWithTimeout(
   options?: {
     allowedTools?: string[];
     cwd?: string;
+    extraArgs?: string[];
   }
 ): Promise<string> {
   const baseCmd = [
@@ -208,6 +209,7 @@ export async function runClaudeWithTimeout(
     ...(options?.allowedTools
       ? ["--allowedTools", options.allowedTools.join(",")]
       : []),
+    ...(options?.extraArgs ?? []),
   ];
   const cmd = IS_MACOS
     ? ["/usr/bin/caffeinate", "-i", ...baseCmd]

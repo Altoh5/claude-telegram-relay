@@ -6,7 +6,7 @@
  * All functions gracefully skip if API keys aren't configured.
  */
 
-import * as supabase from "./supabase";
+import * as supabase from "./db";
 import { isMacAlive } from "./mac-health";
 import { getCapabilitiesText } from "./capabilities";
 

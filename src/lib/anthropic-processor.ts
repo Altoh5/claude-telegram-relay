@@ -15,7 +15,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import * as supabase from "./supabase";
+import * as supabase from "./db";
 import { initiatePhoneCall } from "./voice";
 import { buildTaskKeyboard } from "./task-queue";
 import { callFallbackLLM } from "./fallback-llm";

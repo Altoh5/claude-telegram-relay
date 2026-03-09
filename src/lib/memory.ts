@@ -21,7 +21,7 @@ import {
   parseRelativeDate,
   formatGoalsList,
   formatFactsList,
-} from "./supabase";
+} from "./db";
 
 // ---------------------------------------------------------------------------
 // Types

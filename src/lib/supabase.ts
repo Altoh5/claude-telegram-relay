@@ -230,10 +230,12 @@ export async function getRecentMessages(
   if (!sb) return [];
 
   try {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await sb
       .from("messages")
       .select("*")
       .eq("chat_id", chatId)
+      .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -258,7 +260,11 @@ export async function getConversationContext(
   return messages
     .map((msg) => {
       const time = msg.created_at ? getTimeAgo(new Date(msg.created_at)) : "";
-      const speaker = msg.role === "user" ? "User" : "Bot";
+      let speaker = "User";
+      if (msg.role !== "user") {
+        const agent = (msg.metadata as any)?.agent;
+        speaker = agent ? agent.charAt(0).toUpperCase() + agent.slice(1) : "Bot";
+      }
       return `[${time}] ${speaker}: ${msg.content}`;
     })
     .join("\n");

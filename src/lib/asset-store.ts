@@ -18,7 +18,7 @@
 
 import { readFile } from "fs/promises";
 import { basename } from "path";
-import { getSupabase } from "./supabase";
+import { getSupabase } from "./db";
 
 // ============================================================
 // TYPES

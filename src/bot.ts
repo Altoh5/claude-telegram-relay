@@ -44,7 +44,7 @@ import {
   log as sbLog,
   createTask,
   updateTask,
-} from "./lib/supabase";
+} from "./lib/db";
 
 // Task Queue (Human-in-the-Loop)
 import {
@@ -60,6 +60,9 @@ import {
   processWithAnthropic,
   type ResumeState,
 } from "./lib/anthropic-processor";
+
+// Docs comment bot (Drive API replies)
+import { postCommentReply, updateCommentReply, deleteCommentReply } from "./lib/docs-api";
 import {
   processWithAgentSDK,
   type AgentResumeState,
@@ -521,6 +524,29 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     return;
   }
 
+  // ----- Docs Comment Bot Commands -----
+
+  // /post <taskId> — publish a docs comment draft
+  if (lowerText.startsWith("/post ")) {
+    const taskId = text.slice(6).trim();
+    await handleDocsPost(ctx, taskId);
+    return;
+  }
+
+  // /skip <taskId> — dismiss a docs comment task
+  if (lowerText.startsWith("/skip ")) {
+    const taskId = text.slice(6).trim();
+    await handleDocsSkip(ctx, taskId);
+    return;
+  }
+
+  // Reply to a docs draft message — update the draft
+  const replyToId = ctx.message?.reply_to_message?.message_id;
+  if (replyToId) {
+    const handled = await handleDocsDraftEdit(ctx, replyToId, text);
+    if (handled) return;
+  }
+
   // ----- Default: Claude Processing -----
 
   // Enrich with YouTube transcripts if URLs detected
@@ -625,6 +651,106 @@ async function handleTwinmindCommand(ctx: Context, command: string): Promise<voi
   }
 
   await ctx.reply(`Processed ${unprocessed.length} meeting(s).`);
+}
+
+// --- Docs Comment Bot Handlers ---
+
+async function handleDocsPost(ctx: Context, taskId: string): Promise<void> {
+  // Draft is already in the doc — /post now resolves (closes) the comment thread.
+  const sb = (await import("./lib/supabase")).getSupabase();
+  if (!sb || !taskId) {
+    await ctx.reply("❌ Invalid task ID.");
+    return;
+  }
+
+  const { data: task } = await sb
+    .from("async_tasks")
+    .select("*")
+    .eq("id", taskId)
+    .single();
+
+  if (!task || task.metadata?.type !== "docs_comment") {
+    await ctx.reply("❌ Task not found or already completed.");
+    return;
+  }
+
+  await sb.from("async_tasks").update({ status: "completed" }).eq("id", taskId);
+  await ctx.reply(`✅ Done — task marked complete.`);
+}
+
+async function handleDocsSkip(ctx: Context, taskId: string): Promise<void> {
+  // Delete the draft reply from the doc, then dismiss the task.
+  const sb = (await import("./lib/supabase")).getSupabase();
+  if (!sb || !taskId) return;
+
+  const { data: task } = await sb
+    .from("async_tasks")
+    .select("*")
+    .eq("id", taskId)
+    .single();
+
+  if (task?.metadata?.type === "docs_comment") {
+    const { docId, commentId, replyId } = task.metadata;
+    if (replyId) {
+      try {
+        await deleteCommentReply(docId, commentId, replyId);
+      } catch (err: any) {
+        await ctx.reply(`⚠️ Could not delete from doc: ${err.message}`);
+      }
+    }
+  }
+
+  await sb
+    .from("async_tasks")
+    .update({ status: "failed", result: "skipped by user" })
+    .eq("id", taskId);
+
+  await ctx.reply("↩️ Draft deleted from doc and dismissed.");
+}
+
+async function handleDocsDraftEdit(
+  ctx: Context,
+  replyToMessageId: number,
+  newDraft: string
+): Promise<boolean> {
+  // Update the existing reply in the doc with the new text.
+  const sb = (await import("./lib/supabase")).getSupabase();
+  if (!sb) return false;
+
+  const chatId = String(ctx.chat?.id || "");
+
+  const { data: tasks } = await sb
+    .from("async_tasks")
+    .select("*")
+    .eq("status", "needs_input")
+    .eq("chat_id", chatId);
+
+  const task = (tasks || []).find(
+    (t: any) =>
+      t.metadata?.telegramMessageId === replyToMessageId &&
+      t.metadata?.type === "docs_comment"
+  );
+
+  if (!task) return false;
+
+  const { docId, commentId, replyId } = task.metadata;
+
+  if (replyId) {
+    try {
+      await updateCommentReply(docId, commentId, replyId, newDraft);
+    } catch (err: any) {
+      await ctx.reply(`⚠️ Could not update doc: ${err.message}`);
+    }
+  }
+
+  await sb
+    .from("async_tasks")
+    .update({ metadata: { ...task.metadata, draft: newDraft } })
+    .eq("id", task.id);
+
+  await ctx.reply(`✏️ Updated reply in doc.\n\n> ${newDraft}`, { parse_mode: "Markdown" });
+
+  return true;
 }
 
 // --- Voice Messages ---
@@ -1208,7 +1334,7 @@ async function callClaude(
   const memoryCtx = await getMemoryContext();
 
   // Build conversation context (recent messages)
-  const conversationCtx = await getConversationContext(chatId, 10);
+  const conversationCtx = await getConversationContext(chatId, 20);
 
   // Current time in user's timezone
   const now = new Date().toLocaleString("en-US", {
@@ -1412,7 +1538,7 @@ async function callClaudeWithProgress(
   const agentConfig = getAgentConfig(agentName);
   const userProfile = await getUserProfile();
   const memoryCtx = await getMemoryContext();
-  const conversationCtx = await getConversationContext(chatId, 10);
+  const conversationCtx = await getConversationContext(chatId, 20);
 
   const now = new Date().toLocaleString("en-US", {
     timeZone: TIMEZONE,
@@ -1754,10 +1880,51 @@ async function processInBackground(
 // 10. Health Check HTTP Server
 // ---------------------------------------------------------------------------
 
+// Security headers added to every response
+const securityHeaders: Record<string, string> = {
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+  "Content-Security-Policy": "default-src 'none'",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+};
+
+// Simple in-memory rate limiter (per-IP, 30 requests per 60 seconds)
+const BOT_RATE_LIMIT_WINDOW = 60_000;
+const BOT_RATE_LIMIT_MAX = 30;
+const botRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function isBotRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = botRateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    botRateLimitMap.set(ip, { count: 1, resetAt: now + BOT_RATE_LIMIT_WINDOW });
+    return false;
+  }
+  entry.count++;
+  return entry.count > BOT_RATE_LIMIT_MAX;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of botRateLimitMap) {
+    if (now > entry.resetAt) botRateLimitMap.delete(ip);
+  }
+}, 300_000);
+
 const healthServer = Bun.serve({
   port: HEALTH_PORT,
   async fetch(req) {
     const url = new URL(req.url);
+
+    // Rate limiting
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || req.headers.get("x-real-ip")
+      || "unknown";
+    if (isBotRateLimited(clientIp)) {
+      return new Response("Too many requests", { status: 429, headers: securityHeaders });
+    }
 
     if (url.pathname === "/health" || url.pathname === "/") {
       return new Response(
@@ -1770,19 +1937,17 @@ const healthServer = Bun.serve({
           timestamp: new Date().toISOString(),
         }),
         {
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...securityHeaders },
         }
       );
     }
 
     // Process endpoint — VPS forwards messages here (async: returns 202 immediately)
     if (url.pathname === "/process" && req.method === "POST") {
-      // Auth check
-      if (GATEWAY_SECRET) {
-        const auth = req.headers.get("authorization") || "";
-        if (auth !== `Bearer ${GATEWAY_SECRET}`) {
-          return new Response("Unauthorized", { status: 401 });
-        }
+      // Auth check — fail closed: if GATEWAY_SECRET is not configured, deny all requests
+      const auth = req.headers.get("authorization") || "";
+      if (!GATEWAY_SECRET || auth !== `Bearer ${GATEWAY_SECRET}`) {
+        return new Response("Unauthorized", { status: 401, headers: securityHeaders });
       }
 
       let body: Record<string, any>;
@@ -1799,10 +1964,13 @@ const healthServer = Bun.serve({
         console.error("/process background error:", err);
       });
 
-      return Response.json({ accepted: true }, { status: 202 });
+      return new Response(JSON.stringify({ accepted: true }), {
+        status: 202,
+        headers: { "Content-Type": "application/json", ...securityHeaders },
+      });
     }
 
-    return new Response("Not Found", { status: 404 });
+    return new Response("Not Found", { status: 404, headers: securityHeaders });
   },
 });
 

@@ -47,7 +47,7 @@ import {
   parseAssetDescTag,
   stripAssetDescTag,
 } from "./lib/asset-store";
-import * as supabase from "./lib/supabase";
+import * as supabase from "./lib/db";
 
 // ============================================================
 // LOAD ENVIRONMENT
@@ -1128,13 +1128,26 @@ const server = Bun.serve({
       || req.headers.get("x-real-ip")
       || "unknown";
     if (isRateLimited(clientIp)) {
-      return new Response("Too many requests", { status: 429 });
+      return new Response("Too many requests", {
+        status: 429,
+        headers: {
+          "X-Frame-Options": "DENY",
+          "X-Content-Type-Options": "nosniff",
+          "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        },
+      });
     }
 
     const corsHeaders: Record<string, string> = {
       "Access-Control-Allow-Origin": "",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "X-Frame-Options": "DENY",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+      "Content-Security-Policy": "default-src 'none'",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     };
 
     if (req.method === "OPTIONS") {

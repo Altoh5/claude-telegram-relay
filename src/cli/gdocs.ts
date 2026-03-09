@@ -1,0 +1,146 @@
+#!/usr/bin/env bun
+/**
+ * Google Docs CLI
+ *
+ * Usage:
+ *   bun src/cli/gdocs.ts find "<query>"
+ *   bun src/cli/gdocs.ts read <docId>
+ *   bun src/cli/gdocs.ts create "<title>"
+ *   bun src/cli/gdocs.ts append <docId> "<text>"
+ *   bun src/cli/gdocs.ts replace <docId> "<oldText>" "<newText>"
+ */
+
+import { init, getToken, output, error, run } from "./_google";
+
+const DRIVE = "https://www.googleapis.com/drive/v3";
+const DOCS = "https://docs.googleapis.com/v1";
+
+async function findDocs(query: string): Promise<void> {
+  const token = await getToken();
+
+  const q = `mimeType='application/vnd.google-apps.document' and name contains '${query.replace(/'/g, "\\'")}'`;
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id,name,modifiedTime,owners)",
+    orderBy: "modifiedTime desc",
+    pageSize: "20",
+  });
+
+  const res = await fetch(`${DRIVE}/files?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) error(`Drive API ${res.status}: ${await res.text()}`);
+
+  const data = await res.json();
+  const files = (data.files || []).map((f: any) => ({
+    id: f.id,
+    name: f.name,
+    modified: f.modifiedTime,
+    owner: f.owners?.[0]?.displayName || null,
+  }));
+
+  output(files);
+}
+
+async function readDoc(docId: string): Promise<void> {
+  const token = await getToken();
+
+  // Use Drive export for clean plain text (simpler than parsing Docs API JSON)
+  const res = await fetch(`${DRIVE}/files/${docId}/export?mimeType=text/plain`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) error(`Drive API ${res.status}: ${await res.text()}`);
+
+  const text = await res.text();
+  output({ id: docId, content: text.substring(0, 50000) });
+}
+
+async function createDoc(title: string): Promise<void> {
+  const token = await getToken();
+
+  const res = await fetch(`${DOCS}/documents`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+
+  if (!res.ok) error(`Docs API ${res.status}: ${await res.text()}`);
+
+  const doc = await res.json();
+  output({ id: doc.documentId, title: doc.title, link: `https://docs.google.com/document/d/${doc.documentId}/edit` });
+}
+
+async function appendToDoc(docId: string, text: string): Promise<void> {
+  const token = await getToken();
+
+  const res = await fetch(`${DOCS}/documents/${docId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      requests: [{
+        insertText: {
+          endOfSegmentLocation: { segmentId: "" },
+          text: text.endsWith("\n") ? text : text + "\n",
+        },
+      }],
+    }),
+  });
+
+  if (!res.ok) error(`Docs API ${res.status}: ${await res.text()}`);
+  output({ docId, appended: text });
+}
+
+async function replaceInDoc(docId: string, oldText: string, newText: string): Promise<void> {
+  const token = await getToken();
+
+  const res = await fetch(`${DOCS}/documents/${docId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      requests: [{
+        replaceAllText: {
+          containsText: { text: oldText, matchCase: false },
+          replaceText: newText,
+        },
+      }],
+    }),
+  });
+
+  if (!res.ok) error(`Docs API ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const occurrences = data.replies?.[0]?.replaceAllText?.occurrencesChanged ?? 0;
+  output({ docId, replaced: occurrences, oldText, newText });
+}
+
+// --- Main ---
+run(async () => {
+  await init();
+  const [cmd, ...args] = process.argv.slice(2);
+
+  switch (cmd) {
+    case "find":
+      if (!args[0]) error("Usage: find <query>");
+      await findDocs(args[0]);
+      break;
+    case "read":
+      if (!args[0]) error("Usage: read <docId>");
+      await readDoc(args[0]);
+      break;
+    case "create":
+      if (!args[0]) error("Usage: create <title>");
+      await createDoc(args[0]);
+      break;
+    case "append":
+      if (!args[0] || !args[1]) error("Usage: append <docId> <text>");
+      await appendToDoc(args[0], args[1]);
+      break;
+    case "replace":
+      if (!args[0] || !args[1] || args[2] === undefined) error("Usage: replace <docId> <oldText> <newText>");
+      await replaceInDoc(args[0], args[1], args[2]);
+      break;
+    default:
+      error(`Unknown command: ${cmd || "(none)"}. Available: find, read, create, append, replace`);
+  }
+});

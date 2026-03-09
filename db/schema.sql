@@ -336,3 +336,42 @@ CREATE POLICY "Anon insert access" ON twinmind_meetings
 
 CREATE POLICY "Anon update access" ON twinmind_meetings
   FOR UPDATE USING (auth.role() = 'anon');
+
+-- ============================================================
+-- MIGRATION v4: Google Docs @mention Monitor (2026-03)
+-- ============================================================
+-- watched_docs: tracks which Google Docs the bot is monitoring
+-- processed_comments: tracks comment IDs already handled (prevents double-replies)
+
+CREATE TABLE IF NOT EXISTS watched_docs (
+  doc_id     TEXT PRIMARY KEY,
+  doc_title  TEXT,
+  active     BOOLEAN NOT NULL DEFAULT true,
+  added_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS processed_comments (
+  comment_id    TEXT PRIMARY KEY,
+  doc_id        TEXT NOT NULL REFERENCES watched_docs(doc_id) ON DELETE CASCADE,
+  task_id       TEXT,
+  processed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_watched_docs_active ON watched_docs (active);
+CREATE INDEX IF NOT EXISTS idx_processed_comments_doc_id ON processed_comments (doc_id);
+CREATE INDEX IF NOT EXISTS idx_processed_comments_processed_at ON processed_comments (processed_at DESC);
+
+ALTER TABLE watched_docs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE processed_comments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access" ON watched_docs
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role full access" ON processed_comments
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Anon read access" ON watched_docs
+  FOR SELECT USING (auth.role() = 'anon');
+
+CREATE POLICY "Anon read access" ON processed_comments
+  FOR SELECT USING (auth.role() = 'anon');

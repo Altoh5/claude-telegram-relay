@@ -21,11 +21,14 @@ export interface AgentConfig {
 // Default topic-to-agent mapping. Update these with your Telegram forum topic IDs.
 // Find topic IDs by sending a message in each topic and checking the bot logs.
 export const topicAgentMap: Record<number, string> = {
-  // Example:
-  // 3: "research",
-  // 4: "content",
-  // 5: "finance",
-  // 6: "strategy",
+  1: "general",
+  3: "research",
+  4: "content",
+  5: "finance",
+  6: "strategy",
+  34: "critic",
+  580: "cto",
+  579: "coo",
 };
 
 export function getAgentByTopicId(topicId: number): string | undefined {
@@ -49,6 +52,10 @@ export function getAgentConfig(agentName: string): AgentConfig | undefined {
     case "critic":
     case "devils-advocate":
       return require("./critic").default;
+    case "cto":
+      return require("./cto").default;
+    case "coo":
+      return require("./coo").default;
     case "general":
     case "orchestrator":
     default:
@@ -62,7 +69,9 @@ export const AGENT_INVOCATION_MAP: Record<string, string[]> = {
   content: ["critic", "research"],
   finance: ["critic"],
   strategy: ["critic", "finance", "research"],
-  general: ["critic", "finance", "research", "content", "strategy"],
+  general: ["critic", "finance", "research", "content", "strategy", "cto", "coo"],
+  cto: ["critic", "research"],
+  coo: ["critic", "finance", "research", "strategy"],
   critic: [], // Critic doesn't invoke others (prevents loops)
 };
 
@@ -134,6 +143,15 @@ export async function getUserProfile(): Promise<string> {
   return _userProfile;
 }
 
+// Built-in Claude Code tools only — excludes MCP servers for faster startup and lower context usage.
+// CLI wrappers (called via Bash) replace Google Workspace, NotebookLM, etc.
+// To re-enable specific MCP tools, add them to a specific agent's allowedTools list.
+export const DEFAULT_ALLOWED_TOOLS = [
+  "Read", "Write", "Edit", "Bash", "Glob", "Grep",
+  "WebSearch", "WebFetch", "Agent", "Task",
+  "TodoRead", "TodoWrite", "Skill",
+];
+
 // Base context shared by all agents
 export const BASE_CONTEXT = `
 You are an AI assistant operating as part of a multi-agent system.
@@ -147,6 +165,22 @@ CORE IDENTITY:
 COMMUNICATION:
 - Keep responses concise (Telegram-friendly)
 - Be direct, no fluff
+
+CONTEXT RULES:
+- The RECENT CONVERSATION section contains actual prior messages from all agents
+- If another agent's response appears there, you can read and reference it directly
+- Never claim information is unavailable if it appears in RECENT CONVERSATION
+
+## QUICK TOOLS (via Bash — no MCP needed)
+
+Calendar:  bun src/cli/gcal.ts    list [date] | create "title" "start" "end" | get <id>
+Gmail:     bun src/cli/gmail.ts   unread | search "query" | get <id> | send "to" "subj" "body"
+Docs:      bun src/cli/gdocs.ts   find "query" | read <id> | create "title" | append <id> "text" | replace <id> "old" "new"
+Sheets:    bun src/cli/gsheets.ts find "query" | read <id> | range <id> "A1:B10"
+Drive:     bun src/cli/gdrive.ts  search "query" | download <id> <path>
+NLM:       nlm query notebook <id> "question" | nlm list notebooks
+
+All return JSON. Dates use ISO 8601. Use these instead of MCP tools.
 `;
 
 // User context placeholder - populated from config/profile.md at runtime

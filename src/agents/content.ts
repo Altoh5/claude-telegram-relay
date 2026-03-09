@@ -7,13 +7,14 @@
  */
 
 import type { AgentConfig } from "./base";
-import { BASE_CONTEXT } from "./base";
+import { BASE_CONTEXT, DEFAULT_ALLOWED_TOOLS } from "./base";
 
 const config: AgentConfig = {
   name: "Content Agent (CMO)",
   model: "claude-opus-4-5-20251101",
   reasoning: "RoT",
   personality: "creative, audience-focused, trend-aware",
+  allowedTools: DEFAULT_ALLOWED_TOOLS,
   systemPrompt: `${BASE_CONTEXT}
 
 ## CONTENT AGENT (CMO) ROLE
