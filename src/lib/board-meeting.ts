@@ -95,7 +95,7 @@ export function parseDecisionsFromSynthesis(
     const match = line.match(/^DECISION_\d+:\s*(.+)$/i);
     if (match) {
       const label = match[1].trim().slice(0, 64);
-      decisions.push({ label, value: label });
+      decisions.push({ label, value: `d${decisions.length + 1}` });
       if (decisions.length >= 4) break;
     }
   }

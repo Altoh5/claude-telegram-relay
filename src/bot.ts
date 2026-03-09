@@ -1416,10 +1416,14 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
   const chatId = String(ctx.chat?.id || "");
   const task = result.task!;
 
+  // Resolve display label (value may be a short key like "d1" for board decisions)
+  const choiceDisplayLabel = (task.pending_options as Array<{ label: string; value: string }> | null)
+    ?.find((o) => o.value === result.choice)?.label || result.choice;
+
   // Edit the button message to show the user's choice
   await ctx
     .editMessageText(
-      `${task.pending_question || "Question"}\n\n✅ You chose: ${result.choice}`
+      `${task.pending_question || "Question"}\n\n✅ You chose: ${choiceDisplayLabel}`
     )
     .catch(() => {});
 
@@ -1427,21 +1431,26 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
   if (task.metadata?.type === "board_decision") {
     const { project_name, session_id } = task.metadata;
 
+    // Resolve label from pending_options (value is short key like "d1")
+    const chosenOption = (task.pending_options as Array<{ label: string; value: string }> | null)
+      ?.find((o) => o.value === result.choice);
+    const choiceLabel = chosenOption?.label || result.choice;
+
     // Record decision in board session
     if (session_id) {
       await updateBoardSession(session_id, {
         metadata: {
           ...((task.metadata as any) || {}),
-          chosen_decision: result.choice,
+          chosen_decision: choiceLabel,
           decided_at: new Date().toISOString(),
         },
       });
     }
 
-    await updateTask(result.taskId, { status: "completed", result: result.choice });
+    await updateTask(result.taskId, { status: "completed", result: choiceLabel });
 
     // Trigger general agent follow-up with next steps
-    const followUp = `Board decision made for project "${project_name}": ${result.choice}\n\nWhat are the immediate next steps to execute this decision?`;
+    const followUp = `Board decision made for project "${project_name}": ${choiceLabel}\n\nWhat are the immediate next steps to execute this decision?`;
     await callClaudeAndReply(ctx, chatId, followUp, "general");
     return;
   }
