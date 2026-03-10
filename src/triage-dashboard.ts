@@ -281,6 +281,15 @@ const server = Bun.serve({
     const statusMatch = path.match(/^\/api\/tasks\/([^/]+)\/status$/);
     if (req.method === "PATCH" && statusMatch) {
       const taskId = decodeURIComponent(statusMatch[1]);
+
+      // Validate Convex ID format before passing to mutation (alphanumeric + special chars)
+      if (!/^[a-zA-Z0-9_-]{8,}$/.test(taskId)) {
+        return new Response(JSON.stringify({ error: "Invalid task ID" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       const cx = getConvex();
       if (!cx) {
         return new Response(JSON.stringify({ error: "CONVEX_URL not set" }), {
@@ -300,7 +309,7 @@ const server = Bun.serve({
         }
 
         await cx.mutation(api.triageTasks.updateStatus, {
-          id: taskId as any,
+          id: taskId as any, // ConvexHttpClient accepts string IDs; validated above
           status: body.status,
         });
 
