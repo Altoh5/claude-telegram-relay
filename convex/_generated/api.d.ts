@@ -11,10 +11,12 @@
 import type * as assets from "../assets.js";
 import type * as asyncTasks from "../asyncTasks.js";
 import type * as callTranscripts from "../callTranscripts.js";
+import type * as contacts from "../contacts.js";
 import type * as logs from "../logs.js";
 import type * as memory from "../memory.js";
 import type * as messages from "../messages.js";
 import type * as nodeHeartbeat from "../nodeHeartbeat.js";
+import type * as triageTasks from "../triageTasks.js";
 import type * as twinmindMeetings from "../twinmindMeetings.js";
 
 import type {
@@ -27,10 +29,12 @@ declare const fullApi: ApiFromModules<{
   assets: typeof assets;
   asyncTasks: typeof asyncTasks;
   callTranscripts: typeof callTranscripts;
+  contacts: typeof contacts;
   logs: typeof logs;
   memory: typeof memory;
   messages: typeof messages;
   nodeHeartbeat: typeof nodeHeartbeat;
+  triageTasks: typeof triageTasks;
   twinmindMeetings: typeof twinmindMeetings;
 }>;
 
