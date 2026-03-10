@@ -16,6 +16,7 @@ import { loadEnv } from "./lib/env";
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramDocument } from "./lib/telegram";
 import { runClaudeWithTimeout } from "./lib/claude";
 import { createClient } from "@supabase/supabase-js";
+import { triageMeeting, sendTriageSummary } from "./triage-agent";
 
 // Load environment
 await loadEnv();
@@ -432,6 +433,32 @@ Keep it concise and actionable. Use plain text, no markdown headers. Start with 
 }
 
 // ============================================================
+// TRIAGE — extract action items via Claude API
+// ============================================================
+
+async function runTriage(meeting: MeetingSummary, chatId: string): Promise<void> {
+  const meta = (meeting.metadata || {}) as Record<string, unknown>;
+  if (meta.triage_done) {
+    console.log("  Triage already done (previous run) — skipping");
+    return;
+  }
+
+  console.log("  Running triage agent...");
+  try {
+    const taskCount = await triageMeeting(meeting);
+    if (taskCount > 0) {
+      await sendTriageSummary(BOT_TOKEN, chatId, meeting.meeting_title, taskCount, THREAD_ID);
+    } else {
+      console.log("  No tasks extracted from triage");
+    }
+    await updateMetadata(meeting.meeting_id, { triage_done: true });
+  } catch (err) {
+    console.error(`  Triage failed: ${err}`);
+    // Don't block the main flow — triage is non-critical
+  }
+}
+
+// ============================================================
 // PROCESS MEETING
 // ============================================================
 
@@ -504,6 +531,8 @@ async function processMeeting(meeting: MeetingSummary): Promise<"complete" | "pa
   // 2. Create infographics (if NLM notebook configured)
   if (!NLM_NOTEBOOK_ID) {
     console.log("  TWINMIND_NLM_NOTEBOOK_ID not set — skipping infographics");
+    // Still run triage even without NotebookLM
+    await runTriage(meeting, chatId);
     return "complete";
   }
 
@@ -603,6 +632,7 @@ async function processMeeting(meeting: MeetingSummary): Promise<"complete" | "pa
 
   // Mark complete if both visuals succeeded (either infographic or slide fallback)
   if (stdOk && sketchOk) {
+    await runTriage(meeting, chatId);
     return "complete";
   }
   console.log("  Visual(s) failed — will retry next run");
