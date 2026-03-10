@@ -127,4 +127,30 @@ export default defineSchema({
   })
     .index("by_meeting_id", ["meeting_id"])
     .index("by_processed", ["processed"]),
+
+  triageTasks: defineTable({
+    meeting_id: v.string(),
+    project: v.string(),
+    description: v.string(),
+    suggestion: v.string(),
+    relevant_contact: v.optional(v.string()),
+    relevant_contact_email: v.optional(v.string()),
+    date: v.optional(v.number()),         // Unix ms, when to act
+    confidence_score: v.number(),          // 0–100
+    status: v.string(),                    // "backlog" | "in_progress" | "done"
+    source_meeting_title: v.string(),
+    created_at: v.number(),
+  }).index("by_project", ["project"])
+    .index("by_status", ["status"])
+    .index("by_meeting", ["meeting_id"]),
+
+  contacts: defineTable({
+    google_id: v.string(),
+    name: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    organization: v.optional(v.string()),
+    last_synced: v.number(),
+  }).index("by_name", ["name"])
+    .index("by_google_id", ["google_id"]),
 });
