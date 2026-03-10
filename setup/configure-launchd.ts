@@ -22,7 +22,7 @@ const PROJECT_ROOT = dirname(import.meta.dir);
 const LAUNCHD_DIR = join(PROJECT_ROOT, "launchd");
 const LAUNCH_AGENTS_DIR = join(process.env.HOME!, "Library", "LaunchAgents");
 
-const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor", "docs-monitor"] as const;
+const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor", "docs-monitor", "triage-dashboard", "contacts-sync"] as const;
 type ServiceName = (typeof SERVICES)[number];
 
 interface ScheduleInterval {
@@ -239,6 +239,14 @@ async function configureService(service: ServiceName): Promise<boolean> {
     const xml = generateCalendarIntervalsXml(intervals);
     content = content.replace(/\{\{CALENDAR_INTERVALS\}\}/g, xml);
     console.log(`    Schedule: ${intervals.length} intervals (every 60s)`);
+  }
+
+  if (service === "triage-dashboard") {
+    console.log(`    Type: keep-alive HTTP server (port 3002)`);
+  }
+
+  if (service === "contacts-sync") {
+    console.log(`    Schedule: daily at 06:00`);
   }
 
   // Unload existing if present
