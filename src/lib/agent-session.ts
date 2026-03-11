@@ -167,6 +167,20 @@ async function sendProgress(ctx: Context, text: string): Promise<void> {
 }
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+function isStaleSessionError(err: any): boolean {
+  const msg = String(err?.message || "").toLowerCase();
+  return (
+    msg.includes("session not found") ||
+    msg.includes("session expired") ||
+    msg.includes("invalid session") ||
+    msg.includes("unknown session")
+  );
+}
+
+// ============================================================
 // MAIN PROCESSOR
 // ============================================================
 
@@ -361,60 +375,85 @@ export async function processWithAgentSDK(
   const enableProgress = tier !== "haiku";
   let sentPlan = false;
 
+  let retried = false;
   try {
     const queryFn = await getSDKQuery();
-    for await (const message of queryFn({ prompt, options })) {
-      // Extract text from assistant messages
-      if (message.type === "assistant") {
-        let turnText = "";
-        for (const block of message.message.content) {
-          if ("text" in block && block.text) {
-            turnText += block.text;
-            result += block.text;
+    const runQuery = async () => {
+      for await (const message of queryFn({ prompt, options })) {
+        // Extract text from assistant messages
+        if (message.type === "assistant") {
+          let turnText = "";
+          for (const block of message.message.content) {
+            if ("text" in block && block.text) {
+              turnText += block.text;
+              result += block.text;
+            }
+          }
+          sessionId = message.session_id;
+
+          // Send first meaningful text as a progress update
+          if (enableProgress && !sentPlan && turnText.trim().length > 20) {
+            const planPreview =
+              turnText.length > 500
+                ? turnText.substring(0, 500) + "..."
+                : turnText;
+            sendProgress(ctx, planPreview);
+            sentPlan = true;
           }
         }
-        sessionId = message.session_id;
 
-        // Send first meaningful text as a progress update
-        if (enableProgress && !sentPlan && turnText.trim().length > 20) {
-          const planPreview =
-            turnText.length > 500
-              ? turnText.substring(0, 500) + "..."
-              : turnText;
-          sendProgress(ctx, planPreview);
-          sentPlan = true;
-        }
-      }
-
-      // Extract session ID from system init
-      if (message.type === "system" && message.subtype === "init") {
-        sessionId = message.session_id;
-        console.log(
-          `[SDK] Session initialized: ${sessionId}, tools: ${message.tools?.length || 0}, mcp: ${message.mcp_servers?.length || 0}`
-        );
-      }
-
-      // Handle result (success or error)
-      if (message.type === "result") {
-        sessionId = message.session_id;
-        numTurns = message.num_turns;
-        totalCost = message.total_cost_usd;
-
-        if (message.subtype === "success") {
-          if (message.result) {
-            result = message.result;
-          }
+        // Extract session ID from system init
+        if (message.type === "system" && message.subtype === "init") {
+          sessionId = message.session_id;
+          const toolCount = message.tools?.length || 0;
+          const mcpCount = message.mcp_servers?.length || 0;
+          const mcpNames = message.mcp_servers?.map((s: any) => s.name).join(", ") || "none";
           console.log(
-            `[SDK] Success: ${numTurns} turns, $${totalCost.toFixed(4)}, ${message.duration_ms}ms`
+            `[SDK] Session initialized: ${sessionId} | tools: ${toolCount} | mcp: ${mcpCount} (${mcpNames}) | settingSources: user+project`
           );
-        } else {
-          console.error(
-            `[SDK] Error (${message.subtype}): ${message.errors?.join(", ")}`
-          );
-          if (!result) {
-            result = `Processing stopped: ${message.subtype}. ${message.errors?.[0] || ""}`;
+          if (mcpCount === 0) {
+            console.warn(
+              `[SDK] ⚠️  No MCP servers loaded. Ensure ~/.claude/settings.json exists on VPS. Run: claude mcp list`
+            );
           }
         }
+
+        // Handle result (success or error)
+        if (message.type === "result") {
+          sessionId = message.session_id;
+          numTurns = message.num_turns;
+          totalCost = message.total_cost_usd;
+
+          if (message.subtype === "success") {
+            if (message.result) {
+              result = message.result;
+            }
+            console.log(
+              `[SDK] Success: ${numTurns} turns, $${totalCost.toFixed(4)}, ${message.duration_ms}ms`
+            );
+          } else {
+            console.error(
+              `[SDK] Error (${message.subtype}): ${message.errors?.join(", ")}`
+            );
+            if (!result) {
+              result = `Processing stopped: ${message.subtype}. ${message.errors?.[0] || ""}`;
+            }
+          }
+        }
+      }
+    };
+
+    try {
+      await runQuery();
+    } catch (resumeErr) {
+      if (resumeState?.sessionId && isStaleSessionError(resumeErr) && !retried) {
+        retried = true;
+        console.warn(`[SDK] Stale session ${resumeState.sessionId} — retrying fresh`);
+        options.resume = undefined;
+        prompt = resumeState.originalPrompt || userMessage;
+        await runQuery();
+      } else {
+        throw resumeErr;
       }
     }
   } catch (signal) {

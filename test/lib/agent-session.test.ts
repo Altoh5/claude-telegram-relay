@@ -39,6 +39,49 @@ function makeQueryMock(responseText = "Hello from Agent SDK") {
   });
 }
 
+describe("processWithAgentSDK — VPS-03: session resume", () => {
+  it("falls back to fresh session when resume session ID is stale", async () => {
+    let callCount = 0;
+    const resumeQuery = mock(async function* (payload: any) {
+      callCount++;
+      if (payload.options?.resume) {
+        throw new Error("Session not found: sess_stale_999");
+      }
+      yield {
+        type: "system", subtype: "init",
+        session_id: "sess_fresh_001", tools: [], mcp_servers: [],
+      };
+      yield {
+        type: "result", subtype: "success", result: "Fresh response",
+        session_id: "sess_fresh_001", num_turns: 1,
+        total_cost_usd: 0.0005, duration_ms: 200,
+      };
+    });
+
+    mock.module("@anthropic-ai/claude-agent-sdk", () => ({ query: resumeQuery }));
+    mock.module("../../src/lib/supabase", () => ({
+      getConversationContext: mock(async () => ""),
+      getMemoryContext: mock(async () => ""),
+      createTask: mock(async () => null),
+      updateTask: mock(async () => {}),
+    }));
+
+    const { processWithAgentSDK } = await import("../../src/lib/agent-session");
+    const resumeState = {
+      taskId: "task_1",
+      sessionId: "sess_stale_999",
+      userChoice: "Yes",
+      originalPrompt: "original message",
+    };
+
+    const result = await processWithAgentSDK(
+      "original message", "chat_vps03", mockCtx, resumeState
+    );
+    expect(result).toBe("Fresh response");
+    expect(callCount).toBe(2);
+  });
+});
+
 describe("processWithAgentSDK — VPS-04: SDK absent fallback", () => {
   it("calls fallback LLM when Agent SDK query throws SDK_UNAVAILABLE", async () => {
     mock.module("@anthropic-ai/claude-agent-sdk", () => ({
