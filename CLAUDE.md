@@ -643,6 +643,24 @@ npx pm2 restart go-telegram-relay   # Restart a service
 npx pm2 logs                        # View logs
 ```
 
+## Hookify — Developer Safety Rules
+
+Hookify enforces project safety rules as markdown — no TypeScript required. Rules automatically warn or block dangerous operations during interactive Claude Code sessions.
+
+```bash
+/hookify:list           # Show active rules
+/hookify:configure      # Add or edit rules interactively
+```
+
+Rules stored in: `.claude/hookify.gobot-safety.md`
+
+Current rules protect against:
+- `rm -rf logs/` (block — logs needed for debugging)
+- Editing `.env` (warn — live bot credentials)
+- Editing `launchd/*.plist` (warn — requires service reload)
+- Editing `db/schema.sql` (warn — live Supabase, never DROP tables)
+- `systemctl stop/disable ssh` on VPS (block — locks you out)
+
 ## Troubleshooting
 
 See `docs/troubleshooting.md` for common issues and fixes.
