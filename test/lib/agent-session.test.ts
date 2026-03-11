@@ -7,9 +7,12 @@ const mockCtx = {
   message: { message_thread_id: undefined },
 } as any;
 
-// ── Reset mocks between tests ────────────────────────────────────────────────
-beforeEach(() => {
+// ── Reset mocks and SDK cache between tests ───────────────────────────────────
+beforeEach(async () => {
   mockCtx.reply.mockClear();
+  // Reset the module-level _query cache so each test gets its own mock
+  const session = await import("../../src/lib/agent-session");
+  session._resetSDKCache();
 });
 
 // ── Agent SDK mock factory ────────────────────────────────────────────────────
@@ -107,5 +110,74 @@ describe("processWithAgentSDK — VPS-04: SDK absent fallback", () => {
     const result = await processWithAgentSDK("hello", "chat_vps04", mockCtx);
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
+  });
+});
+
+describe("processWithAgentSDK — VPS-01: end-to-end", () => {
+  it("returns the assistant response for a Sonnet-tier message", async () => {
+    mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+      query: makeQueryMock("Processed via Agent SDK"),
+    }));
+    mock.module("../../src/lib/supabase", () => ({
+      getConversationContext: mock(async () => "previous context"),
+      getMemoryContext: mock(async () => "user facts"),
+    }));
+
+    const { processWithAgentSDK } = await import("../../src/lib/agent-session");
+    const result = await processWithAgentSDK(
+      "check my emails and summarize them",
+      "chat_vps01a",
+      mockCtx
+    );
+    expect(result).toBe("Processed via Agent SDK");
+  });
+
+  it("sends at least one progress message to Telegram for non-Haiku tiers", async () => {
+    mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+      query: makeQueryMock("Long response that triggers progress"),
+    }));
+    mock.module("../../src/lib/supabase", () => ({
+      getConversationContext: mock(async () => ""),
+      getMemoryContext: mock(async () => ""),
+    }));
+
+    const { processWithAgentSDK } = await import("../../src/lib/agent-session");
+    await processWithAgentSDK(
+      "analyze my sales pipeline and give strategic recommendations",
+      "chat_vps01b",
+      mockCtx
+    );
+    expect(mockCtx.reply.mock.calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe("processWithAgentSDK — VPS-02: MCP/CLAUDE.md loading", () => {
+  it("logs MCP server names and count from system init", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: any[]) => {
+      logs.push(args.join(" "));
+      origLog(...args);
+    };
+
+    mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+      query: makeQueryMock("response"),
+    }));
+    mock.module("../../src/lib/supabase", () => ({
+      getConversationContext: mock(async () => ""),
+      getMemoryContext: mock(async () => ""),
+    }));
+
+    try {
+      const { processWithAgentSDK } = await import("../../src/lib/agent-session");
+      await processWithAgentSDK("hello", "chat_vps02", mockCtx);
+    } finally {
+      console.log = origLog;
+    }
+
+    const initLog = logs.find((l) => l.includes("Session initialized"));
+    expect(initLog).toBeDefined();
+    expect(initLog).toContain("mcp: 1");
+    expect(initLog).toContain("supabase");
   });
 });

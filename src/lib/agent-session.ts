@@ -24,6 +24,11 @@ type Options = any;
 
 let _query: QueryFn | null = null;
 
+/** Reset cached SDK query — for testing only */
+export function _resetSDKCache(): void {
+  _query = null;
+}
+
 async function getSDKQuery(): Promise<QueryFn> {
   if (_query) return _query;
   try {
