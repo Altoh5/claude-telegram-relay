@@ -15,7 +15,7 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 
 | # | Phase | Status | Notes |
 |---|-------|--------|-------|
-| 1 | VPS Agent SDK | ⬜ Not started | |
+| 1 | VPS Agent SDK | ✅ Complete | Dynamic import, stale-session retry, MCP logging, 5 tests |
 | 2 | Testing Foundation | ⬜ Not started | |
 | 3 | Data Sources API | ⬜ Not started | |
 | 4 | HITL Improvements | ⬜ Not started | |
