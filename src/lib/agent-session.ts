@@ -15,9 +15,29 @@
  * Usage: processWithAgentSDK(userMessage, chatId, ctx, resumeState?)
  */
 
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { selectModelForMessage, toOpenRouterModel } from "./model-router";
+
+// Dynamic SDK loader — allows graceful fallback when SDK is not installed (VPS-04)
+type QueryFn = typeof import("@anthropic-ai/claude-agent-sdk")["query"];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Options = any;
+
+let _query: QueryFn | null = null;
+
+async function getSDKQuery(): Promise<QueryFn> {
+  if (_query) return _query;
+  try {
+    const sdk = await import("@anthropic-ai/claude-agent-sdk");
+    _query = sdk.query;
+    return _query!;
+  } catch (err: any) {
+    throw Object.assign(
+      new Error(`Agent SDK not available: ${err.message}`),
+      { code: "SDK_UNAVAILABLE" }
+    );
+  }
+}
+
 import { AskUserSignal } from "./anthropic-processor";
 import { buildTaskKeyboard } from "./task-queue";
 import { callFallbackLLM } from "./fallback-llm";
@@ -215,7 +235,7 @@ export async function processWithAgentSDK(
     maxTurns: 15,
     maxBudgetUsd: Math.min(budgetRemaining, 2.0),
     cwd: process.cwd(),
-    executable: process.env.BUN_PATH || "bun",
+    executable: "bun",
     env: {
       ...process.env,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
@@ -342,7 +362,8 @@ export async function processWithAgentSDK(
   let sentPlan = false;
 
   try {
-    for await (const message of query({ prompt, options })) {
+    const queryFn = await getSDKQuery();
+    for await (const message of queryFn({ prompt, options })) {
       // Extract text from assistant messages
       if (message.type === "assistant") {
         let turnText = "";
