@@ -29,12 +29,40 @@ export const getById = query({
 export const getRecent = query({
   args: { chat_id: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const rows = await ctx.db
+    const limit = args.limit ?? 20;
+    let rows = await ctx.db
       .query("messages")
       .withIndex("by_chat_id", (q) => q.eq("chat_id", args.chat_id))
       .order("desc")
-      .take(args.limit ?? 20);
+      .take(limit);
+    // Fallback: migrated messages may have chat_id="" — return all recent
+    if (rows.length === 0) {
+      rows = await ctx.db.query("messages").order("desc").take(limit);
+    }
     return rows.reverse();
+  },
+});
+
+export const getByAgent = query({
+  args: {
+    chat_id: v.string(),
+    agent: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+    const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const rows = await ctx.db
+      .query("messages")
+      .withIndex("by_chat_id", (q) => q.eq("chat_id", args.chat_id))
+      .order("asc")
+      .collect();
+    return rows.filter((r) => {
+      if ((r._creationTime ?? 0) < since) return false;
+      const agentTag = (r.metadata as any)?.agent;
+      // Include if agent matches, OR if user message with no agent tag (Telegram msgs)
+      return agentTag === args.agent || (!agentTag && r.role === "user");
+    }).slice(-limit);
   },
 });
 

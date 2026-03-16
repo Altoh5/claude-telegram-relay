@@ -1400,6 +1400,55 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
     return;
   }
 
+  // ---- Contact confirmation for triage tasks ----
+  // Format: cc:<taskId>:<candidateIndex|x>
+  if (data.startsWith("cc:")) {
+    const parts = data.split(":");
+    const taskId = parts[1];
+    const idx = parts[2]; // '0','1',... or 'x' for none
+    try {
+      const { ConvexHttpClient } = await import("convex/browser");
+      const { api } = await import("../convex/_generated/api");
+      const convexUrl = process.env.CONVEX_URL;
+      if (!convexUrl) throw new Error("CONVEX_URL not set");
+      const cx = new ConvexHttpClient(convexUrl);
+
+      if (idx === "x") {
+        await cx.mutation(api.triageTasks.updateContact, {
+          id: taskId as any,
+          relevant_contact: undefined,
+          relevant_contact_email: undefined,
+        });
+        await ctx.editMessageText("✓ No contact assigned").catch(() => {});
+      } else {
+        // Re-fetch the task to get the stored candidates from the original query.
+        // Since we don't store candidates, we need to re-search using the original name.
+        // The original name is encoded in the button label — instead, store a small lookup.
+        // Workaround: parse the message text for the name, re-run searchAllByName.
+        const msgText = (ctx.callbackQuery.message as any)?.text ?? "";
+        const nameMatch = msgText.match(/Who is "([^"]+)"\?/);
+        const contactName = nameMatch?.[1] ?? "";
+        if (!contactName) throw new Error("Could not parse contact name from message");
+
+        const candidates = await cx.query(api.contacts.searchAllByName, { name: contactName });
+        const chosen = candidates[parseInt(idx, 10)];
+        if (!chosen) throw new Error("Candidate not found");
+
+        await cx.mutation(api.triageTasks.updateContact, {
+          id: taskId as any,
+          relevant_contact: chosen.name,
+          relevant_contact_email: chosen.email,
+        });
+        const label = chosen.organization ? `${chosen.name} (${chosen.organization})` : chosen.name;
+        await ctx.editMessageText(`✅ Contact set: ${label}`).catch(() => {});
+      }
+    } catch (err) {
+      console.error("Contact confirm error:", err);
+      await ctx.editMessageText(`❌ Failed: ${err}`).catch(() => {});
+    }
+    return;
+  }
+
   if (!data.startsWith("atask:")) return;
 
   const result = await handleTaskCallback(data);

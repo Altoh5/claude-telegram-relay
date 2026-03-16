@@ -23,6 +23,7 @@ import { join } from "path";
 import { loadEnv } from "./lib/env";
 import { sendTelegramMessage } from "./lib/telegram";
 import { fetchAll, getAvailableSources } from "./lib/data-sources";
+import { saveMessage } from "./lib/db";
 
 // Load environment
 await loadEnv();
@@ -117,7 +118,16 @@ async function buildAndSendBriefing(): Promise<void> {
     parseMode: "Markdown",
     messageThreadId: threadId,
   });
-  if (sent) console.log("✅ Briefing sent!");
+  if (sent) {
+    console.log("✅ Briefing sent!");
+    // Persist to DB so it appears in web chat history
+    await saveMessage({
+      chat_id: chatId,
+      role: "assistant",
+      content: briefing,
+      metadata: { agent: "general", source: "morning_briefing" },
+    });
+  }
 }
 
 // ============================================================
@@ -152,22 +162,35 @@ async function main() {
   );
   await new Promise((r) => setTimeout(r, startupDelay));
 
-  console.log("🌅 Morning Briefing starting...");
-  console.log(`📱 Chat: ${GROUP_CHAT_ID || DM_CHAT_ID}`);
-  await buildAndSendBriefing();
+  // Re-check dedup after stagger (another instance may have claimed it)
+  if (!forceRun) {
+    try {
+      const { readFile: rf } = await import("fs/promises");
+      const state = JSON.parse(await rf(stateFile, "utf-8"));
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: USER_TIMEZONE });
+      if (state.lastBriefingDate === today) {
+        console.log(`⏭️ Briefing claimed by another instance (${today}), skipping.`);
+        return;
+      }
+    } catch {
+      // No state file — continue
+    }
+  }
 
-  // Record that briefing was sent today
+  // Claim the briefing slot before sending (optimistic lock)
   try {
     const { readFile: rf, writeFile: wf } = await import("fs/promises");
     let state: Record<string, any> = {};
-    try {
-      state = JSON.parse(await rf(stateFile, "utf-8"));
-    } catch {}
+    try { state = JSON.parse(await rf(stateFile, "utf-8")); } catch {}
     state.lastBriefingDate = new Date().toLocaleDateString("en-CA", { timeZone: USER_TIMEZONE });
     await wf(stateFile, JSON.stringify(state, null, 2), "utf-8");
   } catch (err) {
-    console.error("Failed to save briefing state:", err);
+    console.error("Failed to claim briefing state:", err);
   }
+
+  console.log("🌅 Morning Briefing starting...");
+  console.log(`📱 Chat: ${GROUP_CHAT_ID || DM_CHAT_ID}`);
+  await buildAndSendBriefing();
 }
 
 main().catch(console.error);

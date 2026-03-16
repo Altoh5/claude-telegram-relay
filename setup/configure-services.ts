@@ -23,7 +23,7 @@ import { join, dirname } from "path";
 // ---------------------------------------------------------------------------
 
 const PROJECT_ROOT = dirname(import.meta.dir);
-const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog"] as const;
+const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "startinfinity-sync"] as const;
 type ServiceName = (typeof SERVICES)[number];
 
 interface ScheduleInterval {
@@ -41,7 +41,7 @@ interface ScheduleConfig {
 }
 
 // Daemon services (always-running) vs periodic (scheduled)
-const DAEMON_SERVICES: ServiceName[] = ["telegram-relay", "watchdog"];
+const DAEMON_SERVICES: ServiceName[] = ["telegram-relay", "watchdog", "startinfinity-sync"];
 const PERIODIC_SERVICES: ServiceName[] = ["smart-checkin", "morning-briefing"];
 
 // ---------------------------------------------------------------------------
@@ -112,6 +112,7 @@ function getScriptPath(service: ServiceName): string {
     "smart-checkin": "src/smart-checkin.ts",
     "morning-briefing": "src/morning-briefing.ts",
     watchdog: "src/watchdog.ts",
+    "startinfinity-sync": "src/startinfinity-sync.ts",
   };
   return join(PROJECT_ROOT, scriptMap[service]);
 }

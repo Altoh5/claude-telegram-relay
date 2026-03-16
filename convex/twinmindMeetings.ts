@@ -29,6 +29,7 @@ export const upsert = mutation({
     }
     return await ctx.db.insert("twinmindMeetings", {
       ...args,
+      processed: false,
       synced_at: Date.now(),
     });
   },
@@ -37,9 +38,11 @@ export const upsert = mutation({
 export const getUnprocessed = query({
   args: {},
   handler: async (ctx) => {
+    // Catch records where processed is false OR not set (older synced records)
     return await ctx.db
       .query("twinmindMeetings")
-      .withIndex("by_processed", (q) => q.eq("processed", false))
+      .filter((q) => q.neq(q.field("processed"), true))
+      .order("asc")
       .collect();
   },
 });
@@ -55,6 +58,16 @@ export const markProcessed = mutation({
   },
 });
 
+export const getRecent = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit = 20 }) => {
+    return await ctx.db
+      .query("twinmindMeetings")
+      .order("desc")
+      .take(limit);
+  },
+});
+
 export const getByMeetingId = query({
   args: { meeting_id: v.string() },
   handler: async (ctx, args) => {
@@ -64,5 +77,18 @@ export const getByMeetingId = query({
         q.eq("meeting_id", args.meeting_id)
       )
       .first();
+  },
+});
+
+export const updateMetadata = mutation({
+  args: { meeting_id: v.string(), metadata: v.any() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("twinmindMeetings")
+      .withIndex("by_meeting_id", (q) => q.eq("meeting_id", args.meeting_id))
+      .first();
+    if (!existing) return;
+    const merged = { ...(existing.metadata || {}), ...args.metadata };
+    await ctx.db.patch(existing._id, { metadata: merged });
   },
 });

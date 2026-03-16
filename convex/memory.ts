@@ -1,5 +1,5 @@
-import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
 
 const memoryType = v.union(
   v.literal("fact"),
@@ -7,6 +7,10 @@ const memoryType = v.union(
   v.literal("completed_goal"),
   v.literal("preference")
 );
+
+// ---------------------------------------------------------------------------
+// Write
+// ---------------------------------------------------------------------------
 
 export const insert = mutation({
   args: {
@@ -17,7 +21,10 @@ export const insert = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("memory", { ...args });
+    return await ctx.db.insert("memory", {
+      ...args,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -26,43 +33,48 @@ export const patch = mutation({
     id: v.id("memory"),
     updates: v.any(),
   },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, { ...args.updates, updatedAt: Date.now() });
+  handler: async (ctx, { id, updates }) => {
+    await ctx.db.patch(id, { ...updates, updatedAt: Date.now() });
   },
 });
 
 export const remove = mutation({
   args: { id: v.id("memory") },
-  handler: async (ctx, args) => {
-    await ctx.db.delete(args.id);
+  handler: async (ctx, { id }) => {
+    await ctx.db.delete(id);
   },
 });
 
+// ---------------------------------------------------------------------------
+// Read
+// ---------------------------------------------------------------------------
+
 export const getByType = query({
   args: { type: memoryType },
-  handler: async (ctx, args) => {
+  handler: async (ctx, { type }) => {
     return await ctx.db
       .query("memory")
-      .withIndex("by_type", (q) => q.eq("type", args.type))
+      .withIndex("by_type", (q) => q.eq("type", type))
+      .order("asc")
       .collect();
+  },
+});
+
+export const findByContent = query({
+  args: { type: memoryType, search: v.string() },
+  handler: async (ctx, { type, search }) => {
+    const lower = search.toLowerCase();
+    const rows = await ctx.db
+      .query("memory")
+      .withIndex("by_type", (q) => q.eq("type", type))
+      .collect();
+    return rows.filter((r) => r.content.toLowerCase().includes(lower));
   },
 });
 
 export const getAll = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("memory").collect();
-  },
-});
-
-export const findByContent = query({
-  args: { type: memoryType, search: v.string() },
-  handler: async (ctx, args) => {
-    const items = await ctx.db
-      .query("memory")
-      .withIndex("by_type", (q) => q.eq("type", args.type))
-      .collect();
-    const lower = args.search.toLowerCase();
-    return items.filter((i) => i.content.toLowerCase().includes(lower));
+    return await ctx.db.query("memory").order("desc").collect();
   },
 });

@@ -22,6 +22,8 @@
     "test:supabase": "bun run setup/test-supabase.ts",
     "uninstall": "bun run setup/uninstall.ts",
     "upgrade": "bun run setup/upgrade.ts",
+    "setup:startinfinity": "bun run src/setup-startinfinity.ts",
+    "startinfinity-sync": "bun run src/startinfinity-sync.ts",
     "test": "bun test",
     "test:watch": "bun test --watch"
   },
@@ -37,6 +39,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "playwright": "^1.58.2",
     "typescript": "^5.7.0"
   },
   "engines": {

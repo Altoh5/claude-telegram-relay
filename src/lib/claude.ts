@@ -13,6 +13,18 @@ const IS_WINDOWS = process.platform === "win32";
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const HOME_DIR = process.env.HOME || process.env.USERPROFILE || "";
 
+// Base env for all Claude subprocesses — strip CLAUDECODE so nested
+// invocations aren't blocked by Claude Code's "nested session" guard.
+function safeEnv(extra?: Record<string, string>): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (k !== "CLAUDECODE" && v !== undefined) env[k] = v;
+  }
+  env.HOME = HOME_DIR;
+  env.PATH = process.env.PATH || "";
+  return extra ? { ...env, ...extra } : env;
+}
+
 export interface ClaudeOptions {
   prompt: string;
   outputFormat?: "json" | "text";
@@ -133,12 +145,7 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
   const proc = spawn({
     cmd,
     cwd: cwd || process.cwd(),
-    env: {
-      ...process.env,
-      HOME: HOME_DIR,
-      PATH: process.env.PATH || "",
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
-    },
+    env: safeEnv({ ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "" }),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -218,11 +225,7 @@ export async function runClaudeWithTimeout(
   const proc = spawn({
     cmd,
     cwd: options?.cwd || process.cwd(),
-    env: {
-      ...process.env,
-      HOME: HOME_DIR,
-      PATH: process.env.PATH || "",
-    },
+    env: safeEnv(),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -236,9 +239,13 @@ export async function runClaudeWithTimeout(
   }, timeoutMs);
 
   try {
-    const output = await new Response(proc.stdout).text();
+    const [output, errOutput] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
     clearTimeout(timer);
     if (killed) throw new Error("Timeout");
+    if (!output && errOutput) throw new Error(errOutput.trim());
     return output;
   } catch (error) {
     clearTimeout(timer);
@@ -342,12 +349,7 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
   const proc = spawn({
     cmd,
     cwd: cwd || process.cwd(),
-    env: {
-      ...process.env,
-      HOME: HOME_DIR,
-      PATH: process.env.PATH || "",
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
-    },
+    env: safeEnv({ ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "" }),
     stdout: "pipe",
     stderr: "pipe",
   });

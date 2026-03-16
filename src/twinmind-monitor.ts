@@ -16,6 +16,8 @@ import { loadEnv } from "./lib/env";
 import { sendTelegramMessage, sendTelegramPhoto, sendTelegramDocument } from "./lib/telegram";
 import { runClaudeWithTimeout } from "./lib/claude";
 import { createClient } from "@supabase/supabase-js";
+import { getConvex, api } from "./lib/convex";
+import { triageMeeting, sendTriageSummary } from "./triage-agent";
 
 // Load environment
 await loadEnv();
@@ -45,72 +47,58 @@ function getSupabase() {
 // ============================================================
 
 interface MeetingSummary {
+  _id: string;
   meeting_id: string;
   meeting_title: string;
   summary: string;
   action_items?: string;
-  start_time: string;
-  end_time?: string;
+  start_time: number;
+  end_time?: number;
   metadata?: Record<string, unknown>;
 }
 
 // ============================================================
-// FETCH UNPROCESSED MEETINGS FROM SUPABASE
+// FETCH UNPROCESSED MEETINGS FROM CONVEX
 // ============================================================
 
 async function fetchUnprocessedMeetings(): Promise<MeetingSummary[]> {
-  const sb = getSupabase();
-  if (!sb) {
-    console.error("Supabase not configured (missing SUPABASE_URL or key)");
+  const convex = getConvex();
+  if (!convex) {
+    console.error("Convex not configured (missing CONVEX_URL)");
     return [];
   }
-
-  const { data, error } = await sb
-    .from("twinmind_meetings")
-    .select("meeting_id, meeting_title, summary, action_items, start_time, end_time, metadata")
-    .eq("processed", false)
-    .order("start_time", { ascending: true });
-
-  if (error) {
-    console.error(`Supabase query failed: ${error.message}`);
+  try {
+    const results = await convex.query(api.twinmindMeetings.getUnprocessed);
+    return (results || []) as unknown as MeetingSummary[];
+  } catch (err) {
+    console.error(`Convex query failed: ${err}`);
     return [];
   }
-
-  return (data || []) as MeetingSummary[];
 }
 
-async function markProcessed(meetingId: string): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-
-  const { error } = await sb
-    .from("twinmind_meetings")
-    .update({ processed: true, processed_at: new Date().toISOString() })
-    .eq("meeting_id", meetingId);
-
-  if (error) {
-    console.error(`Failed to mark ${meetingId} as processed: ${error.message}`);
+async function markProcessed(meeting: MeetingSummary): Promise<void> {
+  const convex = getConvex();
+  if (!convex) return;
+  try {
+    await convex.mutation(api.twinmindMeetings.markProcessed, {
+      id: meeting._id as unknown as Parameters<typeof api.twinmindMeetings.markProcessed>[0]["id"],
+    });
+  } catch (err) {
+    console.error(`Failed to mark ${meeting.meeting_id} as processed: ${err}`);
   }
 }
 
 async function updateMetadata(meetingId: string, updates: Record<string, unknown>): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-
-  // Merge with existing metadata
-  const { data } = await sb
-    .from("twinmind_meetings")
-    .select("metadata")
-    .eq("meeting_id", meetingId)
-    .single();
-
-  const existing = (data?.metadata || {}) as Record<string, unknown>;
-  const merged = { ...existing, ...updates };
-
-  await sb
-    .from("twinmind_meetings")
-    .update({ metadata: merged })
-    .eq("meeting_id", meetingId);
+  const convex = getConvex();
+  if (!convex) return;
+  try {
+    await convex.mutation(api.twinmindMeetings.updateMetadata, {
+      meeting_id: meetingId,
+      metadata: updates,
+    });
+  } catch (err) {
+    console.error(`Failed to update metadata for ${meetingId}: ${err}`);
+  }
 }
 
 // ============================================================
@@ -432,6 +420,36 @@ Keep it concise and actionable. Use plain text, no markdown headers. Start with 
 }
 
 // ============================================================
+// TRIAGE — extract action items via Claude API
+// ============================================================
+
+async function runTriage(meeting: MeetingSummary, chatId: string): Promise<void> {
+  const meta = (meeting.metadata || {}) as Record<string, unknown>;
+  if (meta.triage_done) {
+    console.log("  Triage already done (previous run) — skipping");
+    return;
+  }
+
+  console.log("  Running triage agent...");
+  try {
+    const taskCount = await triageMeeting(meeting, {
+      botToken: BOT_TOKEN,
+      chatId,
+      threadId: THREAD_ID,
+    });
+    if (taskCount > 0) {
+      await sendTriageSummary(BOT_TOKEN, chatId, meeting.meeting_title, taskCount, THREAD_ID);
+    } else {
+      console.log("  No tasks extracted from triage");
+    }
+    await updateMetadata(meeting.meeting_id, { triage_done: true });
+  } catch (err) {
+    console.error(`  Triage failed: ${err}`);
+    // Don't block the main flow — triage is non-critical
+  }
+}
+
+// ============================================================
 // PROCESS MEETING
 // ============================================================
 
@@ -447,8 +465,8 @@ async function processMeeting(meeting: MeetingSummary): Promise<"complete" | "pa
     let summaryText = `*New Meeting Summary*\n\n`;
     summaryText += `*${meeting.meeting_title}*\n`;
     if (meeting.start_time) {
-      summaryText += `${meeting.start_time}`;
-      if (meeting.end_time) summaryText += ` - ${meeting.end_time}`;
+      summaryText += `${new Date(meeting.start_time).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })}`;
+      if (meeting.end_time) summaryText += ` - ${new Date(meeting.end_time).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })}`;
       summaryText += "\n";
     }
     summaryText += `\n${meeting.summary}`;
@@ -504,6 +522,8 @@ async function processMeeting(meeting: MeetingSummary): Promise<"complete" | "pa
   // 2. Create infographics (if NLM notebook configured)
   if (!NLM_NOTEBOOK_ID) {
     console.log("  TWINMIND_NLM_NOTEBOOK_ID not set — skipping infographics");
+    // Still run triage even without NotebookLM
+    await runTriage(meeting, chatId);
     return "complete";
   }
 
@@ -603,6 +623,7 @@ async function processMeeting(meeting: MeetingSummary): Promise<"complete" | "pa
 
   // Mark complete if both visuals succeeded (either infographic or slide fallback)
   if (stdOk && sketchOk) {
+    await runTriage(meeting, chatId);
     return "complete";
   }
   console.log("  Visual(s) failed — will retry next run");
@@ -626,7 +647,7 @@ async function main() {
   console.log("TwinMind Monitor starting...");
   console.log(`Chat: ${CHAT_ID}`);
   console.log(`NLM Notebook: ${NLM_NOTEBOOK_ID || "(not configured)"}`);
-  console.log(`Supabase: ${SUPABASE_URL ? "configured" : "NOT configured"}`);
+  console.log(`Convex: ${process.env.CONVEX_URL ? "configured" : "NOT configured"}`);
 
   // Step 1: Direct TwinMind sync disabled — OAuth token not available in background.
   // Meetings are synced via interactive Claude Code sessions instead.
@@ -636,7 +657,7 @@ async function main() {
 
 
 
-  console.log("Step 2/3: Fetching unprocessed meetings from Supabase...");
+  console.log("Step 2/3: Fetching unprocessed meetings from Convex...");
   const meetings = await fetchUnprocessedMeetings();
   console.log(`Found ${meetings.length} unprocessed meeting(s)`);
 
@@ -653,7 +674,7 @@ async function main() {
     const result = await processMeeting(meeting);
     switch (result) {
       case "complete":
-        await markProcessed(meeting.meeting_id);
+        await markProcessed(meeting);
         console.log(`  ✅ Marked ${meeting.meeting_id} as processed`);
         completed++;
         break;

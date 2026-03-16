@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 
 export const insert = mutation({
   args: {
@@ -17,5 +17,15 @@ export const insert = mutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("logs", { ...args });
+  },
+});
+
+export const getRecent = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit = 100 }) => {
+    return await ctx.db
+      .query("logs")
+      .order("desc")
+      .take(limit);
   },
 });

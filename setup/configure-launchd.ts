@@ -22,7 +22,7 @@ const PROJECT_ROOT = dirname(import.meta.dir);
 const LAUNCHD_DIR = join(PROJECT_ROOT, "launchd");
 const LAUNCH_AGENTS_DIR = join(process.env.HOME!, "Library", "LaunchAgents");
 
-const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor", "docs-monitor"] as const;
+const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor", "docs-monitor", "startinfinity-sync"] as const;
 type ServiceName = (typeof SERVICES)[number];
 
 interface ScheduleInterval {
@@ -239,6 +239,11 @@ async function configureService(service: ServiceName): Promise<boolean> {
     const xml = generateCalendarIntervalsXml(intervals);
     content = content.replace(/\{\{CALENDAR_INTERVALS\}\}/g, xml);
     console.log(`    Schedule: ${intervals.length} intervals (every 60s)`);
+  }
+
+  if (service === "startinfinity-sync") {
+    // Continuous service (KeepAlive) — no calendar intervals needed
+    console.log(`    Mode: continuous (KeepAlive, push every 2 min, pull every 5 min)`);
   }
 
   // Unload existing if present

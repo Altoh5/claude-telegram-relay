@@ -7,7 +7,7 @@
  */
 
 import type { ServerWebSocket } from "bun";
-import { writeFile, unlink, mkdir } from "fs/promises";
+import { readFile, writeFile, unlink, mkdir } from "fs/promises";
 import { join } from "path";
 
 import {
@@ -139,6 +139,9 @@ If you learn a fact worth remembering, include: [REMEMBER: fact]
 If the user wants to forget a stored fact, include: [FORGET: partial match]
 These tags will be parsed automatically. Include them naturally in your response.`);
 
+    sections.push(`## OUTPUT CHANNEL
+You are responding via OpenClaw AR glasses, NOT Telegram. Do NOT use sendPhoto, sendMessage or any Telegram APIs. Output text directly. If you generate an image or infographic, save it to /tmp as a PNG and mention the full absolute path in your response — the system will auto-attach images found in the text. Keep responses concise for a 640x480 monochrome display.`);
+
     sections.push(`## IMAGE CATALOGUING
 When you analyze an image, include this tag at the END of your response:
 [ASSET_DESC: concise 1-2 sentence description | tag1, tag2, tag3]
@@ -190,13 +193,43 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
     }
 
     // Send final response — Clawsses expects message.content[] format
+    // Scan response for generated image paths and attach them as base64 blocks
+    const contentBlocks: Array<{ type: string; [key: string]: unknown }> = [
+      { type: "text", text: responseText },
+    ];
+    const foundPaths = extractImagePaths(responseText);
+    console.log("[openclaw] Image path scan:", foundPaths.length, "found in", responseText.length, "chars");
+    if (foundPaths.length === 0) {
+      console.log("[openclaw] Response tail (300 chars):", responseText.slice(-300));
+    }
+    for (const imgPath of foundPaths) {
+      try {
+        // Scale image down for AR glasses (640x480 display, max ~100KB)
+        const tmpResized = imgPath.replace(/\.(png|jpg|jpeg)$/i, "-glasses.$1");
+        const { execSync } = await import("child_process");
+        try {
+          execSync(`sips --resampleWidth 300 --setProperty format jpeg --setProperty formatOptions 20 "${imgPath}" --out "${tmpResized}"`, { timeout: 10000 });
+        } catch { /* sips failed, use original */ }
+        const resizedPath = (await import("fs")).existsSync(tmpResized) ? tmpResized : imgPath;
+        const imgBuffer = await readFile(resizedPath);
+        if (resizedPath !== imgPath) await unlink(resizedPath).catch(() => {});
+        const mediaType = "image/jpeg";
+        contentBlocks.push({
+          type: "image",
+          source: { type: "base64", media_type: mediaType, data: imgBuffer.toString("base64") },
+        });
+        console.log(`[openclaw] Attached image: ${imgPath} (${imgBuffer.length} bytes)`);
+      } catch (err) {
+        console.error(`[openclaw] Failed to read image ${imgPath}:`, err);
+      }
+    }
     sendEvent(ws, "chat", {
       state: "final",
       runId,
       sessionKey,
       message: {
         role: "assistant",
-        content: [{ type: "text", text: responseText }],
+        content: contentBlocks,
       },
     });
 
@@ -244,6 +277,20 @@ let _lastSessionId: string | undefined;
 
 function getLastSessionId(): string | undefined {
   return _lastSessionId;
+}
+
+/**
+ * Extract absolute file paths to PNG/JPG images mentioned in response text.
+ * Used to auto-attach AI-generated infographics to the final response.
+ */
+function extractImagePaths(text: string): string[] {
+  const pathRegex = /(?:^|[\s`"'])(\/[^\s`"']+\.(?:png|jpg|jpeg))(?=[\s`"',.)\]]|$)/gim;
+  const paths: string[] = [];
+  let match;
+  while ((match = pathRegex.exec(text)) !== null) {
+    paths.push(match[1].trim());
+  }
+  return [...new Set(paths)];
 }
 
 /**

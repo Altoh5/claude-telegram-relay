@@ -128,32 +128,32 @@ export default defineSchema({
     .index("by_meeting_id", ["meeting_id"])
     .index("by_processed", ["processed"]),
 
-  // Board Meetings v2: named project containers
-  projects: defineTable({
-    chat_id: v.string(),
-    name: v.string(),
-    description: v.optional(v.string()),
-    goals: v.optional(v.string()),
-    context_notes: v.optional(v.string()),
-    status: v.union(v.literal("active"), v.literal("archived")),
-    updatedAt: v.optional(v.number()),
-    metadata: v.optional(v.any()),
-  })
-    .index("by_chat_id", ["chat_id"])
-    .index("by_chat_status", ["chat_id", "status"]),
+  triageTasks: defineTable({
+    meeting_id: v.string(),
+    project: v.string(),
+    description: v.string(),
+    suggestion: v.string(),
+    relevant_contact: v.optional(v.string()),
+    relevant_contact_email: v.optional(v.string()),
+    date: v.optional(v.number()),         // Unix ms, when to act
+    confidence_score: v.number(),          // 0–100
+    status: v.string(),                    // "backlog" | "in_progress" | "done"
+    source_meeting_title: v.string(),
+    created_at: v.number(),
+    notes: v.optional(v.string()),
+    startinfinity_item_id: v.optional(v.string()),   // tracks if pushed to StartInfinity
+    startinfinity_folder_id: v.optional(v.string()), // which SI folder (status column)
+  }).index("by_project", ["project"])
+    .index("by_status", ["status"])
+    .index("by_meeting", ["meeting_id"]),
 
-  // Board Meetings v2: saved board session reports
-  boardSessions: defineTable({
-    chat_id: v.string(),
-    project_id: v.optional(v.id("projects")),
-    project_name: v.optional(v.string()),
-    agent_outputs: v.any(), // Record<string, string>
-    synthesis: v.optional(v.string()),
-    decisions: v.optional(v.any()), // Array<{label, value}>
-    task_id: v.optional(v.id("asyncTasks")),
-    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
-    metadata: v.optional(v.any()),
-  })
-    .index("by_chat_id", ["chat_id"])
-    .index("by_project_id", ["project_id"]),
+  contacts: defineTable({
+    google_id: v.string(),
+    name: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    organization: v.optional(v.string()),
+    last_synced: v.number(),
+  }).index("by_name", ["name"])
+    .index("by_google_id", ["google_id"]),
 });

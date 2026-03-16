@@ -11,10 +11,15 @@
 import { join } from "path";
 import { mkdir, writeFile } from "fs/promises";
 import { loadEnv } from "./lib/env";
-import { callClaudeStreaming } from "./lib/claude";
+import { callClaudeStreaming, callClaude } from "./lib/claude";
 import { getAgentConfig, getUserProfile } from "./agents";
-import { saveMessage, getRecentMessages, getConversationContext, getSupabase } from "./lib/db";
+import { saveMessage, getRecentMessages, getConversationContext } from "./lib/db";
+import { getConvex } from "./lib/convex-client";
+import { api } from "../convex/_generated/api";
 import { getMemoryContext, processIntents } from "./lib/memory";
+import { runBoardMeeting } from "./lib/board-meeting";
+import { getProject, listProjects, createProject, appendProjectContext, archiveProject, createBoardSession, formatProjectContext } from "./lib/projects";
+import { sendTelegramMessage } from "./lib/telegram";
 
 await loadEnv(join(process.cwd(), ".env"));
 
@@ -39,9 +44,8 @@ const AGENT_META: Record<string, { icon: string; subtitle: string }> = {
 
 const AGENT_ORDER = ["general", "research", "content", "finance", "strategy", "cto", "coo", "critic"];
 
-// Shared chat_id with Telegram — history visible in both interfaces
-// Falls back to "web" if TELEGRAM_USER_ID not set
-const WEB_CHAT_ID = process.env.TELEGRAM_USER_ID || "web";
+// Shared chat_id with Telegram — use group chat if available, else user DM
+const WEB_CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID || process.env.TELEGRAM_USER_ID || "web";
 
 // For getConversationContext (used in prompt building) we still filter by agent
 // via metadata, but use the shared chat_id
@@ -49,24 +53,24 @@ function webChatId(_agent: string) {
   return WEB_CHAT_ID;
 }
 
-// Fetch messages filtered by metadata.agent from Supabase
+// Fetch messages filtered by metadata.agent from Convex
 async function getMessagesByAgent(agent: string, limit = 50): Promise<Array<{role: string; content: string; created_at: string}>> {
-  const sb = getSupabase();
-  if (!sb) return [];
-
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  const { data, error } = await sb
-    .from("messages")
-    .select("role, content, created_at, metadata")
-    .eq("chat_id", WEB_CHAT_ID)
-    .filter("metadata->>agent", "eq", agent)
-    .gte("created_at", since)
-    .order("created_at", { ascending: true })
-    .limit(limit);
-
-  if (error || !data) return [];
-  return data as Array<{role: string; content: string; created_at: string}>;
+  const cx = getConvex();
+  if (!cx) return [];
+  try {
+    const rows = await cx.query(api.messages.getByAgent, {
+      chat_id: WEB_CHAT_ID,
+      agent,
+      limit,
+    });
+    return rows.map((r: any) => ({
+      role: r.role,
+      content: r.content,
+      created_at: new Date(r._creationTime).toISOString(),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +191,13 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
 
+    // --- GET /convex-browser.js → serve Convex browser bundle ---
+    if (req.method === "GET" && url.pathname === "/convex-browser.js") {
+      const bundlePath = join(process.cwd(), "node_modules/convex/dist/browser.bundle.js");
+      const file = Bun.file(bundlePath);
+      return new Response(file, { headers: { "Content-Type": "application/javascript" } });
+    }
+
     // --- GET / → serve UI ---
     if (req.method === "GET" && url.pathname === "/") {
       return new Response(HTML, {
@@ -229,6 +240,8 @@ const server = Bun.serve({
       }
 
       const chatId = webChatId(agent);
+      const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
+      const telegramChatId = process.env.TELEGRAM_GROUP_CHAT_ID || process.env.TELEGRAM_USER_ID || "";
 
       // Save user message
       const userContent = fileUrl ? `${message}\n[Attached file: ${fileName} — ${process.env.WEB_BASE_URL || "http://localhost:" + PORT}${fileUrl}]` : message;
@@ -238,6 +251,99 @@ const server = Bun.serve({
         content: userContent,
         metadata: { agent, source: "web", fileUrl, fileName },
       });
+
+      // Forward user message to Telegram so the conversation appears there too
+      if (botToken && telegramChatId) {
+        const agentLabel = agent === "general" ? "" : ` [${agent.toUpperCase()}]`;
+        sendTelegramMessage(botToken, telegramChatId, `🖥️${agentLabel} ${userContent}`).catch(() => {});
+      }
+
+      // --- /project commands ---
+      if (message.trim().toLowerCase().startsWith("/project")) {
+        const args = message.trim().replace(/^\/project\s*/i, "").trim();
+        const [sub, ...rest] = args.split(/\s+/);
+
+        if (!sub || sub === "help") {
+          return Response.json({ text: "**Project Commands**\n\n`/project new <name>` — create\n`/project list` — list all\n`/project show <name>` — details\n`/project context <name> | <text>` — add context\n`/project archive <name>` — archive\n\nThen run `/board <name>` for a board meeting." });
+        }
+        if (sub === "new") {
+          const name = rest.join(" ").trim();
+          if (!name) return Response.json({ text: "Usage: `/project new <name>`" });
+          const project = await createProject(chatId, name);
+          return Response.json({ text: project ? `✅ Project **${name}** created.\n\nAdd context: \`/project context ${name} | <notes>\`` : "Failed to create project." });
+        }
+        if (sub === "list") {
+          const projects = await listProjects(chatId);
+          if (!projects.length) return Response.json({ text: "No active projects. Create one with `/project new <name>`" });
+          return Response.json({ text: `**Active Projects**\n\n${projects.map((p: any) => `• **${p.name}**${p.description ? ` — ${p.description}` : ""}`).join("\n")}` });
+        }
+        if (sub === "show") {
+          const name = rest.join(" ").trim();
+          const project = await getProject(chatId, name);
+          if (!project) return Response.json({ text: `Project "${name}" not found.` });
+          return Response.json({ text: formatProjectContext(project) });
+        }
+        if (sub === "context") {
+          const full = rest.join(" ");
+          const pipeIdx = full.indexOf("|");
+          if (pipeIdx === -1) return Response.json({ text: "Usage: `/project context <name> | <notes to add>`" });
+          const name = full.slice(0, pipeIdx).trim();
+          const contextText = full.slice(pipeIdx + 1).trim();
+          const project = await getProject(chatId, name);
+          if (!project) return Response.json({ text: `Project "${name}" not found.` });
+          const ok = await appendProjectContext(project.id, contextText);
+          return Response.json({ text: ok ? `✅ Context added to **${project.name}**.` : "Failed to update context." });
+        }
+        if (sub === "archive") {
+          const name = rest.join(" ").trim();
+          const project = await getProject(chatId, name);
+          if (!project) return Response.json({ text: `Project "${name}" not found.` });
+          const ok = await archiveProject(project.id);
+          return Response.json({ text: ok ? `✅ Project **${project.name}** archived.` : "Failed to archive." });
+        }
+        return Response.json({ text: `Unknown subcommand: ${sub}. Try \`/project help\`.` });
+      }
+
+      // --- /board <project> ---
+      if (message.trim().toLowerCase().startsWith("/board")) {
+        const projectName = message.trim().replace(/^\/board\s*/i, "").trim();
+        if (!projectName) {
+          const projects = await listProjects(chatId);
+          const list = projects.length ? projects.map((p: any) => `• ${p.name}`).join("\n") : "No projects yet.";
+          return Response.json({ text: `**Board Meeting**\n\n${list}\n\nUsage: \`/board <project name>\`` });
+        }
+        const project = await getProject(chatId, projectName);
+        if (!project) {
+          return Response.json({ text: `Project "${projectName}" not found. Create it first: \`/project new ${projectName}\`` });
+        }
+        const projectContext = formatProjectContext(project);
+        const [userProfile, memoryCtx] = await Promise.all([getUserProfile(), getMemoryContext()]);
+        const session = await createBoardSession(chatId, project);
+        if (!session) return Response.json({ text: "Failed to create board session." });
+
+        // Collect all replies into a single response
+        const replies: string[] = [];
+        const webCtx = { reply: async (text: string) => { replies.push(typeof text === "string" ? text : (text as any).text || ""); } };
+
+        const buildBoardPrompt = (agentLabel: string, agentQuestion: string, projCtx: string, focus?: string) => {
+          const sections = [`You are the ${agentLabel} advisor in a board meeting. Be concise and decisive.`, projCtx];
+          if (userProfile) sections.push(`## USER PROFILE\n${userProfile}`);
+          if (memoryCtx) sections.push(`## MEMORY CONTEXT\n${memoryCtx}`);
+          if (focus) sections.push(`## FOCUS\n${focus}`);
+          sections.push(`## YOUR QUESTION\n${agentQuestion}\n\nAnswer in 2-4 sentences. No preamble.`);
+          return sections.join("\n\n---\n\n");
+        };
+        const callSub = async (prompt: string) => {
+          const r = await callClaude({ prompt, cwd: PROJECT_ROOT, timeoutMs: 300_000, maxTurns: "3" });
+          return r.text || "";
+        };
+
+        await runBoardMeeting({ chatId, sessionId: session.id, project, projectContext, ctx: webCtx as any }, buildBoardPrompt, callSub);
+
+        const combined = replies.join("\n\n---\n\n");
+        await saveMessage({ chat_id: chatId, role: "assistant", content: combined, metadata: { agent, source: "web", type: "board_meeting" } });
+        return Response.json({ text: combined });
+      }
 
       // Run Claude and return JSON response
       try {
@@ -265,6 +371,12 @@ const server = Bun.serve({
           content: responseText,
           metadata: { agent, source: "web" },
         });
+
+        // Mirror assistant response to Telegram
+        if (botToken && telegramChatId && responseText !== "_(no response)_") {
+          const agentLabel = agent === "general" ? "" : ` [${agent.toUpperCase()}]`;
+          sendTelegramMessage(botToken, telegramChatId, `🤖${agentLabel} ${responseText}`).catch(() => {});
+        }
 
         // Handle cross-agent invocation
         if (invocation) {
@@ -365,12 +477,16 @@ console.log(`\n⚡ GoBot Web — http://localhost:${PORT}\n`);
 // Embedded UI
 // ---------------------------------------------------------------------------
 
-const HTML = `<!DOCTYPE html>
+function buildHTML() {
+  const convexUrl = process.env.CONVEX_URL || "";
+  const chatId = WEB_CHAT_ID;
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GoBot — Local</title>
+<script src="/convex-browser.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -663,7 +779,7 @@ const HTML = `<!DOCTYPE html>
     input.disabled         = false;
     sendBtn.disabled       = sending;
 
-    await loadHistory(agent.id);
+    startConvexSubscription(agent.id);
   }
 
   // ---- Load history ----
@@ -825,7 +941,63 @@ const HTML = `<!DOCTYPE html>
     return data.error ? null : data;
   }
 
+  // ---- Convex real-time subscription ----
+  const CONVEX_URL = ${JSON.stringify(convexUrl)};
+  const CHAT_ID = ${JSON.stringify(chatId)};
+
+  let convexClient = null;
+  let activeSubscription = null;
+
+  // Build a Convex function reference from a "module:fn" string
+  function convexRef(name) {
+    const ref = {};
+    ref[Symbol.for("functionName")] = name;
+    return ref;
+  }
+
+  function renderMessages(result) {
+    if (!result || !Array.isArray(result)) return;
+    // Don't wipe screen while a send is in progress — it would remove the status row
+    if (sending) return;
+    messages.innerHTML = '';
+    if (result.length === 0) {
+      messages.appendChild(emptyState);
+      emptyState.style.display = '';
+      return;
+    }
+    emptyState.style.display = 'none';
+    for (const m of result) {
+      appendMessage(m.role, m.content, new Date(m._creationTime).toISOString());
+    }
+    scrollBottom();
+  }
+
+  function startConvexSubscription(agentId) {
+    // Always fetch immediately for fast initial render
+    loadHistory(agentId);
+
+    if (!CONVEX_URL || typeof convex === 'undefined') return;
+    if (!convexClient) {
+      convexClient = new convex.ConvexClient(CONVEX_URL);
+    }
+    if (activeSubscription) {
+      activeSubscription();
+      activeSubscription = null;
+    }
+    try {
+      activeSubscription = convexClient.onUpdate(
+        convexRef("messages:getByAgent"),
+        { chat_id: CHAT_ID, agent: agentId, limit: 50 },
+        renderMessages
+      );
+    } catch(e) {
+      console.warn("Convex subscription failed, using HTTP fallback:", e);
+    }
+  }
+
   init();
 </script>
 </body>
 </html>`;
+}
+const HTML = buildHTML();

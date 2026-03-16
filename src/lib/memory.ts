@@ -1,27 +1,26 @@
 /**
  * Memory Module
  *
- * Unified memory layer with Supabase as primary store and local
- * JSON file as fallback. Provides facts, goals, and intent parsing
- * from Claude responses.
+ * Thin wrapper that delegates to convex-client.ts (Convex as primary store)
+ * with a local JSON file as fallback. Provides facts, goals, and intent
+ * parsing from Claude responses.
  */
 
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { join, dirname } from "path";
 import {
-  addFact as sbAddFact,
-  addGoal as sbAddGoal,
-  completeGoal as sbCompleteGoal,
-  deleteFact as sbDeleteFact,
-  cancelGoal as sbCancelGoal,
-  getActiveGoals as sbGetActiveGoals,
-  getFacts as sbGetFacts,
-  getMemoryContext as sbGetMemoryContext,
-  isSupabaseEnabled,
-  parseRelativeDate,
+  addFact as convexAddFact,
+  addGoal as convexAddGoal,
+  completeGoal as convexCompleteGoal,
+  cancelGoal as convexCancelGoal,
+  deleteFact as convexDeleteFact,
+  getFacts,
+  getActiveGoals,
+  getMemoryContext as convexGetMemoryContext,
+  getConvex,
   formatGoalsList,
   formatFactsList,
-} from "./db";
+} from "./convex-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,37 +87,35 @@ async function writeLocalMemory(memory: Memory): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Store a fact. Uses Supabase if available, otherwise local file.
+ * Store a fact. Uses Convex if available, otherwise local file.
  */
 export async function addFact(content: string): Promise<boolean> {
-  if (isSupabaseEnabled()) {
-    return sbAddFact(content);
+  if (getConvex()) {
+    return convexAddFact(content);
   }
 
   const memory = await readLocalMemory();
-  if (memory.facts.includes(content)) return true; // Deduplicate
+  if (memory.facts.includes(content)) return true;
   memory.facts.push(content);
   await writeLocalMemory(memory);
   return true;
 }
 
 /**
- * Add a goal with an optional deadline (natural language supported).
- * Uses Supabase if available, otherwise local file.
+ * Add a goal with an optional deadline. Uses Convex if available, otherwise local file.
  */
 export async function addGoal(
   text: string,
   deadline?: string
 ): Promise<boolean> {
-  if (isSupabaseEnabled()) {
-    return sbAddGoal(text, deadline);
+  if (getConvex()) {
+    return convexAddGoal(text, deadline);
   }
 
   const memory = await readLocalMemory();
-  const parsedDeadline = deadline ? parseRelativeDate(deadline) : undefined;
   memory.goals.push({
     text,
-    deadline: parsedDeadline,
+    deadline,
     createdAt: new Date().toISOString(),
   });
   await writeLocalMemory(memory);
@@ -127,11 +124,10 @@ export async function addGoal(
 
 /**
  * Mark a goal as completed by partial text match.
- * Uses Supabase if available, otherwise local file.
  */
 export async function completeGoal(searchText: string): Promise<boolean> {
-  if (isSupabaseEnabled()) {
-    return sbCompleteGoal(searchText);
+  if (getConvex()) {
+    return convexCompleteGoal(searchText);
   }
 
   const memory = await readLocalMemory();
@@ -153,11 +149,10 @@ export async function completeGoal(searchText: string): Promise<boolean> {
 
 /**
  * Delete a fact by partial text match.
- * Uses Supabase if available, otherwise local file.
  */
 export async function deleteFact(searchText: string): Promise<boolean> {
-  if (isSupabaseEnabled()) {
-    return sbDeleteFact(searchText);
+  if (getConvex()) {
+    return convexDeleteFact(searchText);
   }
 
   const memory = await readLocalMemory();
@@ -175,12 +170,10 @@ export async function deleteFact(searchText: string): Promise<boolean> {
 
 /**
  * Cancel (delete) a goal by partial text match.
- * Unlike completeGoal, this removes the goal entirely.
- * Uses Supabase if available, otherwise local file.
  */
 export async function cancelGoal(searchText: string): Promise<boolean> {
-  if (isSupabaseEnabled()) {
-    return sbCancelGoal(searchText);
+  if (getConvex()) {
+    return convexCancelGoal(searchText);
   }
 
   const memory = await readLocalMemory();
@@ -200,8 +193,9 @@ export async function cancelGoal(searchText: string): Promise<boolean> {
  * List all active goals. Returns formatted string.
  */
 export async function listGoals(): Promise<string> {
-  if (isSupabaseEnabled()) {
-    const goals = await sbGetActiveGoals();
+  if (getConvex()) {
+    const goals = await getActiveGoals();
+    if (goals.length === 0) return "No active goals.";
     return formatGoalsList(goals);
   }
 
@@ -222,8 +216,9 @@ export async function listGoals(): Promise<string> {
  * List all stored facts. Returns formatted string.
  */
 export async function listFacts(): Promise<string> {
-  if (isSupabaseEnabled()) {
-    const facts = await sbGetFacts();
+  if (getConvex()) {
+    const facts = await getFacts();
+    if (facts.length === 0) return "No stored facts.";
     return formatFactsList(facts);
   }
 
@@ -236,8 +231,8 @@ export async function listFacts(): Promise<string> {
  * Build combined memory context (facts + goals) for prompt injection.
  */
 export async function getMemoryContext(): Promise<string> {
-  if (isSupabaseEnabled()) {
-    return sbGetMemoryContext();
+  if (getConvex()) {
+    return convexGetMemoryContext();
   }
 
   const memory = await readLocalMemory();
@@ -290,7 +285,8 @@ interface ProcessedIntents {
  * Returns a summary of what was processed.
  */
 export async function processIntents(
-  text: string
+  text: string,
+  _chatId?: string
 ): Promise<ProcessedIntents> {
   const result: ProcessedIntents = {
     goalsAdded: [],
@@ -316,7 +312,6 @@ export async function processIntents(
   const goalSimple = /\[GOAL:\s*([^\]|]+?)\s*\]/gi;
   while ((match = goalSimple.exec(text)) !== null) {
     const goalText = match[1].trim();
-    // Skip if already added via the deadline pattern
     if (result.goalsAdded.includes(goalText)) continue;
     const success = await addGoal(goalText);
     if (success) result.goalsAdded.push(goalText);

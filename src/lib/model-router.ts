@@ -44,6 +44,7 @@ const TOOL_PATTERNS = [
   /^(create|make|add|set|update|delete|remove)\b/i,
   /^(send|post|reply|forward)\b/i,
   /^(run|execute|deploy|restart|start|stop)\b/i,
+  /\b(infographic|meeting|summary|twinmind|notebooklm|recap|chart|diagram|visual)\b/i,
 ];
 
 // Patterns that indicate complex requests (→ Opus)

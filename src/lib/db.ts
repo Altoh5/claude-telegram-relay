@@ -21,11 +21,12 @@ export type { Message, MemoryItem, LogEntry, AsyncTask } from "./supabase";
 
 type Backend = "supabase" | "convex" | "dual";
 
-const DB_BACKEND: Backend = (() => {
+// Read at call time (not module load time) so loadEnv() has already run
+function getBackend(): Backend {
   const val = (process.env.DB_BACKEND || "supabase").toLowerCase();
-  if (val === "convex" || val === "dual") return val;
+  if (val === "convex" || val === "dual") return val as Backend;
   return "supabase";
-})();
+}
 
 // Lazy-load convex module only when needed (prevents crash if convex isn't installed)
 let convexModule: typeof supabaseModule | null = null;
@@ -36,7 +37,7 @@ function getConvexModule(): typeof supabaseModule {
       convexModule = require("./convex-client") as typeof supabaseModule;
     } catch (err) {
       throw new Error(
-        `DB_BACKEND is "${DB_BACKEND}" but convex-client failed to load: ${err}`
+        `DB_BACKEND is "${getBackend()}" but convex-client failed to load: ${err}`
       );
     }
   }
@@ -49,7 +50,7 @@ function getConvexModule(): typeof supabaseModule {
  * - convex / dual mode: convexModule
  */
 function readModule(): typeof supabaseModule {
-  if (DB_BACKEND === "supabase") return supabaseModule;
+  if (getBackend() === "supabase") return supabaseModule;
   return getConvexModule();
 }
 
@@ -96,56 +97,56 @@ export const testConnection = supabaseModule.testConnection;
 export async function saveMessage(
   ...args: Parameters<typeof supabaseModule.saveMessage>
 ): ReturnType<typeof supabaseModule.saveMessage> {
-  if (DB_BACKEND === "supabase") return supabaseModule.saveMessage(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().saveMessage(...args);
+  if (getBackend() === "supabase") return supabaseModule.saveMessage(...args);
+  if (getBackend() === "convex") return getConvexModule().saveMessage(...args);
   return dualWrite((mod) => mod.saveMessage(...args));
 }
 
 export async function addFact(
   ...args: Parameters<typeof supabaseModule.addFact>
 ): ReturnType<typeof supabaseModule.addFact> {
-  if (DB_BACKEND === "supabase") return supabaseModule.addFact(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().addFact(...args);
+  if (getBackend() === "supabase") return supabaseModule.addFact(...args);
+  if (getBackend() === "convex") return getConvexModule().addFact(...args);
   return dualWrite((mod) => mod.addFact(...args));
 }
 
 export async function addGoal(
   ...args: Parameters<typeof supabaseModule.addGoal>
 ): ReturnType<typeof supabaseModule.addGoal> {
-  if (DB_BACKEND === "supabase") return supabaseModule.addGoal(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().addGoal(...args);
+  if (getBackend() === "supabase") return supabaseModule.addGoal(...args);
+  if (getBackend() === "convex") return getConvexModule().addGoal(...args);
   return dualWrite((mod) => mod.addGoal(...args));
 }
 
 export async function completeGoal(
   ...args: Parameters<typeof supabaseModule.completeGoal>
 ): ReturnType<typeof supabaseModule.completeGoal> {
-  if (DB_BACKEND === "supabase") return supabaseModule.completeGoal(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().completeGoal(...args);
+  if (getBackend() === "supabase") return supabaseModule.completeGoal(...args);
+  if (getBackend() === "convex") return getConvexModule().completeGoal(...args);
   return dualWrite((mod) => mod.completeGoal(...args));
 }
 
 export async function deleteFact(
   ...args: Parameters<typeof supabaseModule.deleteFact>
 ): ReturnType<typeof supabaseModule.deleteFact> {
-  if (DB_BACKEND === "supabase") return supabaseModule.deleteFact(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().deleteFact(...args);
+  if (getBackend() === "supabase") return supabaseModule.deleteFact(...args);
+  if (getBackend() === "convex") return getConvexModule().deleteFact(...args);
   return dualWrite((mod) => mod.deleteFact(...args));
 }
 
 export async function cancelGoal(
   ...args: Parameters<typeof supabaseModule.cancelGoal>
 ): ReturnType<typeof supabaseModule.cancelGoal> {
-  if (DB_BACKEND === "supabase") return supabaseModule.cancelGoal(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().cancelGoal(...args);
+  if (getBackend() === "supabase") return supabaseModule.cancelGoal(...args);
+  if (getBackend() === "convex") return getConvexModule().cancelGoal(...args);
   return dualWrite((mod) => mod.cancelGoal(...args));
 }
 
 export async function log(
   ...args: Parameters<typeof supabaseModule.log>
 ): ReturnType<typeof supabaseModule.log> {
-  if (DB_BACKEND === "supabase") return supabaseModule.log(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().log(...args);
+  if (getBackend() === "supabase") return supabaseModule.log(...args);
+  if (getBackend() === "convex") return getConvexModule().log(...args);
   // Dual: fire-and-forget to both, don't block on result
   const convex = getConvexModule();
   Promise.allSettled([convex.log(...args), supabaseModule.log(...args)]);
@@ -154,24 +155,24 @@ export async function log(
 export async function createTask(
   ...args: Parameters<typeof supabaseModule.createTask>
 ): ReturnType<typeof supabaseModule.createTask> {
-  if (DB_BACKEND === "supabase") return supabaseModule.createTask(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().createTask(...args);
+  if (getBackend() === "supabase") return supabaseModule.createTask(...args);
+  if (getBackend() === "convex") return getConvexModule().createTask(...args);
   return dualWrite((mod) => mod.createTask(...args));
 }
 
 export async function updateTask(
   ...args: Parameters<typeof supabaseModule.updateTask>
 ): ReturnType<typeof supabaseModule.updateTask> {
-  if (DB_BACKEND === "supabase") return supabaseModule.updateTask(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().updateTask(...args);
+  if (getBackend() === "supabase") return supabaseModule.updateTask(...args);
+  if (getBackend() === "convex") return getConvexModule().updateTask(...args);
   return dualWrite((mod) => mod.updateTask(...args));
 }
 
 export async function upsertHeartbeat(
   ...args: Parameters<typeof supabaseModule.upsertHeartbeat>
 ): ReturnType<typeof supabaseModule.upsertHeartbeat> {
-  if (DB_BACKEND === "supabase") return supabaseModule.upsertHeartbeat(...args);
-  if (DB_BACKEND === "convex") return getConvexModule().upsertHeartbeat(...args);
+  if (getBackend() === "supabase") return supabaseModule.upsertHeartbeat(...args);
+  if (getBackend() === "convex") return getConvexModule().upsertHeartbeat(...args);
   return dualWrite((mod) => mod.upsertHeartbeat(...args));
 }
 

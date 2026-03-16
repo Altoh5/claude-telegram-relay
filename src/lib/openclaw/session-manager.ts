@@ -91,6 +91,8 @@ export function listSessions(
   return Array.from(sessions.values()).map((s) => ({
     key: s.key,
     name: s.name,
+    displayName: s.name,
+    label: s.name,
     agentName: s.agentName,
     createdAt: s.createdAt,
   }));
