@@ -671,6 +671,7 @@ convex/                  # Convex backend (primary database)
   assets.ts              # File/image storage with Convex Storage
   knowledge.ts           # Structured knowledge base
   scheduledTasks.ts      # Durable scheduled tasks (reminders, recurring)
+  interactionScores.ts   # Feedback loop scoring (insert, query, dedup)
   embeddings.ts          # OpenAI embedding generation (actions)
   http.ts                # HTTP webhook routes (future)
 scripts/
@@ -681,6 +682,7 @@ src/
   smart-checkin.ts       # Proactive check-ins
   morning-briefing.ts    # Daily briefing
   watchdog.ts            # Health monitor
+  feedback.ts            # Feedback loop CLI (bun run feedback)
   lib/                   # Shared utilities
     env.ts               # Environment loader
     telegram.ts          # Telegram helpers
@@ -695,6 +697,7 @@ src/
     convex.ts            # Database client (Convex primary, Supabase fallback)
     supabase.ts          # Supabase client (used as fallback)
     memory.ts            # Facts, goals, intents
+    feedback-loop.ts     # Interaction scoring, pattern generation, weekly analysis
     fallback-llm.ts      # Backup LLM chain (with MCP tool support)
     data-sources/        # Pluggable morning briefing data
       types.ts           # DataSource interface
@@ -758,6 +761,10 @@ bun run checkin
 
 # Run morning briefing manually
 bun run briefing
+
+# Feedback loop (score interactions, generate patterns)
+bun run feedback
+bun run feedback --analyze
 
 # Full health check
 bun run setup:verify
