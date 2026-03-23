@@ -1,5 +1,63 @@
 # Gobot Changelog
 
+## v2.12.0 — 2026-03-23
+
+**Telegram Message Streaming — Live Tool Activity & Progressive Responses**
+
+GoBot now streams responses to Telegram in real time. When Claude uses tools (searching emails, checking calendar, running commands), you see exactly what's happening — and the response text appears progressively as it's generated. Simple messages respond instantly without any "Working..." delay.
+
+### How It Works
+
+```
+Simple message ("hi", "thanks")     → Instant response (<1s via Haiku)
+Complex message (tools, research)   → "Working..." → ⚡ Reading calendar → ⚡ Searching code → [response streams in]
+```
+
+The "Working..." message updates live via `editMessageText`, showing each tool as it executes. When the response text starts, the same message morphs into the progressive answer. No separate messages — one clean flow.
+
+### What Changed
+
+**All three deployment modes get streaming:**
+
+| Mode | Streaming Method | Simple Messages |
+|------|-----------------|-----------------|
+| **Local** (Claude Code CLI) | CLI `stream-json` events → `editMessageText` | Standard subprocess (fast) |
+| **VPS** (Anthropic API) | `messages.stream()` → `editMessageText` | Haiku direct (<1s) |
+| **Hybrid** | Local streaming when Mac alive, VPS streaming as fallback | Haiku stays on VPS (<1s) |
+
+**Smart routing for instant simple responses:**
+- VPS gateway now classifies message complexity before routing
+- Simple messages (greetings, short questions) → handled directly by VPS Haiku, never forwarded to Mac
+- Complex messages → forwarded to Mac (free subscription) or VPS with streaming
+
+### Fixed: Claude Code CLI Stream Parser
+
+The streaming event parser was written for the raw Anthropic API format (`content_block_start`, `text_delta`). But Claude Code CLI `--output-format stream-json` emits a completely different format:
+
+```
+OLD (wrong):  { type: "stream_event", event: { type: "content_block_start" } }
+NEW (actual): { type: "assistant", message: { content: [{ type: "tool_use" }, { type: "text" }] } }
+```
+
+Each `assistant` event contains the complete turn content (tool calls + text), not token-by-token deltas. The parser now correctly handles this format across all modes.
+
+### Files Changed
+
+- `src/lib/claude.ts` — Fixed `callClaudeStreaming()` event parser to match actual CLI format
+- `src/lib/anthropic-processor.ts` — Added `StreamCallbacks` interface + `messages.stream()` for real-time API streaming
+- `src/vps-gateway.ts` — Smart routing (Haiku→fast, complex→streaming) + `editMessageText` progress updates
+- `src/bot.ts` — `/process` handler routes by complexity; `callClaudeWithProgress` keeps progress message (final edit instead of delete+resend)
+
+### Upgrade
+
+```bash
+git pull origin master
+bun install
+# Restart your services — no config changes needed
+```
+
+---
+
 ## v2.11.0 — 2026-03-20
 
 **Feedback Loop — Adaptive Interaction Scoring**

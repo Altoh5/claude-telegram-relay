@@ -25,7 +25,7 @@ import {
   checkStaleTasks,
 } from "./lib/task-queue";
 import { processWithAnthropic } from "./lib/anthropic-processor";
-import type { ResumeState } from "./lib/anthropic-processor";
+import type { ResumeState, StreamCallbacks } from "./lib/anthropic-processor";
 import {
   processWithAgentSDK,
   getDailyBudgetRemaining,
@@ -528,7 +528,8 @@ async function processOnVPS(
   text: string,
   chatId: string,
   ctx: Context,
-  onCallInitiated?: (conversationId: string) => void
+  onCallInitiated?: (conversationId: string) => void,
+  streamCallbacks?: StreamCallbacks
 ): Promise<string> {
   const useAgentSDK = process.env.USE_AGENT_SDK === "true";
   const { tier, model } = selectModelForMessage(
@@ -556,7 +557,8 @@ async function processOnVPS(
       ctx,
       undefined,
       onCallInitiated || ((convId) => startCallTranscriptPolling(convId, chatId)),
-      model
+      model,
+      streamCallbacks
     );
   }
 
@@ -568,7 +570,8 @@ async function processOnVPS(
     ctx,
     undefined,
     onCallInitiated || ((convId) => startCallTranscriptPolling(convId, chatId)),
-    model
+    model,
+    streamCallbacks
   );
 }
 
@@ -729,9 +732,16 @@ Synthesize key themes, identify conflicts or alignments, and propose 3-5 concret
 
   let response: string;
   let processedBy = NODE_ID;
+  let streamedResponse = false;
 
   try {
-    if (isMacAlive()) {
+    const { tier } = selectModelForMessage(text);
+
+    // Simple messages → VPS Haiku direct (<1s). No "Working...", no Mac subprocess overhead.
+    if (tier === "haiku") {
+      console.log(`[FAST] Simple message → VPS Haiku`);
+      response = await processOnVPS(text, chatId, ctx);
+    } else if (isMacAlive()) {
       console.log("Routing to local machine...");
       const localResult = await forwardToLocal(text, chatId, threadId);
 
@@ -746,11 +756,111 @@ Synthesize key themes, identify conflicts or alignments, and propose 3-5 concret
         console.log(
           `Local forwarding failed (${localResult.error}), processing on VPS...`
         );
-        response = await processOnVPS(text, chatId, ctx);
+
+        // Send "Working..." and build streaming callbacks
+        let progressMsgId: number | null = null;
+        let lastEditAt = 0;
+        const EDIT_THROTTLE_MS = 1500;
+        let activityLog: string[] = [];
+        let isTextPhase = false;
+
+        try {
+          const msg = await ctx.reply("_Working..._", { parse_mode: "Markdown" });
+          progressMsgId = msg.message_id;
+        } catch {}
+
+        const streamCbs: StreamCallbacks = {
+          onToolStart: (toolName) => {
+            if (isTextPhase) return;
+            activityLog.push(`⚡ ${toolName}`);
+            if (activityLog.length > 6) activityLog = activityLog.slice(-6);
+            const now = Date.now();
+            if (now - lastEditAt < EDIT_THROTTLE_MS || !progressMsgId) return;
+            lastEditAt = now;
+            const text = `_Working..._\n\n${activityLog.join("\n")}`;
+            bot.api.editMessageText(Number(chatId), progressMsgId, text, { parse_mode: "Markdown" }).catch(() => {
+              bot.api.editMessageText(Number(chatId), progressMsgId!, text).catch(() => {});
+            });
+          },
+          onTextDelta: (accumulated) => {
+            if (!isTextPhase) { isTextPhase = true; activityLog = []; }
+            const now = Date.now();
+            if (now - lastEditAt < EDIT_THROTTLE_MS || !progressMsgId) return;
+            lastEditAt = now;
+            const display = accumulated.length > 4000 ? accumulated.substring(0, 4000) + "\n\n_..." : accumulated;
+            bot.api.editMessageText(Number(chatId), progressMsgId, display, { parse_mode: "Markdown" }).catch(() => {
+              bot.api.editMessageText(Number(chatId), progressMsgId!, display).catch(() => {});
+            });
+          },
+        };
+
+        response = await processOnVPS(text, chatId, ctx, undefined, streamCbs);
+
+        // Final edit with complete response, or delete progress msg
+        if (progressMsgId) {
+          if (isTextPhase && response) {
+            // Response was streamed — do final edit
+            try { await bot.api.editMessageText(Number(chatId), progressMsgId, response.substring(0, 4096), { parse_mode: "Markdown" }); }
+            catch { try { await bot.api.editMessageText(Number(chatId), progressMsgId, response.substring(0, 4096)); } catch {} }
+            streamedResponse = true;
+          } else {
+            try { await bot.api.deleteMessage(Number(chatId), progressMsgId); } catch {}
+          }
+        }
       }
     } else {
       console.log("Local machine down, processing on VPS...");
-      response = await processOnVPS(text, chatId, ctx);
+
+      // Send "Working..." and build streaming callbacks
+      let progressMsgId: number | null = null;
+      let lastEditAt = 0;
+      const EDIT_THROTTLE_MS = 1500;
+      let activityLog: string[] = [];
+      let isTextPhase = false;
+
+      try {
+        const msg = await ctx.reply("_Working..._", { parse_mode: "Markdown" });
+        progressMsgId = msg.message_id;
+      } catch {}
+
+      const streamCbs: StreamCallbacks = {
+        onToolStart: (toolName) => {
+          if (isTextPhase) return;
+          activityLog.push(`⚡ ${toolName}`);
+          if (activityLog.length > 6) activityLog = activityLog.slice(-6);
+          const now = Date.now();
+          if (now - lastEditAt < EDIT_THROTTLE_MS || !progressMsgId) return;
+          lastEditAt = now;
+          const text = `_Working..._\n\n${activityLog.join("\n")}`;
+          bot.api.editMessageText(Number(chatId), progressMsgId, text, { parse_mode: "Markdown" }).catch(() => {
+            bot.api.editMessageText(Number(chatId), progressMsgId!, text).catch(() => {});
+          });
+        },
+        onTextDelta: (accumulated) => {
+          if (!isTextPhase) { isTextPhase = true; activityLog = []; }
+          const now = Date.now();
+          if (now - lastEditAt < EDIT_THROTTLE_MS || !progressMsgId) return;
+          lastEditAt = now;
+          const display = accumulated.length > 4000 ? accumulated.substring(0, 4000) + "\n\n_..." : accumulated;
+          bot.api.editMessageText(Number(chatId), progressMsgId, display, { parse_mode: "Markdown" }).catch(() => {
+            bot.api.editMessageText(Number(chatId), progressMsgId!, display).catch(() => {});
+          });
+        },
+      };
+
+      response = await processOnVPS(text, chatId, ctx, undefined, streamCbs);
+
+      // Final edit with complete response, or delete progress msg
+      if (progressMsgId) {
+        if (isTextPhase && response) {
+          // Response was streamed — do final edit
+          try { await bot.api.editMessageText(Number(chatId), progressMsgId, response.substring(0, 4096), { parse_mode: "Markdown" }); }
+          catch { try { await bot.api.editMessageText(Number(chatId), progressMsgId, response.substring(0, 4096)); } catch {} }
+          streamedResponse = true;
+        } else {
+          try { await bot.api.deleteMessage(Number(chatId), progressMsgId); } catch {}
+        }
+      }
     }
   } finally {
     clearInterval(typingInterval);
@@ -774,8 +884,10 @@ Synthesize key themes, identify conflicts or alignments, and propose 3-5 concret
       })
       .catch(() => {});
 
-    // Route response through agent's bot (falls back to primary if no agent token)
-    await botRegistry.sendAsAgent(agentName, chatId, response, { threadId });
+    // Route response through agent's bot (skip if already streamed to Telegram)
+    if (!streamedResponse) {
+      await botRegistry.sendAsAgent(agentName, chatId, response, { threadId });
+    }
   }
 });
 

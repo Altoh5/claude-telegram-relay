@@ -1179,9 +1179,16 @@ async function callClaudeAndReply(
     const tier = classifyComplexity(userMessage);
     let response: string;
 
+    let streamedAlready = false;
+
     if (tier !== "haiku") {
       // Complex task → streaming subprocess with live progress
       response = await callClaudeWithProgress(ctx, userMessage, chatId, agentName, topicId);
+      // Check if response was already streamed to Telegram
+      if (response.startsWith("\x00STREAMED\x00")) {
+        streamedAlready = true;
+        response = response.slice("\x00STREAMED\x00".length);
+      }
     } else {
       // Simple task → standard subprocess (fast, no progress needed)
       response = await callClaude(userMessage, chatId, agentName, topicId);
@@ -1240,8 +1247,10 @@ async function callClaudeAndReply(
       }
     }
 
-    // Normal response — send via agent's bot
-    await botRegistry.sendAsAgent(agentName, chatId, response, { threadId: topicId });
+    // Normal response — send via agent's bot (skip if already streamed to progress message)
+    if (!streamedAlready) {
+      await botRegistry.sendAsAgent(agentName, chatId, response, { threadId: topicId });
+    }
   } catch (error) {
     console.error("callClaudeAndReply error:", error);
     await ctx.reply("Something went wrong. Please try again.");
@@ -1354,15 +1363,6 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
     },
   });
 
-  // Delete progress message before sending final response
-  if (progressMsgId) {
-    try {
-      await ctx.api.deleteMessage(ctx.chat!.id, progressMsgId);
-    } catch {
-      // May fail if message is too old — that's fine
-    }
-  }
-
   // Update session ID
   if (result.sessionId) {
     sessionState.sessionId = result.sessionId;
@@ -1371,6 +1371,11 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
 
   // Handle errors with fallback
   if (result.isError || !result.text) {
+    // Delete progress message on error
+    if (progressMsgId) {
+      try { await ctx.api.deleteMessage(ctx.chat!.id, progressMsgId); } catch {}
+    }
+
     console.error("Claude streaming error, falling back to secondary LLM...");
     await sbLog("warn", "bot", "Claude streaming failed, using fallback LLM", {
       error: result.text?.substring(0, 200),
@@ -1383,6 +1388,17 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
       console.error("Fallback LLM also failed:", fallbackError);
       return "I'm having trouble processing right now. Please try again in a moment.";
     }
+  }
+
+  // Final edit: update progress message with complete response
+  if (progressMsgId && result.text) {
+    try {
+      await ctx.api.editMessageText(ctx.chat!.id, progressMsgId, result.text.substring(0, 4096), { parse_mode: "Markdown" });
+    } catch {
+      try { await ctx.api.editMessageText(ctx.chat!.id, progressMsgId, result.text.substring(0, 4096)); } catch {}
+    }
+    // Prefix with marker so caller knows not to send again
+    return `\x00STREAMED\x00${result.text}`;
   }
 
   return result.text;
@@ -1623,12 +1639,57 @@ async function processInBackground(
 
       response = stripAssetDescTag(response);
     } else {
-      // Text message
-      response = await callClaude(text || "", targetChatId, "general", threadId);
+      // Text message — route by complexity
+      const tier = classifyComplexity(text || "");
+
+      if (tier === "haiku") {
+        // Simple message → fast path, no progress indicator
+        console.log(`[/process] Simple message (haiku) → fast path`);
+        response = await callClaude(text || "", targetChatId, "general", threadId);
+      } else {
+        // Complex message → streaming with tool activity
+        console.log(`[/process] Complex message (${tier}) → streaming`);
+
+        // Build a minimal fakeCtx for callClaudeWithProgress
+        const fakeCtx = {
+          chat: { id: Number(targetChatId) },
+          reply: async (t: string, opts?: any) => {
+            const params: Record<string, any> = { chat_id: targetChatId, text: t, ...opts };
+            if (threadId) params.message_thread_id = threadId;
+            const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(params),
+            });
+            const data = await res.json() as any;
+            return { message_id: data.result?.message_id ?? 0 };
+          },
+          api: {
+            editMessageText: async (cId: number, msgId: number, t: string, opts?: any) => {
+              await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chat_id: cId, message_id: msgId, text: t, ...opts }),
+              });
+            },
+            deleteMessage: async (cId: number, msgId: number) => {
+              await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/deleteMessage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chat_id: cId, message_id: msgId }),
+              });
+            },
+          },
+        } as unknown as Context;
+
+        response = await callClaudeWithProgress(fakeCtx, text || "", targetChatId, "general", threadId);
+      }
     }
 
-    // Send response directly to Telegram
-    await sendDirectMessage(targetChatId, response, threadId);
+    // Send response directly to Telegram (only if not already streamed via progress)
+    if (response) {
+      await sendDirectMessage(targetChatId, response, threadId);
+    }
     console.log(`/process completed for chat ${targetChatId} (${response.length} chars)`);
   } catch (err) {
     console.error("/process background processing error:", err);

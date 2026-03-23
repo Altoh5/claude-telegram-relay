@@ -353,8 +353,8 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
           continue; // skip malformed lines
         }
 
-        // Capture session_id from any event that has it
-        if (event.session_id && !sessionId) {
+        // Capture session_id from init event
+        if (event.type === "system" && event.subtype === "init" && event.session_id) {
           sessionId = event.session_id;
         }
 
@@ -365,41 +365,30 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
           continue;
         }
 
-        // Only process stream_event type
-        if (event.type !== "stream_event") continue;
+        // Claude Code CLI stream-json format:
+        // type=assistant → message.content[] with tool_use and text blocks
+        // type=user → tool results (we skip these)
+        if (event.type === "assistant" && event.message?.content) {
+          for (const block of event.message.content) {
+            // Tool use → fire onToolStart
+            if (block.type === "tool_use" && block.name && onToolStart) {
+              const now = Date.now();
+              if (now - lastToolProgressAt >= TOOL_THROTTLE_MS) {
+                lastToolProgressAt = now;
+                onToolStart(friendlyToolName(block.name));
+              }
+            }
 
-        const apiEvent = event.event;
-        if (!apiEvent) continue;
-
-        // Tool use start → progress callback
-        if (
-          apiEvent.type === "content_block_start" &&
-          apiEvent.content_block?.type === "tool_use" &&
-          onToolStart
-        ) {
-          const now = Date.now();
-          if (now - lastToolProgressAt >= TOOL_THROTTLE_MS) {
-            lastToolProgressAt = now;
-            const name = apiEvent.content_block.name || "tool";
-            onToolStart(friendlyToolName(name));
-          }
-        }
-
-        // Text delta → accumulate for first-text callback
-        if (
-          apiEvent.type === "content_block_delta" &&
-          apiEvent.delta?.type === "text_delta" &&
-          apiEvent.delta.text
-        ) {
-          textAccumulator += apiEvent.delta.text;
-
-          // Send first meaningful text snippet (>30 chars, first sentence)
-          if (!firstTextSent && onFirstText && textAccumulator.length > 30) {
-            firstTextSent = true;
-            // Extract first sentence or first 150 chars
-            const match = textAccumulator.match(/^.{30,150}?[.!?\n]/);
-            const snippet = match ? match[0].trim() : textAccumulator.substring(0, 150).trim();
-            onFirstText(snippet);
+            // Text block → fire onFirstText
+            if (block.type === "text" && block.text) {
+              textAccumulator = block.text;
+              if (!firstTextSent && onFirstText && textAccumulator.length > 30) {
+                firstTextSent = true;
+                const match = textAccumulator.match(/^.{30,150}?[.!?\n]/);
+                const snippet = match ? match[0].trim() : textAccumulator.substring(0, 150).trim();
+                onFirstText(snippet);
+              }
+            }
           }
         }
       }

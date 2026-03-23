@@ -36,6 +36,9 @@ You ──▶ Telegram ──▶ Bot ─┤
 
 ## What's New
 
+### v2.12.0 — Telegram Message Streaming
+Responses now stream to Telegram in real time. See exactly which tools Claude is using (⚡ Reading calendar, ⚡ Searching code) and watch the response appear progressively — all in one message. Simple messages ("hi", short questions) respond instantly via Haiku (<1s) without any "Working..." delay. Works across all three modes: local, VPS, and hybrid.
+
 ### v2.11.0 — Feedback Loop (Adaptive Interaction Scoring)
 GoBot scores your interactions and generates patterns that feed back into the system prompt. Learns which areas it handles well and where it needs more care. Run `bun run feedback` daily or `bun run feedback --analyze` for weekly trends.
 

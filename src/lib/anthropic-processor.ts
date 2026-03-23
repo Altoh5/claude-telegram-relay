@@ -27,6 +27,11 @@ import {
 import { mcpManager } from "./mcp-client";
 import type { Context } from "grammy";
 
+export interface StreamCallbacks {
+  onToolStart?: (toolName: string) => void;
+  onTextDelta?: (accumulated: string) => void;
+}
+
 // ============================================================
 // TIME RESOLUTION — parse scheduled time strings to epoch ms
 // ============================================================
@@ -526,7 +531,8 @@ export async function processWithAnthropic(
   ctx: Context,
   resumeState?: ResumeState,
   onCallInitiated?: (conversationId: string) => void,
-  model?: string
+  model?: string,
+  streamCallbacks?: StreamCallbacks
 ): Promise<string> {
   const startTime = Date.now();
   const effectiveModel = getModelForProvider(
@@ -590,13 +596,41 @@ export async function processWithAnthropic(
     while (iterations < MAX_ITERATIONS) {
       iterations++;
 
-      const response = await createResilientMessage({
-        model: effectiveModel,
-        max_tokens: 4096,
-        system: systemPrompt,
-        tools,
-        messages,
-      });
+      let response: Anthropic.Message;
+
+      if (streamCallbacks) {
+        const anthropic = getClient();
+        const stream = anthropic.messages.stream({
+          model: effectiveModel,
+          max_tokens: 4096,
+          system: systemPrompt,
+          tools,
+          messages,
+        });
+
+        let textAccumulator = "";
+
+        stream.on("contentBlockStart", (event: any) => {
+          if (event.content_block?.type === "tool_use") {
+            streamCallbacks.onToolStart?.(event.content_block.name || "tool");
+          }
+        });
+
+        stream.on("text", (text: string) => {
+          textAccumulator += text;
+          streamCallbacks.onTextDelta?.(textAccumulator);
+        });
+
+        response = await stream.finalMessage();
+      } else {
+        response = await createResilientMessage({
+          model: effectiveModel,
+          max_tokens: 4096,
+          system: systemPrompt,
+          tools,
+          messages,
+        });
+      }
 
       // Check if we're done (no more tool calls)
       if (
