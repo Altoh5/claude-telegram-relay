@@ -107,7 +107,8 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
     maxTurns,
   } = options;
 
-  const args = ["-p", prompt, "--output-format", outputFormat];
+  // Pass prompt via stdin to avoid OS arg-length limits (ERR_INVALID_ARG_VALUE)
+  const args = ["-p", "--output-format", outputFormat];
 
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
@@ -135,9 +136,14 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
       PATH: process.env.PATH || "",
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
     },
+    stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  // Pipe prompt via stdin — no arg-length ceiling
+  proc.stdin.write(prompt);
+  proc.stdin.end();
 
   // Timeout with proper process kill
   let timedOut = false;
@@ -194,10 +200,10 @@ export async function runClaudeWithTimeout(
     cwd?: string;
   }
 ): Promise<string> {
+  // Pass prompt via stdin to avoid OS arg-length limits (ERR_INVALID_ARG_VALUE)
   const baseCmd = [
     CLAUDE_PATH,
     "-p",
-    prompt,
     "--output-format",
     "text",
     ...(options?.allowedTools
@@ -216,9 +222,14 @@ export async function runClaudeWithTimeout(
       HOME: HOME_DIR,
       PATH: process.env.PATH || "",
     },
+    stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  // Pipe prompt via stdin — no arg-length ceiling
+  proc.stdin.write(prompt);
+  proc.stdin.end();
 
   let killed = false;
   const timer = setTimeout(() => {
@@ -285,7 +296,8 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
     onFirstText,
   } = options;
 
-  const args = ["-p", prompt, "--output-format", "stream-json", "--verbose"];
+  // Pass prompt via stdin to avoid OS arg-length limits (ERR_INVALID_ARG_VALUE)
+  const args = ["-p", "--output-format", "stream-json", "--verbose"];
 
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
@@ -312,9 +324,14 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
       PATH: process.env.PATH || "",
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
     },
+    stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  // Pipe prompt via stdin — no arg-length ceiling
+  proc.stdin.write(prompt);
+  proc.stdin.end();
 
   // Timeout with proper process kill
   let timedOut = false;
