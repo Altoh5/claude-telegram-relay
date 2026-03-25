@@ -48,7 +48,7 @@ describe("triggerPaymentReminderFlow", () => {
       dueDate: "2026-03-28",
       messageId: "msg-pay",
     });
-    const [, , text] = mockSendTelegramMessage.mock.calls[0];
+    const [, , text] = mockSendTelegramMessage.mock.calls[0] as any[];
     expect(text).toContain("Canva Pro");
     expect(text).toContain("17.90");
     expect(text).toContain("2026-03-28");
@@ -58,7 +58,7 @@ describe("triggerPaymentReminderFlow", () => {
     await triggerPaymentReminderFlow({
       botToken: "tok", chatId: "123", service: "X", amount: 0, currency: "SGD", dueDate: "", messageId: "m",
     });
-    const [, , , opts] = mockSendTelegramMessage.mock.calls[0];
+    const [, , , opts] = mockSendTelegramMessage.mock.calls[0] as any[];
     const buttons = opts.buttons.flat().map((b: any) => b.text);
     expect(buttons).toContain("Make Task");
     expect(buttons).toContain("Ignore");

@@ -47,7 +47,7 @@ describe("triggerActionableFlow", () => {
       messageId: "msg-2",
     });
     expect(mockSendTelegramMessage).toHaveBeenCalledTimes(1);
-    const [, , text, opts] = mockSendTelegramMessage.mock.calls[0];
+    const [, , text, opts] = mockSendTelegramMessage.mock.calls[0] as any[];
     expect(text).toContain("Rishi");
     const buttons = opts.buttons.flat().map((b: any) => b.text);
     expect(buttons).toContain("Make Task");
@@ -56,7 +56,7 @@ describe("triggerActionableFlow", () => {
   });
 
   it("returns early without sending if createTask returns null", async () => {
-    mockCreateTask.mockResolvedValueOnce(null);
+    mockCreateTask.mockResolvedValueOnce(null as any);
     await triggerActionableFlow({
       botToken: "tok", chatId: "123", subject: "X", senderName: "Y", summary: "Z", messageId: "m",
     });

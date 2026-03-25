@@ -69,7 +69,7 @@ describe("startReceiptFlow", () => {
   });
 
   it("returns early without sending if createTask returns null", async () => {
-    mockCreateTask.mockResolvedValueOnce(null);
+    mockCreateTask.mockResolvedValueOnce(null as any);
     const { startReceiptFlow } = await import("./receipt");
     await startReceiptFlow({ botToken: "tok", chatId: "123", vendor: "", amount: 0, currency: "SGD", date: "2026-03-24" });
     expect(mockSendTelegram).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe("completeReceiptFlow", () => {
       metadata: expect.objectContaining({ forward_text: expect.stringContaining("[Expense]") }),
     }));
     // Verify ph:copy:task-1 button was sent
-    const fetchCall = mockFetch.mock.calls[0];
+    const fetchCall = mockFetch.mock.calls[0] as any[];
     const body = JSON.parse(fetchCall[1].body);
     expect(body.reply_markup.inline_keyboard[0][0].callback_data).toBe("ph:copy:task-1");
   });

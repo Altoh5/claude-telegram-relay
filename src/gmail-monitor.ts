@@ -13,13 +13,14 @@ import { getGoogleAccessToken } from "./lib/data-sources/google-auth";
 import { getBotAccessToken } from "./lib/google-bot-auth";
 import { getConvex, api } from "./lib/convex";
 import {
-  classifyEmail,
+  classifyEmailsBatch,
   isNccSender,
   extractReceiptDetails,
   extractAppointmentDetails,
   extractActionableDetails,
   extractPaymentDetails,
   extractSermonDetails,
+  type EmailCategory,
 } from "./lib/gmail-classifier";
 import { startReceiptFlow } from "./lib/flows/receipt";
 import { triggerActionableFlow } from "./lib/flows/actionable";
@@ -107,13 +108,9 @@ async function processEmail(opts: {
   sender: string;
   snippet: string;
   body: string;
+  category: EmailCategory;
 }): Promise<void> {
-  const { inboxId, messageId, subject, sender, snippet, body } = opts;
-
-  // NCC filter for tool inbox
-  if (inboxId === "tool" && !isNccSender(sender)) return;
-
-  const category = await classifyEmail({ subject, sender, snippet });
+  const { inboxId, messageId, subject, sender, snippet, body, category } = opts;
   console.log(`  [${inboxId}] ${subject} → ${category}`);
 
   if (category === "ignore" || category === "ncc_sermon_notify") return;
@@ -229,21 +226,51 @@ async function main() {
       const messageIds = await fetchNewMessages(token, since);
       console.log(`  Found ${messageIds.length} new message(s) since ${new Date(since).toISOString()}`);
 
+      // Fetch details for all unprocessed messages
+      const pending: Array<{ messageId: string; subject: string; sender: string; snippet: string; body: string }> = [];
       for (const messageId of messageIds) {
         const alreadyDone = await cx.query(api.gmailMonitor.isProcessed, { message_id: messageId });
         if (alreadyDone) { console.log(`  Skipping ${messageId} (already processed)`); continue; }
 
+        // NCC filter for tool inbox (skip detail fetch if not NCC)
+        // We need sender to check, so fetch a lightweight check via snippet
         const details = await fetchMessageDetails(token, messageId);
         if (!details) continue;
+        if (inbox.id === "tool" && !isNccSender(details.sender)) {
+          console.log(`  [tool] Skipping non-NCC sender: ${details.sender}`);
+          await cx.mutation(api.gmailMonitor.markProcessed, { message_id: messageId, classified_as: "ignore" });
+          await markAsRead(token, messageId);
+          continue;
+        }
+
+        pending.push({ messageId, ...details });
+      }
+
+      if (pending.length === 0) {
+        console.log(`  No messages to classify.`);
+        await cx.mutation(api.gmailMonitor.setLastRun, { inbox: inbox.id, timestamp: Date.now() });
+        continue;
+      }
+
+      // Batch classify all pending emails in one Claude subprocess call
+      console.log(`  Classifying ${pending.length} message(s) in batch...`);
+      const categories = await classifyEmailsBatch(
+        pending.map(({ subject, sender, snippet }) => ({ subject, sender, snippet }))
+      );
+
+      // Process each email with its assigned category
+      for (let i = 0; i < pending.length; i++) {
+        const { messageId, ...details } = pending[i];
+        const category = categories[i];
 
         try {
-          await processEmail({ inboxId: inbox.id, messageId, ...details });
+          await processEmail({ inboxId: inbox.id, messageId, ...details, category });
           totalProcessed++;
         } catch (err) {
           console.error(`  Error processing ${messageId}: ${err}`);
         }
 
-        await cx.mutation(api.gmailMonitor.markProcessed, { message_id: messageId, classified_as: "processed" });
+        await cx.mutation(api.gmailMonitor.markProcessed, { message_id: messageId, classified_as: category });
         await markAsRead(token, messageId);
       }
 

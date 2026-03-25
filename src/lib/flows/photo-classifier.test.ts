@@ -1,19 +1,16 @@
 import { describe, it, expect, mock } from "bun:test";
 
-const mockCreate = mock(async () => ({
-  content: [{ type: "text", text: "food_place" }],
-}));
+const mockCallClaude = mock(async () => ({ text: "food_place", isError: false }));
 
-mock.module("@anthropic-ai/sdk", () => ({
-  default: class {
-    messages = { create: mockCreate };
-  },
+mock.module("../claude", () => ({
+  callClaude: mockCallClaude,
 }));
 
 const { classifyPhoto } = await import("./photo-classifier");
 
 describe("classifyPhoto", () => {
   it("returns food_place classification", async () => {
+    mockCallClaude.mockResolvedValueOnce({ text: "food_place", isError: false });
     const result = await classifyPhoto({
       caption: "Dinner at Boon Tong Kee",
       visionDescription: "A plate of chicken rice at a restaurant",
@@ -22,9 +19,7 @@ describe("classifyPhoto", () => {
   });
 
   it("defaults to general for unknown classification", async () => {
-    mockCreate.mockResolvedValueOnce({
-      content: [{ type: "text", text: "something_random" }],
-    });
+    mockCallClaude.mockResolvedValueOnce({ text: "something_random", isError: false });
     const result = await classifyPhoto({
       caption: "",
       visionDescription: "A sunset photo",
