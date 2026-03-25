@@ -156,4 +156,15 @@ export default defineSchema({
     last_synced: v.number(),
   }).index("by_name", ["name"])
     .index("by_google_id", ["google_id"]),
+
+  gmailMonitor: defineTable({
+    inbox: v.string(),     // "si" | "tool"
+    last_run: v.number(),  // unix ms
+  }).index("by_inbox", ["inbox"]),
+
+  gmailProcessed: defineTable({
+    message_id: v.string(),
+    classified_as: v.string(),
+    processed_at: v.number(),
+  }).index("by_message_id", ["message_id"]),
 });
