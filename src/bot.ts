@@ -593,6 +593,74 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     if (handled) return;
   }
 
+  // ----- Receipt reply handling -----
+  {
+    const sb = (await import("./lib/supabase")).getSupabase();
+    if (sb) {
+      const { data: pendingReceipts } = await sb
+        .from("async_tasks")
+        .select("*")
+        .eq("chat_id", chatId)
+        .eq("status", "needs_input")
+        .eq("metadata->>type", "receipt_pending")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (pendingReceipts && pendingReceipts.length > 0) {
+        const task = pendingReceipts[0];
+        const Anthropic = (await import("@anthropic-ai/sdk")).default;
+        const client = new Anthropic();
+        const parseRes = await client.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 100,
+          messages: [{
+            role: "user",
+            content: `Parse this expense note into JSON. Reply with ONLY valid JSON.\nNote: "${text}"\nSchema: {"purpose":"","with_person":""}`,
+          }],
+        });
+        let parsed = { purpose: text, with_person: "self" };
+        try { parsed = JSON.parse((parseRes.content[0] as any).text.trim()); } catch {}
+
+        const { completeReceiptFlow } = await import("./lib/flows/receipt");
+        await completeReceiptFlow({
+          botToken: BOT_TOKEN!,
+          chatId,
+          taskId: task.id,
+          vendor: task.metadata?.vendor || "",
+          amount: task.metadata?.amount || 0,
+          currency: task.metadata?.currency || "SGD",
+          date: task.metadata?.date || new Date().toISOString().slice(0, 10),
+          purpose: parsed.purpose,
+          with_person: parsed.with_person,
+          imagePath: task.metadata?.image_path || undefined,
+        });
+        return;
+      }
+
+      // ----- Place note reply handling -----
+      const { data: pendingNotes } = await sb
+        .from("async_tasks")
+        .select("*")
+        .eq("chat_id", chatId)
+        .eq("status", "needs_input")
+        .eq("metadata->>type", "place_note_pending")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (pendingNotes && pendingNotes.length > 0) {
+        const task = pendingNotes[0];
+        const assetId = task.metadata?.asset_id || "";
+        const { saveMemoryEntry } = await import("./lib/flows/photo-classifier");
+        await saveMemoryEntry(
+          `[Place] Asset: ${assetId} | Personal note: ${text} | Date: ${new Date().toISOString().slice(0, 10)}`
+        );
+        await updateTask(task.id, { status: "completed" });
+        await ctx.reply("✅ Note saved.");
+        return;
+      }
+    }
+  }
+
   // ----- Default: Claude Processing -----
 
   // Enrich with YouTube transcripts if URLs detected
@@ -1187,6 +1255,47 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
       photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
     }
 
+    // --- Photo classification (receipt / food_place / product / general) ---
+    let photoCategory: import("./lib/flows/photo-classifier").PhotoCategory = "general";
+    try {
+      const { classifyPhoto } = await import("./lib/flows/photo-classifier");
+      photoCategory = await classifyPhoto({
+        caption,
+        visionDescription: usedVisionFallback ? photoPrompt : "",
+      });
+    } catch (err) {
+      console.warn("[photo] Classification failed:", err);
+    }
+
+    if (photoCategory === "receipt") {
+      const { startReceiptFlow } = await import("./lib/flows/receipt");
+      await startReceiptFlow({
+        botToken: BOT_TOKEN!,
+        chatId,
+        vendor: "",
+        amount: 0,
+        currency: "SGD",
+        date: new Date().toISOString().slice(0, 10),
+        imagePath: localPath,
+      });
+      return;
+    }
+
+    if (photoCategory === "food_place") {
+      const { lookupVenueAndNotify } = await import("./lib/flows/photo-classifier");
+      const venueName = caption && caption.length > 3 ? caption : "this place";
+      await lookupVenueAndNotify({ botToken: BOT_TOKEN!, chatId, venueName, assetId: asset?.id });
+      return;
+    }
+
+    if (photoCategory === "product") {
+      const { lookupProductAndNotify } = await import("./lib/flows/photo-classifier");
+      const productName = caption && caption.length > 3 ? caption : "this product";
+      await lookupProductAndNotify({ botToken: BOT_TOKEN!, chatId, productName, assetId: asset?.id });
+      return;
+    }
+    // photoCategory === "general" — fall through to existing Claude handling
+
     const tier = classifyComplexity(caption);
     let claudeResponse: string;
 
@@ -1431,6 +1540,75 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
       console.error("Contact confirm error:", err);
       await ctx.editMessageText(`❌ Failed: ${err}`).catch(() => {});
     }
+    return;
+  }
+
+  // ---- Photo flow callbacks ----
+  if (data.startsWith("ph:note:")) {
+    const assetId = data.replace("ph:note:", "");
+    await ctx.editMessageText("What did you think / want to remember about this place?").catch(() => {});
+    const chatId = String(ctx.chat?.id || "");
+    const task = await createTask(chatId, "Photo place note");
+    if (task) {
+      await updateTask(task.id, {
+        status: "needs_input",
+        metadata: { type: "place_note_pending", asset_id: assetId },
+      });
+    }
+    return;
+  }
+
+  if (data.startsWith("ph:save:")) {
+    const assetId = data.replace("ph:save:", "");
+    const { saveMemoryEntry } = await import("./lib/flows/photo-classifier");
+    await saveMemoryEntry(`[Product saved for later] Asset: ${assetId}. Date: ${new Date().toISOString().slice(0, 10)}`);
+    await ctx.editMessageText("✅ Saved for later.").catch(() => {});
+    return;
+  }
+
+  if (data.startsWith("ph:skip:")) {
+    await ctx.editMessageText("✓").catch(() => {});
+    return;
+  }
+
+  if (data.startsWith("ph:copy:")) {
+    const taskId = data.replace("ph:copy:", "");
+    const { getTaskById } = await import("./lib/supabase");
+    const task = await getTaskById(taskId);
+    const forwardText = task?.metadata?.forward_text || "(expense details not found)";
+    await ctx.reply(`Forward to Honey:\n\n${forwardText}`).catch(() => {});
+    return;
+  }
+
+  // ---- Gmail flow callbacks ----
+  if (data.startsWith("gm:cal:")) {
+    const taskId = data.replace("gm:cal:", "");
+    await ctx.editMessageText("📅 Adding to calendar...").catch(() => {});
+    try {
+      const sb = (await import("./lib/supabase")).getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data: task } = await sb.from("async_tasks").select("*").eq("id", taskId).single();
+      if (!task?.metadata) throw new Error("Task not found");
+      const { createCalendarEvent } = await import("./lib/flows/appointment");
+      const link = await createCalendarEvent(task.metadata.appointment_details);
+      await ctx.editMessageText(`✅ Added to calendar.${link ? " [View](" + link + ")" : ""}`).catch(() => {});
+    } catch (err: any) {
+      await ctx.editMessageText(`❌ Calendar error: ${err.message}`).catch(() => {});
+    }
+    return;
+  }
+
+  if (data.startsWith("gm:task:")) {
+    const taskId = data.replace("gm:task:", "");
+    await updateTask(taskId, { status: "pending" });
+    await ctx.editMessageText("✅ Saved as a task.").catch(() => {});
+    return;
+  }
+
+  if (data.startsWith("gm:skip:") || data.startsWith("gm:ign:")) {
+    const taskId = data.replace("gm:skip:", "").replace("gm:ign:", "");
+    await updateTask(taskId, { status: "failed", result: "ignored by user" });
+    await ctx.editMessageText("✓ Ignored.").catch(() => {});
     return;
   }
 
