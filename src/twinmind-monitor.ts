@@ -540,6 +540,7 @@ async function processMeeting(meeting: MeetingSummary): Promise<"complete" | "pa
 
     if (!sourceId) {
       console.error("  Failed to add source to NotebookLM — skipping infographics");
+      await runTriage(meeting, chatId);
       return "complete"; // Summary sent, infographics optional
     }
 

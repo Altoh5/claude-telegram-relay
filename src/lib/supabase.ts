@@ -257,6 +257,7 @@ export async function getConversationContext(
   const messages = await getRecentMessages(chatId, limit);
   if (messages.length === 0) return "";
 
+  const MAX_MSG_CHARS = 800;
   return messages
     .map((msg) => {
       const time = msg.created_at ? getTimeAgo(new Date(msg.created_at)) : "";
@@ -265,7 +266,10 @@ export async function getConversationContext(
         const agent = (msg.metadata as any)?.agent;
         speaker = agent ? agent.charAt(0).toUpperCase() + agent.slice(1) : "Bot";
       }
-      return `[${time}] ${speaker}: ${msg.content}`;
+      const content = msg.content.length > MAX_MSG_CHARS
+        ? msg.content.slice(0, MAX_MSG_CHARS) + "… [truncated]"
+        : msg.content;
+      return `[${time}] ${speaker}: ${content}`;
     })
     .join("\n");
 }

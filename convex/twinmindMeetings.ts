@@ -80,6 +80,30 @@ export const getByMeetingId = query({
   },
 });
 
+export const resetProcessed = mutation({
+  args: { meeting_id: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("twinmindMeetings")
+      .withIndex("by_meeting_id", (q) => q.eq("meeting_id", args.meeting_id))
+      .first();
+    if (!existing) return null;
+    await ctx.db.patch(existing._id, { processed: false, processed_at: undefined });
+    return existing._id;
+  },
+});
+
+export const getLastSyncTime = query({
+  args: {},
+  handler: async (ctx) => {
+    const latest = await ctx.db
+      .query("twinmindMeetings")
+      .order("desc")
+      .first();
+    return latest?.synced_at ?? null;
+  },
+});
+
 export const updateMetadata = mutation({
   args: { meeting_id: v.string(), metadata: v.any() },
   handler: async (ctx, args) => {

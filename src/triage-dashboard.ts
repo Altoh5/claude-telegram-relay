@@ -116,6 +116,9 @@ const HTML = `<!DOCTYPE html>
   .contact-popover-edit { margin-top: 10px; padding-top: 8px; border-top: 1px solid #334155; }
   .btn-edit-contact { background: #1e3a5f; color: #60a5fa; border: none; padding: 4px 10px; border-radius: 5px; font-size: 0.72rem; cursor: pointer; font-weight: 500; }
   .btn-edit-contact:hover { background: #2563eb; color: #fff; }
+  .delete-zone { position: fixed; bottom: 0; left: 0; right: 0; height: 80px; background: rgba(239,68,68,0.15); border-top: 2px dashed #ef4444; display: none; align-items: center; justify-content: center; gap: 10px; font-size: 1rem; color: #ef4444; font-weight: 600; z-index: 100; transition: background 0.15s; }
+  .delete-zone.active { display: flex; }
+  .delete-zone.drag-over { background: rgba(239,68,68,0.35); }
 </style>
 </head>
 <body>
@@ -159,6 +162,7 @@ const HTML = `<!DOCTYPE html>
 </div>
 <div id="board"><div id="loading">Loading tasks...</div></div>
 <div class="contact-popover" id="contact-popover"></div>
+<div class="delete-zone" id="delete-zone">🗑️ Drop here to delete</div>
 
 <script>
 // ---- State ----
@@ -342,18 +346,39 @@ async function deleteTask(id) {
 
 // ---- Drag and drop ----
 let dragId = null;
+const deleteZone = document.getElementById('delete-zone');
 document.getElementById('board').addEventListener('dragstart', function(e) {
   const card = e.target.closest('.card[data-id]');
   if (!card) return;
   dragId = card.dataset.id;
   card.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
+  deleteZone.classList.add('active');
 });
 document.getElementById('board').addEventListener('dragend', function(e) {
   const card = e.target.closest('.card[data-id]');
   if (card) card.classList.remove('dragging');
   document.querySelectorAll('.column.drag-over').forEach(c => c.classList.remove('drag-over'));
+  deleteZone.classList.remove('active', 'drag-over');
   dragId = null;
+});
+deleteZone.addEventListener('dragover', function(e) {
+  if (!dragId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  deleteZone.classList.add('drag-over');
+});
+deleteZone.addEventListener('dragleave', function() {
+  deleteZone.classList.remove('drag-over');
+});
+deleteZone.addEventListener('drop', async function(e) {
+  e.preventDefault();
+  const id = dragId;
+  dragId = null;
+  deleteZone.classList.remove('active', 'drag-over');
+  if (!id) return;
+  if (!confirm('Delete this task?')) return;
+  await deleteTask(id);
 });
 document.getElementById('board').addEventListener('dragover', function(e) {
   const col = e.target.closest('.column[data-status]');
@@ -527,11 +552,18 @@ async function searchContacts(q) {
   const candidates = await res.json();
   const el = document.getElementById('contact-results');
   if (!candidates.length) {
-    el.innerHTML = '<div style="color:#475569;font-size:0.78rem;padding:8px 0">No contacts found</div>';
+    el.innerHTML =
+      '<div style="color:#475569;font-size:0.78rem;padding:4px 0 10px">No contacts found — create one?</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        '<input id="new-contact-name" placeholder="Name *" value="' + esc(q) + '" style="background:#1a2535;border:1px solid #334155;border-radius:6px;padding:7px 9px;color:#e2e8f0;font-size:0.8rem;outline:none;width:100%;box-sizing:border-box">' +
+        '<input id="new-contact-email" placeholder="Email" style="background:#1a2535;border:1px solid #334155;border-radius:6px;padding:7px 9px;color:#e2e8f0;font-size:0.8rem;outline:none;width:100%;box-sizing:border-box">' +
+        '<input id="new-contact-org" placeholder="Organization" style="background:#1a2535;border:1px solid #334155;border-radius:6px;padding:7px 9px;color:#e2e8f0;font-size:0.8rem;outline:none;width:100%;box-sizing:border-box">' +
+        '<button onclick="createContact()" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 12px;font-size:0.8rem;font-weight:600;cursor:pointer;margin-top:2px">➕ Create & Assign</button>' +
+      '</div>';
     return;
   }
   el.innerHTML = candidates.map(c =>
-    '<div class="contact-option" onclick="pickContact(' + JSON.stringify(JSON.stringify(c)) + ')">' +
+    '<div class="contact-option" data-contact="' + esc(JSON.stringify(c)) + '">' +
       '<div class="contact-option-name">👤 ' + esc(c.name) + '</div>' +
       '<div class="contact-option-meta">' +
         (c.organization ? '🏢 ' + esc(c.organization) + '  ' : '') +
@@ -544,6 +576,31 @@ async function searchContacts(q) {
 async function pickContact(cJson) {
   const c = JSON.parse(cJson);
   await saveContact(c.name, c.email || null);
+}
+
+async function createContact() {
+  const nameEl = document.getElementById('new-contact-name');
+  const emailEl = document.getElementById('new-contact-email');
+  const orgEl = document.getElementById('new-contact-org');
+  const name = nameEl.value.trim();
+  const email = emailEl.value.trim();
+  const org = orgEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+  const btn = document.querySelector('#contact-results button');
+  if (btn) { btn.textContent = 'Creating…'; btn.disabled = true; }
+  try {
+    const res = await fetch('/api/contacts/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email: email || null, organization: org || null })
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    const contact = await res.json();
+    await saveContact(contact.name, contact.email || null);
+  } catch(e) {
+    alert('Error creating contact: ' + e.message);
+    if (btn) { btn.textContent = '➕ Create & Assign'; btn.disabled = false; }
+  }
 }
 
 async function clearContact() {
@@ -569,6 +626,11 @@ async function saveContact(name, email) {
 document.getElementById('contact-search').addEventListener('input', function() {
   clearTimeout(contactSearchTimer);
   contactSearchTimer = setTimeout(() => searchContacts(this.value), 250);
+});
+document.getElementById('contact-results').addEventListener('click', function(e) {
+  const opt = e.target.closest('.contact-option[data-contact]');
+  if (!opt) return;
+  pickContact(opt.dataset.contact);
 });
 document.getElementById('contact-modal').addEventListener('click', function(e) {
   if (e.target === this) closeContactModal();
@@ -663,6 +725,50 @@ const server = Bun.serve({
       try {
         const contact = await cx.query(api.contacts.searchByName, { name });
         return new Response(JSON.stringify(contact ?? null), { headers: { "Content-Type": "application/json" } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+
+    // POST /api/contacts/create — create in Google Contacts + upsert to Convex
+    if (req.method === "POST" && path === "/api/contacts/create") {
+      try {
+        const b = await req.json() as { name: string; email?: string | null; organization?: string | null };
+        if (!b.name?.trim()) return new Response(JSON.stringify({ error: "name required" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+        const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+        if (!clientId || !clientSecret || !refreshToken) {
+          return new Response(JSON.stringify({ error: "Google OAuth not configured — set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN" }), { status: 500, headers: { "Content-Type": "application/json" } });
+        }
+        const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+        });
+        if (!tokenResp.ok) throw new Error(`Token refresh failed: ${await tokenResp.text()}`);
+        const { access_token } = await tokenResp.json() as { access_token: string };
+        const personBody: Record<string, unknown> = { names: [{ givenName: b.name, displayName: b.name }] };
+        if (b.email) personBody.emailAddresses = [{ value: b.email }];
+        if (b.organization) personBody.organizations = [{ name: b.organization }];
+        const createResp = await fetch("https://people.googleapis.com/v1/people:createContact?personFields=names,emailAddresses,organizations", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(personBody),
+        });
+        if (!createResp.ok) throw new Error(`Google People API error: ${await createResp.text()}`);
+        const person = await createResp.json() as { resourceName: string };
+        const cx = getConvex();
+        if (cx) {
+          await cx.mutation(api.contacts.upsert, {
+            google_id: person.resourceName,
+            name: b.name,
+            email: b.email ?? undefined,
+            organization: b.organization ?? undefined,
+            last_synced: Date.now(),
+          });
+        }
+        return new Response(JSON.stringify({ name: b.name, email: b.email ?? null, organization: b.organization ?? null }), { headers: { "Content-Type": "application/json" } });
       } catch (err) {
         return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { "Content-Type": "application/json" } });
       }

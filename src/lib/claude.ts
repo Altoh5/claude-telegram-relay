@@ -123,7 +123,7 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
     maxTurns,
   } = options;
 
-  const args = ["-p", prompt, "--output-format", outputFormat];
+  const args = ["-p", prompt, "--output-format", outputFormat, "--dangerously-skip-permissions"];
 
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", allowedTools.join(","));
@@ -145,30 +145,55 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
   const proc = spawn({
     cmd,
     cwd: cwd || process.cwd(),
-    env: safeEnv({ ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "" }),
+    env: safeEnv(process.env.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY } : undefined),
+    stdin: null, // Prevent subprocess from waiting on stdin (launchd has no tty)
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  console.log(`[claude] Subprocess spawned. pid=${proc.pid}, resume=${resumeSessionId ? "yes" : "no"}, timeout=${timeoutMs}ms`);
 
   // Timeout with proper process kill
   let timedOut = false;
   const timeoutId = setTimeout(() => {
     timedOut = true;
+    console.error(`[claude] Subprocess timed out after ${timeoutMs}ms. Killing pid=${proc.pid}`);
     try {
       proc.kill();
     } catch {}
   }, timeoutMs);
 
   try {
-    const output = await new Response(proc.stdout).text();
+    const [output, stderrOutput] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
     clearTimeout(timeoutId);
 
+    // Log stderr for debugging
+    if (stderrOutput.trim()) {
+      console.error(`[claude] stderr: ${stderrOutput.trim().substring(0, 500)}`);
+    }
+
     if (timedOut) {
+      console.error("[claude] Subprocess timed out");
+      return { text: "", isError: true };
+    }
+
+    // Log empty output for debugging
+    if (!output.trim()) {
+      console.error(`[claude] Empty stdout from subprocess. exitCode=${proc.exitCode}`);
+      // Empty output with a resume ID likely means stale/expired session — retry fresh
+      if (resumeSessionId) {
+        console.warn("[claude] Empty output with resume ID — likely stale session, retrying without resume...");
+        return callClaude({ ...options, resumeSessionId: undefined });
+      }
       return { text: "", isError: true };
     }
 
     // Check for errors
     if (isClaudeErrorResponse(output)) {
+      console.error(`[claude] Error response detected: ${output.substring(0, 200)}`);
       return { text: output, isError: true };
     }
 
@@ -176,20 +201,36 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
     if (outputFormat === "json") {
       try {
         const result = JSON.parse(output);
-        const hasError = result.subtype === "error_max_turns" || isClaudeErrorResponse(result.result || "");
+
+        // Detect stale session error — retry without resume
+        if (result.subtype === "error_during_execution" && result.errors?.some((e: string) => e.includes("No conversation found with session ID"))) {
+          console.warn("[claude] Stale session detected, retrying without resume...");
+          if (resumeSessionId) {
+            return callClaude({ ...options, resumeSessionId: undefined });
+          }
+        }
+
+        // Log any error subtypes for debugging
+        if (result.is_error || result.subtype?.startsWith("error")) {
+          console.error(`[claude] Error result: subtype=${result.subtype}, errors=${JSON.stringify(result.errors || [])}`);
+        }
+
+        const hasError = result.subtype === "error_max_turns" || result.is_error || isClaudeErrorResponse(result.result || "");
         return {
           text: result.result || "",
           sessionId: result.session_id,
           isError: hasError,
         };
-      } catch {
+      } catch (parseErr) {
+        console.error(`[claude] JSON parse failed: ${parseErr}. Raw output: ${output.substring(0, 300)}`);
         return { text: output, isError: isClaudeErrorResponse(output) };
       }
     }
 
     return { text: output.trim(), isError: false };
-  } catch {
+  } catch (err) {
     clearTimeout(timeoutId);
+    console.error(`[claude] Exception in callClaude: ${err}`);
     return { text: "", isError: true };
   }
 }
@@ -349,7 +390,8 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
   const proc = spawn({
     cmd,
     cwd: cwd || process.cwd(),
-    env: safeEnv({ ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "" }),
+    env: safeEnv(process.env.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY } : undefined),
+    stdin: null, // Prevent subprocess from waiting on stdin (launchd has no tty)
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -401,6 +443,15 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
           resultText = event.result || "";
           sessionId = event.session_id || sessionId;
           console.log(`[streaming] Result received (${resultText.length} chars)`);
+
+          // Detect stale session error — retry without resume
+          if (event.subtype === "error_during_execution" && event.errors?.some((e: string) => e.includes("No conversation found with session ID"))) {
+            console.warn("[streaming] Stale session detected, retrying without resume...");
+            clearTimeout(timeoutId);
+            if (resumeSessionId) {
+              return callClaudeStreaming({ ...options, resumeSessionId: undefined });
+            }
+          }
           continue;
         }
 
@@ -441,6 +492,14 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
     }
 
     clearTimeout(timeoutId);
+
+    // Capture stderr for debugging
+    let stderrText = "";
+    try { stderrText = await new Response(proc.stderr).text(); } catch {}
+    if (stderrText.trim()) {
+      console.error(`[streaming] stderr: ${stderrText.trim().substring(0, 500)}`);
+    }
+
     console.log(`[streaming] Stream ended. timedOut=${timedOut}, resultLen=${resultText.length}, accumulatorLen=${textAccumulator.length}`);
 
     if (timedOut) {
@@ -457,8 +516,9 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
     }
 
     return { text: resultText, sessionId, isError: false };
-  } catch {
+  } catch (err) {
     clearTimeout(timeoutId);
+    console.error(`[streaming] Exception: ${err}`);
     return { text: "", isError: true };
   }
 }

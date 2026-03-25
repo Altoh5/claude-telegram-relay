@@ -1,9 +1,8 @@
 /**
- * TwinMind → Supabase Sync Utility
+ * TwinMind → Convex Sync Utility
  *
- * Accepts meeting JSON via stdin and upserts to the twinmind_meetings
- * Supabase table. Designed to be called from interactive Claude Code
- * sessions where TwinMind MCP is available.
+ * Accepts meeting JSON via stdin and upserts to Convex twinmindMeetings table.
+ * Designed to be called from interactive Claude Code sessions where TwinMind MCP is available.
  *
  * Usage:
  *   echo '[{"meeting_id":"abc","meeting_title":"Test",...}]' | bun run src/twinmind-sync.ts
@@ -11,19 +10,18 @@
  */
 
 import { loadEnv } from "./lib/env";
-import { createClient } from "@supabase/supabase-js";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api";
 
 await loadEnv();
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error("FATAL: SUPABASE_URL and SUPABASE_ANON_KEY (or SERVICE_ROLE_KEY) required");
+const CONVEX_URL = process.env.CONVEX_URL || "";
+if (!CONVEX_URL) {
+  console.error("FATAL: CONVEX_URL required");
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const convex = new ConvexHttpClient(CONVEX_URL);
 
 interface MeetingInput {
   meeting_id: string;
@@ -32,6 +30,12 @@ interface MeetingInput {
   action_items?: string;
   start_time: string;
   end_time?: string;
+}
+
+function toUnixMs(ts: string | number): number {
+  if (typeof ts === "number") return ts;
+  const parsed = Date.parse(ts);
+  return isNaN(parsed) ? Date.now() : parsed;
 }
 
 async function readStdin(): Promise<string> {
@@ -48,9 +52,8 @@ async function readStdin(): Promise<string> {
   return chunks.join("");
 }
 
-async function syncMeetings(meetings: MeetingInput[]): Promise<{ inserted: number; updated: number; errors: number }> {
-  let inserted = 0;
-  let updated = 0;
+async function syncMeetings(meetings: MeetingInput[]): Promise<{ upserted: number; errors: number }> {
+  let upserted = 0;
   let errors = 0;
 
   for (const m of meetings) {
@@ -60,58 +63,24 @@ async function syncMeetings(meetings: MeetingInput[]): Promise<{ inserted: numbe
       continue;
     }
 
-    // Check if already exists
-    const { data: existing } = await supabase
-      .from("twinmind_meetings")
-      .select("id, meeting_id")
-      .eq("meeting_id", m.meeting_id)
-      .maybeSingle();
-
-    if (existing) {
-      // Update existing
-      const { error } = await supabase
-        .from("twinmind_meetings")
-        .update({
-          meeting_title: m.meeting_title,
-          summary: m.summary,
-          action_items: m.action_items || null,
-          start_time: m.start_time,
-          end_time: m.end_time || null,
-          synced_at: new Date().toISOString(),
-        })
-        .eq("meeting_id", m.meeting_id);
-
-      if (error) {
-        console.error(`Error updating ${m.meeting_id}: ${error.message}`);
-        errors++;
-      } else {
-        updated++;
-        console.log(`  Updated: ${m.meeting_title}`);
-      }
-    } else {
-      // Insert new
-      const { error } = await supabase
-        .from("twinmind_meetings")
-        .insert({
-          meeting_id: m.meeting_id,
-          meeting_title: m.meeting_title,
-          summary: m.summary,
-          action_items: m.action_items || null,
-          start_time: m.start_time,
-          end_time: m.end_time || null,
-        });
-
-      if (error) {
-        console.error(`Error inserting ${m.meeting_id}: ${error.message}`);
-        errors++;
-      } else {
-        inserted++;
-        console.log(`  Inserted: ${m.meeting_title}`);
-      }
+    try {
+      await convex.mutation(api.twinmindMeetings.upsert, {
+        meeting_id: m.meeting_id,
+        meeting_title: m.meeting_title,
+        summary: m.summary,
+        action_items: m.action_items || undefined,
+        start_time: toUnixMs(m.start_time),
+        end_time: m.end_time ? toUnixMs(m.end_time) : undefined,
+      });
+      upserted++;
+      console.log(`  Upserted: ${m.meeting_title}`);
+    } catch (err: any) {
+      console.error(`Error upserting ${m.meeting_id}: ${err.message}`);
+      errors++;
     }
   }
 
-  return { inserted, updated, errors };
+  return { upserted, errors };
 }
 
 // Main
@@ -142,7 +111,7 @@ async function main() {
 
   const result = await syncMeetings(meetings);
 
-  console.log(`\nSync complete: ${result.inserted} inserted, ${result.updated} updated, ${result.errors} errors`);
+  console.log(`\nSync complete: ${result.upserted} upserted, ${result.errors} errors`);
 }
 
 main().catch(err => {

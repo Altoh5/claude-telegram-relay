@@ -124,8 +124,18 @@ if (!ALLOWED_USER_ID) {
 const bot = new Bot(BOT_TOKEN);
 
 // ---------------------------------------------------------------------------
-// 3. Session State Management
+// 3. Session State Management + Claude Subprocess Mutex
 // ---------------------------------------------------------------------------
+
+// Mutex to prevent concurrent Claude subprocess calls (session resume conflicts)
+let claudeMutexPromise: Promise<void> = Promise.resolve();
+
+function withClaudeMutex<T>(fn: () => Promise<T>): Promise<T> {
+  let releaseMutex: () => void;
+  const prev = claudeMutexPromise;
+  claudeMutexPromise = new Promise<void>((resolve) => { releaseMutex = resolve; });
+  return prev.then(() => fn().finally(() => releaseMutex!()));
+}
 
 interface SessionState {
   sessionId: string | null;
@@ -835,51 +845,42 @@ async function handleBoardMeetingV2(
 // --- TwinMind Command Handler ---
 
 async function handleTwinmindCommand(ctx: Context, command: string): Promise<void> {
-  const sb = (await import("./lib/supabase")).getSupabase();
-  if (!sb) {
-    await ctx.reply("Supabase not configured. Cannot access TwinMind cache.");
+  const convexUrl = process.env.CONVEX_URL;
+  if (!convexUrl) {
+    await ctx.reply("CONVEX_URL not configured. Cannot access TwinMind cache.");
     return;
   }
+  const { ConvexHttpClient } = await import("convex/browser");
+  const { api } = await import("../convex/_generated/api");
+  const cx = new ConvexHttpClient(convexUrl);
 
   // /twinmind — show recent meetings + process any unprocessed
   // /twinmind status — just show status
   const subcommand = command.replace(/^\/twinmind\s*/, "").trim();
 
-  // Get counts
-  const { count: totalCount } = await sb
-    .from("twinmind_meetings")
-    .select("*", { count: "exact", head: true });
+  const recent = await cx.query(api.twinmindMeetings.getRecent, { limit: 5 });
+  const unprocessed = await cx.query(api.twinmindMeetings.getUnprocessed);
 
-  const { count: unprocessedCount } = await sb
-    .from("twinmind_meetings")
-    .select("*", { count: "exact", head: true })
-    .eq("processed", false);
-
-  // Get last 5 meetings
-  const { data: recent } = await sb
-    .from("twinmind_meetings")
-    .select("meeting_title, start_time, processed, synced_at")
-    .order("start_time", { ascending: false })
-    .limit(5);
+  const totalCount = recent.length; // approximate — getRecent is capped at 5
+  const unprocessedCount = unprocessed.length;
 
   let msg = `*TwinMind Meetings*\n\n`;
-  msg += `Total: ${totalCount || 0} | Unprocessed: ${unprocessedCount || 0}\n\n`;
+  msg += `Unprocessed: ${unprocessedCount}\n\n`;
 
-  if (recent && recent.length > 0) {
+  if (recent.length > 0) {
     msg += `*Recent:*\n`;
     for (const m of recent) {
-      const status = m.processed ? "done" : "pending";
       const date = new Date(m.start_time).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
       });
-      msg += `${status === "done" ? "\\u2705" : "\\u23F3"} ${date} — ${m.meeting_title}\n`;
+      msg += `${m.processed ? "✅" : "⏳"} ${date} — ${m.meeting_title}\n`;
     }
   } else {
     msg += `_No meetings synced yet. Run "sync twinmind" in Claude Code._`;
   }
 
-  if (subcommand === "status" || (unprocessedCount || 0) === 0) {
+  if (subcommand === "status" || unprocessedCount === 0) {
     await ctx.reply(msg, { parse_mode: "Markdown" }).catch(() => ctx.reply(msg));
     return;
   }
@@ -888,19 +889,7 @@ async function handleTwinmindCommand(ctx: Context, command: string): Promise<voi
   msg += `\n_Processing ${unprocessedCount} unprocessed meeting(s)..._`;
   await ctx.reply(msg, { parse_mode: "Markdown" }).catch(() => ctx.reply(msg));
 
-  const { data: unprocessed } = await sb
-    .from("twinmind_meetings")
-    .select("meeting_id, meeting_title, summary, action_items, start_time, end_time")
-    .eq("processed", false)
-    .order("start_time", { ascending: true });
-
-  if (!unprocessed || unprocessed.length === 0) return;
-
-  const BOT_TOKEN_LOCAL = process.env.TELEGRAM_BOT_TOKEN || "";
-  const CHAT_ID_LOCAL = process.env.TELEGRAM_GROUP_CHAT_ID || process.env.TELEGRAM_USER_ID || "";
-
   for (const meeting of unprocessed) {
-    // Send summary
     let summaryText = `*Meeting Summary*\n\n`;
     summaryText += `*${meeting.meeting_title}*\n`;
     if (meeting.start_time) {
@@ -918,11 +907,7 @@ async function handleTwinmindCommand(ctx: Context, command: string): Promise<voi
       ctx.reply(summaryText)
     );
 
-    // Mark as processed
-    await sb
-      .from("twinmind_meetings")
-      .update({ processed: true, processed_at: new Date().toISOString() })
-      .eq("meeting_id", meeting.meeting_id);
+    await cx.mutation(api.twinmindMeetings.markProcessed, { id: meeting._id });
   }
 
   await ctx.reply(`Processed ${unprocessed.length} meeting(s).`);
@@ -1613,13 +1598,13 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
     typing.start();
 
     try {
-      const claudeResult = await callClaudeSubprocess({
+      const claudeResult = await withClaudeMutex(() => callClaudeSubprocess({
         prompt: `User responded: ${result.choice}`,
         outputFormat: "json",
         resumeSessionId: task.session_id,
-        timeoutMs: 1_800_000,
+        timeoutMs: 300_000,
         cwd: PROJECT_ROOT,
-      });
+      }));
 
       const response = claudeResult.text || "Task completed.";
 
@@ -1684,13 +1669,17 @@ async function callClaude(
   options?: { maxTurns?: string }
 ): Promise<string> {
   const agentConfig = getAgentConfig(agentName);
+  console.log("[callClaude] Loading profile...");
   const userProfile = await getUserProfile();
 
   // Build memory context
+  console.log("[callClaude] Loading memory context...");
   const memoryCtx = await getMemoryContext();
 
   // Build conversation context (recent messages)
-  const conversationCtx = await getConversationContext(chatId, 20);
+  console.log("[callClaude] Loading conversation context...");
+  const conversationCtx = await getConversationContext(chatId, 10);
+  console.log("[callClaude] Context loaded. Building prompt...");
 
   // Current time in user's timezone
   const now = new Date().toLocaleString("en-US", {
@@ -1758,18 +1747,19 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
 
   const fullPrompt = sections.join("\n\n---\n\n");
 
-  // Call Claude subprocess
+  console.log(`[callClaude] Prompt built (${fullPrompt.length} chars). Calling Claude subprocess...`);
+  // Call Claude subprocess (serialized via mutex to prevent session resume conflicts)
   // When allowedTools is omitted, Claude Code gets full access to all tools,
   // MCP servers, skills, and hooks configured in your Claude Code settings.
-  const result = await callClaudeSubprocess({
+  const result = await withClaudeMutex(() => callClaudeSubprocess({
     prompt: fullPrompt,
     outputFormat: "json",
     ...(agentConfig?.allowedTools ? { allowedTools: agentConfig.allowedTools } : {}),
     resumeSessionId: sessionState.sessionId || undefined,
-    timeoutMs: 1_800_000, // 30 minutes
+    timeoutMs: 300_000, // 5 minutes
     cwd: PROJECT_ROOT,
     ...(options?.maxTurns ? { maxTurns: options.maxTurns } : {}),
-  });
+  }));
 
   // Update session ID
   if (result.sessionId) {
@@ -1894,7 +1884,7 @@ async function callClaudeWithProgress(
   const agentConfig = getAgentConfig(agentName);
   const userProfile = await getUserProfile();
   const memoryCtx = await getMemoryContext();
-  const conversationCtx = await getConversationContext(chatId, 20);
+  const conversationCtx = await getConversationContext(chatId, 10);
 
   const now = new Date().toLocaleString("en-US", {
     timeZone: TIMEZONE,
@@ -1966,12 +1956,12 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
     progressMsgId = msg.message_id;
   } catch {}
 
-  // Call streaming subprocess
-  const result = await callClaudeStreaming({
+  // Call streaming subprocess (serialized via mutex to prevent session resume conflicts)
+  const result = await withClaudeMutex(() => callClaudeStreaming({
     prompt: fullPrompt,
     ...(agentConfig?.allowedTools ? { allowedTools: agentConfig.allowedTools } : {}),
     resumeSessionId: sessionState.sessionId || undefined,
-    timeoutMs: 1_800_000,
+    timeoutMs: 300_000,
     cwd: PROJECT_ROOT,
     onToolStart: (toolName) => {
       updateProgress(toolName);
@@ -1983,7 +1973,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
         updateProgress(`_"${clean}..."_`);
       }
     },
-  });
+  }));
 
   // Delete progress message before sending final response
   if (progressMsgId) {
