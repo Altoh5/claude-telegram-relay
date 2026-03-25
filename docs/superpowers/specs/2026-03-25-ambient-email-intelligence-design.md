@@ -213,10 +213,12 @@ Image description: {vision_description}
 **Trigger:** Photo classified as `food_place`.
 
 **Steps:**
-1. Bot extracts venue name from caption or vision description, then does a two-step lookup:
-   - **Step 1:** Web search using xAI Grok API (same pattern as `src/lib/data-sources/sources/grok-news.ts`) — query: `"{venue name} restaurant review Singapore"`
-   - **Step 2:** If a clear review URL is found, scrape it with Firecrawl CLI for full review content
-2. Bot sends a summary of Google Maps / review site results:
+1. Bot extracts venue name from caption or vision description, then calls **Google Maps Places API** (Text Search):
+   - `POST https://places.googleapis.com/v1/places:searchText`
+   - Query: `"{venue name} Singapore"`
+   - Returns: name, rating, userRatingCount, formattedAddress, currentOpeningHours, priceLevel, editorialSummary, reviews (up to 5)
+   - Env var: `GOOGLE_MAPS_API_KEY`
+2. Bot sends a summary:
    > *"Looks like {restaurant name}. Google rating: 4.3★ — 'Great laksa, small portions, cash only.' Want to add your own note?"*
    - **[Add Note]** / **[Skip]**
 3. **Add Note** → bot asks: *"What did you think / want to remember about this place?"*
@@ -228,7 +230,7 @@ Image description: {vision_description}
 **Trigger:** Photo classified as `product`.
 
 **Steps:**
-1. Bot searches for product name, pricing, and reviews (Firecrawl)
+1. Bot searches for product name, pricing, and reviews using Firecrawl web search (products don't have a structured API like Places)
 2. Bot sends summary:
    > *"Looks like {product name}. ~SGD {price range}. Reviews: {summary}. Save this to come back to?"*
    - **[Save for Later]** / **[Skip]**
@@ -265,7 +267,7 @@ Falls through to existing `handlePhotoMessage` behaviour unchanged.
 | `src/bot.ts` | Inject photo classifier after vision description, before generic Claude call |
 | `convex/schema.ts` | Add `gmailMonitor` and `gmailProcessed` tables |
 | `launchd/templates/` | Add `com.go.gmail-monitor.plist` |
-| `.env.example` | Add `SERMONS_NLM_NOTEBOOK_ID` |
+| `.env.example` | Add `SERMONS_NLM_NOTEBOOK_ID`, `GOOGLE_MAPS_API_KEY` |
 
 ---
 
