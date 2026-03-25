@@ -1235,22 +1235,20 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
 
     const assetNote = asset ? `\n(asset: ${asset.id})` : "";
 
-    // Try direct image path first (Claude Code reads natively), fall back to vision pre-description.
-    // Large images (>800KB) go straight to vision to avoid "Could not process image" errors.
+    // Always get vision description first — needed for classification and asset metadata.
+    // Large images (>800KB) also use it for Claude prompt (avoids "Could not process image" errors).
     const MAX_INLINE_IMAGE_BYTES = 800 * 1024;
-    let photoPrompt: string;
-    let usedVisionFallback = false;
+    const recentCtx = await getConversationContext(chatId, 3);
+    const vision = await describeImage(localPath, caption, recentCtx);
+    const visionDescription = vision.description;
+    if (asset) {
+      updateAssetDescription(asset.id, vision.description, vision.tags, vision.suggestedProject).catch(() => {});
+    }
 
+    let photoPrompt: string;
     if (buffer.length > MAX_INLINE_IMAGE_BYTES) {
       console.log(`[photo] Large image (${buffer.length}b) — using vision pre-description`);
-      const recentCtx = await getConversationContext(chatId, 3);
-      const vision = await describeImage(localPath, caption, recentCtx);
-      const visionNote = `[Image description (Vision API): ${vision.description}]`;
-      photoPrompt = `${visionNote}${assetNote}\n\nUser says: ${caption}`;
-      usedVisionFallback = true;
-      if (asset) {
-        updateAssetDescription(asset.id, vision.description, vision.tags, vision.suggestedProject).catch(() => {});
-      }
+      photoPrompt = `[Image description (Vision API): ${visionDescription}]${assetNote}\n\nUser says: ${caption}`;
     } else {
       photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
     }
@@ -1259,10 +1257,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     let photoCategory: import("./lib/flows/photo-classifier").PhotoCategory = "general";
     try {
       const { classifyPhoto } = await import("./lib/flows/photo-classifier");
-      photoCategory = await classifyPhoto({
-        caption,
-        visionDescription: usedVisionFallback ? photoPrompt : "",
-      });
+      photoCategory = await classifyPhoto({ caption, visionDescription });
     } catch (err) {
       console.warn("[photo] Classification failed:", err);
     }
@@ -1283,14 +1278,19 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
 
     if (photoCategory === "food_place") {
       const { lookupVenueAndNotify } = await import("./lib/flows/photo-classifier");
-      const venueName = caption && caption.length > 3 ? caption : "this place";
+      // Prefer caption (user-typed name), fall back to first line of vision description
+      const venueName = caption && caption !== "User sent a photo. Describe and respond to it." && caption.length > 3
+        ? caption
+        : visionDescription.split(".")[0] || "this place";
       await lookupVenueAndNotify({ botToken: BOT_TOKEN!, chatId, venueName, assetId: asset?.id });
       return;
     }
 
     if (photoCategory === "product") {
       const { lookupProductAndNotify } = await import("./lib/flows/photo-classifier");
-      const productName = caption && caption.length > 3 ? caption : "this product";
+      const productName = caption && caption !== "User sent a photo. Describe and respond to it." && caption.length > 3
+        ? caption
+        : visionDescription.split(".")[0] || "this product";
       await lookupProductAndNotify({ botToken: BOT_TOKEN!, chatId, productName, assetId: asset?.id });
       return;
     }
@@ -1306,16 +1306,9 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     }
 
     // If Claude couldn't process the image directly, retry with vision pre-description
-    if (!usedVisionFallback && claudeResponse.includes("wasn't able to process that image")) {
+    if (claudeResponse.includes("wasn't able to process that image") || claudeResponse.includes("unable to view images")) {
       console.log(`[photo] Direct image failed, retrying with vision pre-description`);
-      const recentCtx = await getConversationContext(chatId, 3);
-      const vision = await describeImage(localPath, caption, recentCtx);
-      const visionNote = `[Image description (Vision API): ${vision.description}]`;
-      const retryPrompt = `${visionNote}${assetNote}\n\nUser says: ${caption}`;
-      usedVisionFallback = true;
-      if (asset) {
-        updateAssetDescription(asset.id, vision.description, vision.tags, vision.suggestedProject).catch(() => {});
-      }
+      const retryPrompt = `[Image description (Vision API): ${visionDescription}]${assetNote}\n\nUser says: ${caption}`;
       if (tier !== "haiku") {
         claudeResponse = await callClaudeWithProgress(ctx, retryPrompt, chatId, agentName, topicId);
       } else {
@@ -1324,8 +1317,7 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     }
 
     // Parse [ASSET_DESC] tag from response and update asset
-    // (only if we didn't already update description via vision pre-description)
-    if (asset && !usedVisionFallback) {
+    if (asset) {
       const parsed = parseAssetDescTag(claudeResponse);
       if (parsed) {
         updateAssetDescription(asset.id, parsed.description, parsed.tags).catch(
