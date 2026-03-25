@@ -8,7 +8,7 @@
  *   bun run setup/configure-launchd.ts --service telegram-relay
  *   bun run setup/configure-launchd.ts --service all
  *
- * Services: telegram-relay, smart-checkin, morning-briefing, watchdog, twinmind-monitor, docs-monitor, all
+ * Services: telegram-relay, smart-checkin, morning-briefing, watchdog, twinmind-monitor, gmail-monitor, docs-monitor, all
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -22,7 +22,7 @@ const PROJECT_ROOT = dirname(import.meta.dir);
 const LAUNCHD_DIR = join(PROJECT_ROOT, "launchd");
 const LAUNCH_AGENTS_DIR = join(process.env.HOME!, "Library", "LaunchAgents");
 
-const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor", "docs-monitor", "startinfinity-sync"] as const;
+const SERVICES = ["telegram-relay", "smart-checkin", "morning-briefing", "watchdog", "twinmind-monitor", "gmail-monitor", "docs-monitor", "startinfinity-sync"] as const;
 type ServiceName = (typeof SERVICES)[number];
 
 interface ScheduleInterval {
@@ -231,6 +231,18 @@ async function configureService(service: ServiceName): Promise<boolean> {
     content = content.replace(/\{\{NLM_DIR\}\}/g, nlmDir);
 
     console.log(`    Schedule: ${tmConfig.intervals.length} intervals (every 30 min)`);
+  }
+
+  if (service === "gmail-monitor") {
+    const intervals = generateHalfHourIntervals(8, 22);
+    const xml = generateCalendarIntervalsXml(intervals);
+    content = content.replace(/\{\{CALENDAR_INTERVALS\}\}/g, xml);
+
+    const nlmPath = await resolvePath("nlm");
+    const nlmDir = nlmPath ? dirname(nlmPath) : "/usr/local/bin";
+    content = content.replace(/\{\{NLM_DIR\}\}/g, nlmDir);
+
+    console.log(`    Schedule: ${intervals.length} intervals (every 30 min, 8am-10pm)`);
   }
 
   if (service === "docs-monitor") {
