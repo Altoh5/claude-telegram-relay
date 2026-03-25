@@ -1236,8 +1236,6 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     const assetNote = asset ? `\n(asset: ${asset.id})` : "";
 
     // Always get vision description first — needed for classification and asset metadata.
-    // Large images (>800KB) also use it for Claude prompt (avoids "Could not process image" errors).
-    const MAX_INLINE_IMAGE_BYTES = 800 * 1024;
     const recentCtx = await getConversationContext(chatId, 3);
     const vision = await describeImage(localPath, caption, recentCtx);
     const visionDescription = vision.description;
@@ -1245,13 +1243,9 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
       updateAssetDescription(asset.id, vision.description, vision.tags, vision.suggestedProject).catch(() => {});
     }
 
-    let photoPrompt: string;
-    if (buffer.length > MAX_INLINE_IMAGE_BYTES) {
-      console.log(`[photo] Large image (${buffer.length}b) — using vision pre-description`);
-      photoPrompt = `[Image description (Vision API): ${visionDescription}]${assetNote}\n\nUser says: ${caption}`;
-    } else {
-      photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
-    }
+    // Always use vision description in the prompt — Claude subprocess can't reliably read local
+    // image file paths when running as a background service.
+    const photoPrompt = `[Image description (Vision API): ${visionDescription}]${assetNote}\n\nUser says: ${caption}`;
 
     // --- Photo classification (receipt / food_place / product / general) ---
     let photoCategory: import("./lib/flows/photo-classifier").PhotoCategory = "general";
@@ -1303,17 +1297,6 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
       claudeResponse = await callClaudeWithProgress(ctx, photoPrompt, chatId, agentName, topicId);
     } else {
       claudeResponse = await callClaude(photoPrompt, chatId, agentName, topicId, );
-    }
-
-    // If Claude couldn't process the image directly, retry with vision pre-description
-    if (claudeResponse.includes("wasn't able to process that image") || claudeResponse.includes("unable to view images")) {
-      console.log(`[photo] Direct image failed, retrying with vision pre-description`);
-      const retryPrompt = `[Image description (Vision API): ${visionDescription}]${assetNote}\n\nUser says: ${caption}`;
-      if (tier !== "haiku") {
-        claudeResponse = await callClaudeWithProgress(ctx, retryPrompt, chatId, agentName, topicId);
-      } else {
-        claudeResponse = await callClaude(retryPrompt, chatId, agentName, topicId, );
-      }
     }
 
     // Parse [ASSET_DESC] tag from response and update asset
