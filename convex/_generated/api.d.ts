@@ -13,6 +13,7 @@ import type * as asyncTasks from "../asyncTasks.js";
 import type * as boardSessions from "../boardSessions.js";
 import type * as callTranscripts from "../callTranscripts.js";
 import type * as contacts from "../contacts.js";
+import type * as gmailMonitor from "../gmailMonitor.js";
 import type * as logs from "../logs.js";
 import type * as memory from "../memory.js";
 import type * as messages from "../messages.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   boardSessions: typeof boardSessions;
   callTranscripts: typeof callTranscripts;
   contacts: typeof contacts;
+  gmailMonitor: typeof gmailMonitor;
   logs: typeof logs;
   memory: typeof memory;
   messages: typeof messages;

@@ -167,4 +167,31 @@ export default defineSchema({
     classified_as: v.string(),
     processed_at: v.number(),
   }).index("by_message_id", ["message_id"]),
+
+  projects: defineTable({
+    chat_id: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    goals: v.optional(v.string()),
+    context_notes: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    updatedAt: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_chat_id", ["chat_id"])
+    .index("by_chat_status", ["chat_id", "status"]),
+
+  boardSessions: defineTable({
+    chat_id: v.string(),
+    project_id: v.optional(v.id("projects")),
+    project_name: v.optional(v.string()),
+    agent_outputs: v.any(),
+    synthesis: v.optional(v.string()),
+    decisions: v.optional(v.any()),
+    task_id: v.optional(v.id("asyncTasks")),
+    status: v.union(v.literal("running"), v.literal("completed"), v.literal("failed")),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_chat_id", ["chat_id"])
+    .index("by_project_id", ["project_id"]),
 });
