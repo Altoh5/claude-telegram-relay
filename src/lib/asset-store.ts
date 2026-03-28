@@ -273,20 +273,62 @@ export async function describeImage(
   recentContext?: string
 ): Promise<VisionResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.warn("⚠️ No ANTHROPIC_API_KEY — skipping vision description");
-    return {
-      description: caption || "Image (no description available)",
-      tags: [],
-      suggestedProject: null,
-    };
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+
+  // If we have an API key, use the direct API (Haiku vision)
+  if (apiKey || openRouterKey) {
+    try {
+      const imageBuffer = await readFile(localPath);
+      const apiResult = await describeImageFromBuffer(imageBuffer, localPath, caption, recentContext);
+      // Check if API actually analyzed the image (not just echoed caption)
+      const isRealDescription = apiResult.description !== caption
+        && apiResult.description !== "Image (description failed)"
+        && apiResult.description !== "Image (no description available)"
+        && apiResult.tags.length > 0;
+      if (isRealDescription) return apiResult;
+      console.warn("[vision] API returned caption-echo, falling through to subprocess");
+    } catch (err) {
+      console.error("describeImage API error:", err);
+    }
+    // Fall through to subprocess fallback
   }
 
+  // Fallback: use Claude Code subprocess to read the image from filesystem.
+  // Claude Code can natively read image files via its Read tool.
   try {
-    const imageBuffer = await readFile(localPath);
-    return describeImageFromBuffer(imageBuffer, localPath, caption, recentContext);
+    const { callClaude } = await import("./claude");
+    const prompt = `Read the image at ${localPath} and describe it.
+${caption ? `The user sent this image with the message: "${caption}"` : ""}
+${recentContext ? `Recent conversation context:\n${recentContext}` : ""}
+
+Respond in JSON only (no markdown fences):
+{
+  "description": "A concise 1-2 sentence description of what the image shows",
+  "tags": ["tag1", "tag2", "tag3"],
+  "suggestedProject": "project name or null"
+}`;
+
+    console.log("[vision] No API key — using Claude subprocess for image description");
+    const result = await callClaude({ prompt, timeoutMs: 60_000 });
+
+    if (result.isError) {
+      console.error("[vision] subprocess error:", result.text.slice(0, 200));
+      return { description: caption || "Image (description failed)", tags: [], suggestedProject: null };
+    }
+
+    const jsonStr = result.text
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    const parsed = JSON.parse(jsonStr);
+
+    return {
+      description: parsed.description || caption || "Image",
+      tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+      suggestedProject: parsed.suggestedProject || null,
+    };
   } catch (err) {
-    console.error("describeImage error:", err);
+    console.error("describeImage subprocess fallback error:", err);
     return {
       description: caption || "Image (description failed)",
       tags: [],

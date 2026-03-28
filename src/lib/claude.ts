@@ -177,6 +177,11 @@ export async function callClaude(options: ClaudeOptions): Promise<ClaudeResult> 
 
     if (timedOut) {
       console.error("[claude] Subprocess timed out");
+      // Timeout with a resume ID likely means stale/expired session — retry fresh
+      if (resumeSessionId) {
+        console.warn("[claude] Timed out with resume ID — likely stale session, retrying without resume...");
+        return callClaude({ ...options, resumeSessionId: undefined });
+      }
       return { text: "", isError: true };
     }
 
@@ -503,6 +508,11 @@ export async function callClaudeStreaming(options: ClaudeStreamOptions): Promise
     console.log(`[streaming] Stream ended. timedOut=${timedOut}, resultLen=${resultText.length}, accumulatorLen=${textAccumulator.length}`);
 
     if (timedOut) {
+      // Timeout with a resume ID likely means stale/expired session — retry fresh
+      if (resumeSessionId) {
+        console.warn("[streaming] Timed out with resume ID — likely stale session, retrying without resume...");
+        return callClaudeStreaming({ ...options, resumeSessionId: undefined });
+      }
       return { text: "", isError: true };
     }
 

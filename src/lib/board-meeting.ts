@@ -104,6 +104,101 @@ export function parseDecisionsFromSynthesis(
 }
 
 // ---------------------------------------------------------------------------
+// Decision → Agent Execution Classifier
+// ---------------------------------------------------------------------------
+
+/**
+ * Keyword-to-agent routing for board decisions.
+ * Returns which agent should execute the decision (if any).
+ */
+const DECISION_AGENT_RULES: Array<{
+  keywords: RegExp;
+  agent: string;
+  label: string;
+}> = [
+  { keywords: /pric|budget|cost|revenue|roi|financ|invoice|deal|margin|forecast/i, agent: "finance", label: "Finance" },
+  { keywords: /research|analys[ei]|competitor|benchmark|market|survey|data|intel/i, agent: "research", label: "Research" },
+  { keywords: /content|draft|write|copy|messag|email|pitch|deck|present|communi/i, agent: "content", label: "Content" },
+  { keywords: /strateg|partner|expand|pivot|position|vision|roadmap|priorit/i, agent: "strategy", label: "Strategy" },
+  { keywords: /build|deploy|implement|integrat|automat|migrat|ship|refactor|architect|infra|system|technical|prototype|poc/i, agent: "cto", label: "CTO" },
+  { keywords: /schedul|timeline|assign|block|risk|process|coordinat|operati|logistics|hire|onboard|execute|plan|launch|pilot/i, agent: "coo", label: "Operations" },
+];
+
+/** Decisions that are observational — no agent execution needed. */
+const SKIP_PATTERNS = /monitor|wait|hold|defer|pause|continue watch|no action|status quo|table this/i;
+
+export interface DecisionClassification {
+  shouldExecute: boolean;
+  agentName: string;
+  agentLabel: string;
+  taskPrompt: string;
+}
+
+/**
+ * Classify a board decision and determine whether to spin up an agent.
+ * Uses the decision label + board synthesis for context.
+ */
+export function classifyDecisionForExecution(
+  decisionLabel: string,
+  projectName: string,
+  synthesis: string
+): DecisionClassification {
+  // Skip observational / passive decisions
+  if (SKIP_PATTERNS.test(decisionLabel)) {
+    return {
+      shouldExecute: false,
+      agentName: "general",
+      agentLabel: "General",
+      taskPrompt: "",
+    };
+  }
+
+  // Match against agent rules
+  for (const rule of DECISION_AGENT_RULES) {
+    if (rule.keywords.test(decisionLabel)) {
+      return {
+        shouldExecute: true,
+        agentName: rule.agent,
+        agentLabel: rule.label,
+        taskPrompt: buildExecutionPrompt(decisionLabel, projectName, synthesis, rule.label),
+      };
+    }
+  }
+
+  // Default: general agent executes (decision is actionable but no specific match)
+  return {
+    shouldExecute: true,
+    agentName: "general",
+    agentLabel: "General",
+    taskPrompt: buildExecutionPrompt(decisionLabel, projectName, synthesis, "General"),
+  };
+}
+
+function buildExecutionPrompt(
+  decision: string,
+  projectName: string,
+  synthesis: string,
+  agentLabel: string
+): string {
+  return `## EXECUTE BOARD DECISION
+
+**Project:** ${projectName}
+**Approved Decision:** ${decision}
+**Assigned Agent:** ${agentLabel}
+
+### Board Context
+${synthesis}
+
+### Your Task
+Execute the approved decision above. This was chosen by the user from a board meeting analysis.
+
+- Take concrete action: draft content, run research, build plans, create artifacts
+- If you need to take an external action (send email, create file, schedule something), explain what you'll do and proceed
+- If you need clarification from the user before acting, ask a specific question
+- Be concise — report what you did, not what you plan to do`;
+}
+
+// ---------------------------------------------------------------------------
 // Core runner
 // ---------------------------------------------------------------------------
 

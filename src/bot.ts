@@ -77,13 +77,23 @@ import {
   getProject,
   listProjects,
   archiveProject,
+  updateProject,
   appendProjectContext,
   formatProjectContext,
   createBoardSession,
   updateBoardSession,
   getLastBoardSession,
 } from "./lib/projects";
-import { runBoardMeeting } from "./lib/board-meeting";
+import { runBoardMeeting, classifyDecisionForExecution } from "./lib/board-meeting";
+import {
+  parseCEOPlan,
+  buildPlanPrompt,
+  formatPlanForDisplay,
+  executePlan,
+  buildSynthesisPrompt,
+  getAgentEmoji,
+  type CEOPlan,
+} from "./lib/ceo-coordinator";
 
 // Agents
 import {
@@ -505,7 +515,49 @@ async function handleTextMessage(ctx: Context): Promise<void> {
     return;
   }
 
-  // ----- Phone Call -----
+  // --- /ceo — CEO autonomous coordinator ---
+    if (lowerText === "/ceo" || lowerText.startsWith("/ceo ")) {
+      const args = text.replace(/^\/ceo\s*/i, "").trim();
+
+      if (!args) {
+        const projects = await listProjects(chatId);
+        const list = projects.length > 0
+          ? projects.map((p) => `\u2022 ${p.name}`).join("\n")
+          : "_(no projects)_";
+        await ctx.reply(
+          `\u{1F3E2} *CEO Coordinator*\n\nUsage:\n\`/ceo <project>\` \u2014 CEO creates plan from project goals\n\`/ceo <project> | <goal>\` \u2014 CEO executes a specific goal\n\nProjects:\n${list}`,
+          { parse_mode: "Markdown" }
+        ).catch(() => ctx.reply(`CEO Coordinator\n\nUsage: /ceo <project> or /ceo <project> | <goal>`));
+        return;
+      }
+
+      const [projectName, ...goalParts] = args.split("|");
+      const goalOverride = goalParts.join("|").trim() || undefined;
+      await handleCEOCoordinator(ctx, chatId, projectName.trim(), topicId, goalOverride);
+      return;
+    }
+
+    // --- /goal — Set project goal and trigger CEO ---
+    if (lowerText.startsWith("/goal ")) {
+      const args = text.replace(/^\/goal\s*/i, "").trim();
+      const pipeMatch = args.match(/^(\S+)\s*\|\s*(.+)$/s);
+      const spaceMatch = args.match(/^(\S+)\s+(.+)$/s);
+      const match = pipeMatch || spaceMatch;
+
+      if (!match) {
+        await ctx.reply(
+          `Usage: \`/goal <project> <goal>\`\nExample: \`/goal WMI Close the workshop deal by April 15\``,
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+
+      const [, projectName, goal] = match;
+      await handleCEOCoordinator(ctx, chatId, projectName.trim(), topicId, goal.trim());
+      return;
+    }
+
+    // ----- Phone Call -----
 
   if (lowerText.includes("call me") && isCallEnabled()) {
     const context = text.replace(/call me/i, "").trim();
@@ -810,11 +862,8 @@ async function handleBoardMeetingV2(
     // Prepare context
     const projectContext = formatProjectContext(project);
 
-    // Load parallel context
-    const [userProfile, memoryCtx] = await Promise.all([
-      getUserProfile(),
-      getMemoryContext(),
-    ]);
+    // Load user profile (no memory/conversation — board uses project context only)
+    const userProfile = await getUserProfile();
 
     // Create board session in DB
     const session = await createBoardSession(chatId, project);
@@ -825,7 +874,7 @@ async function handleBoardMeetingV2(
 
     typing.stop();
 
-    // Build per-agent prompt function (includes user profile + memory)
+    // Build per-agent prompt — project context only, no conversation/memory pollution
     const buildPrompt = (
       agentLabel: string,
       agentQuestion: string,
@@ -837,15 +886,26 @@ async function handleBoardMeetingV2(
         projCtx,
       ];
       if (userProfile) sections.push(`## USER PROFILE\n${userProfile}`);
-      if (memoryCtx) sections.push(`## MEMORY CONTEXT\n${memoryCtx}`);
       if (focus) sections.push(`## FOCUS\n${focus}`);
       sections.push(`## YOUR QUESTION\n${agentQuestion}\n\nAnswer in 2-4 sentences. No preamble.`);
       return sections.join("\n\n---\n\n");
     };
 
-    // Subprocess caller (wraps callClaude with agent routing)
-    const callSubprocess = async (prompt: string, agentName: string): Promise<string> => {
-      return callClaude(prompt, chatId, agentName, topicId, { maxTurns: "3" });
+    // Subprocess caller — calls Claude directly (no mutex) so agents run in parallel.
+    // Each board agent is a fresh one-shot call, no session resumption needed.
+    const callSubprocess = async (prompt: string, _agentName: string): Promise<string> => {
+      const result = await callClaudeSubprocess({
+        prompt,
+        outputFormat: "text",
+        maxTurns: "3",
+        timeoutMs: 120_000, // 2 min per agent
+        cwd: PROJECT_ROOT,
+      });
+      if (result.isError) {
+        console.error(`[board] agent error:`, result.text.slice(0, 200));
+        return "_(agent unavailable)_";
+      }
+      return result.text;
     };
 
     // Run board meeting
@@ -874,6 +934,7 @@ async function handleBoardMeetingV2(
             session_id: session.id,
             project_id: project.id,
             project_name: project.name,
+            synthesis: result.synthesis,
           },
         });
         // Update session with task reference
@@ -908,6 +969,201 @@ async function handleBoardMeetingV2(
   } finally {
     typing.stop();
   }
+}
+
+// --- CEO Coordinator Handler ---
+
+async function handleCEOCoordinator(
+  ctx: Context,
+  chatId: string,
+  projectNameOrId: string,
+  topicId?: number,
+  goalOverride?: string
+): Promise<void> {
+  const typing = createTypingIndicator(ctx);
+  typing.start();
+
+  try {
+    const project = await getProject(chatId, projectNameOrId);
+    if (!project) {
+      await ctx.reply(
+        `Project "${projectNameOrId}" not found. Use \`/project new <name>\` to create one.`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const goal = goalOverride || project.goals;
+    if (!goal) {
+      await ctx.reply(
+        `Project "${project.name}" has no goals set.\n\nUsage:\n\`/ceo ${project.name} | Close the workshop deal by April 15\``,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    // Save goal to project if provided as override
+    if (goalOverride) {
+      await updateProject(project.id, { goals: goalOverride });
+    }
+
+    await ctx.reply(
+      `\u{1F3E2} *CEO analyzing goal...*\n_${goal}_`,
+      { parse_mode: "Markdown" }
+    ).catch(() => {});
+
+    // Ask CEO agent to generate a plan
+    const userProfile = await getUserProfile();
+    const memoryCtx = await getMemoryContext();
+    const ceoConfig = getAgentConfig("ceo");
+    const planPrompt = buildPlanPrompt(project, goal, userProfile, memoryCtx);
+    const fullPrompt = ceoConfig
+      ? `${ceoConfig.systemPrompt}\n\n${planPrompt}`
+      : planPrompt;
+
+    const planResult = await callClaudeSubprocess({
+      prompt: fullPrompt,
+      outputFormat: "text",
+      timeoutMs: 120_000,
+      cwd: PROJECT_ROOT,
+    });
+
+    if (planResult.isError) {
+      await ctx.reply("CEO agent failed to generate a plan. Try again.");
+      return;
+    }
+
+    const plan = parseCEOPlan(planResult.text, goal, project.id, project.name);
+    if (!plan) {
+      // CEO didn't output structured plan — send raw response as advice
+      await sendResponse(ctx, planResult.text);
+      return;
+    }
+
+    // Display plan
+    const planDisplay = formatPlanForDisplay(plan);
+    await ctx.reply(planDisplay, { parse_mode: "Markdown" }).catch(() =>
+      ctx.reply(planDisplay.replace(/[*_`]/g, ""))
+    );
+
+    // Create HITL approval task
+    const task = await createTask(chatId, `CEO Plan: ${plan.title}`, topicId, "mac");
+    if (task) {
+      const approvalOptions = [
+        { label: "\u2705 Approve \u2014 execute now", value: "approve" },
+        { label: "\u274C Reject", value: "reject" },
+      ];
+      await updateTask(task.id, {
+        status: "needs_input",
+        pending_question: "Approve this plan?",
+        pending_options: approvalOptions,
+        metadata: {
+          type: "ceo_plan",
+          plan: JSON.parse(JSON.stringify(plan)),
+          project_id: project.id,
+          project_name: project.name,
+        },
+      });
+      const keyboard = buildTaskKeyboard(task.id, approvalOptions);
+      await ctx.reply("Approve this plan?", { reply_markup: keyboard });
+    }
+  } catch (err) {
+    console.error("CEO coordinator error:", err);
+    await ctx.reply("CEO coordinator failed. Please try again.");
+  } finally {
+    typing.stop();
+  }
+}
+
+// --- CEO Plan Execution (called from callback handler) ---
+
+async function executeCEOPlan(
+  ctx: Context,
+  chatId: string,
+  plan: CEOPlan,
+  taskId: string
+): Promise<void> {
+  await ctx.reply(
+    `\u{1F3E2} *CEO executing plan...*`,
+    { parse_mode: "Markdown" }
+  ).catch(() => {});
+
+  const executedPlan = await executePlan(
+    plan,
+    // Subprocess caller — inline agent system prompt
+    async (prompt: string, agentName: string) => {
+      const agentConfig = getAgentConfig(agentName);
+      const fullPrompt = agentConfig
+        ? `${agentConfig.systemPrompt}\n\n${prompt}`
+        : prompt;
+      const r = await callClaudeSubprocess({
+        prompt: fullPrompt,
+        outputFormat: "text",
+        maxTurns: "5",
+        timeoutMs: 120_000,
+        cwd: PROJECT_ROOT,
+      });
+      if (r.isError) return "_(agent unavailable)_";
+      return r.text;
+    },
+    // onTaskStart
+    async (t) => {
+      const emoji = getAgentEmoji(t.agentName);
+      await ctx.reply(
+        `${emoji} *${t.agentName}* working on: _${t.description}_`,
+        { parse_mode: "Markdown" }
+      ).catch(() => {});
+    },
+    // onTaskComplete
+    async (t) => {
+      if (t.status === "completed" && t.result) {
+        const emoji = getAgentEmoji(t.agentName);
+        const truncated = t.result.length > 2000
+          ? t.result.slice(0, 2000) + "..."
+          : t.result;
+        await ctx.reply(
+          `${emoji} *${t.agentName}* \u2705\n\n${truncated}`,
+          { parse_mode: "Markdown" }
+        ).catch(() => ctx.reply(`${t.agentName} done:\n\n${truncated}`));
+        await new Promise((r) => setTimeout(r, 500)); // Rate limit buffer
+      }
+    }
+  );
+
+  // Synthesize results
+  await ctx.reply("_CEO synthesizing results..._", { parse_mode: "Markdown" }).catch(() => {});
+  const ceoConfig = getAgentConfig("ceo");
+  const synthesisPrompt = buildSynthesisPrompt(executedPlan);
+  const fullSynthesisPrompt = ceoConfig
+    ? `${ceoConfig.systemPrompt}\n\n${synthesisPrompt}`
+    : synthesisPrompt;
+
+  const synthesisResult = await callClaudeSubprocess({
+    prompt: fullSynthesisPrompt,
+    outputFormat: "text",
+    timeoutMs: 120_000,
+    cwd: PROJECT_ROOT,
+  });
+
+  const synthesis = synthesisResult?.text;
+  if (synthesis && !synthesisResult.isError) {
+    await sendResponse(ctx, `\u{1F3E2} *CEO Report*\n\n${synthesis}`);
+    await saveMessage({
+      chat_id: chatId,
+      role: "assistant",
+      content: `[CEO Report: ${plan.projectName}]\n${synthesis}`,
+      metadata: { type: "ceo_report", project_id: plan.projectId },
+    });
+    await appendProjectContext(
+      plan.projectId,
+      `CEO executed: ${plan.title}\n${synthesis.slice(0, 500)}`
+    );
+  }
+
+  await updateTask(taskId, {
+    status: "completed",
+    result: synthesis || "Plan executed",
+  });
 }
 
 // --- TwinMind Command Handler ---
@@ -1614,9 +1870,9 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
     )
     .catch(() => {});
 
-  // --- Board decision: record and trigger follow-up ---
+  // --- Board decision: record and offer action choices ---
   if (task.metadata?.type === "board_decision") {
-    const { project_name, session_id } = task.metadata;
+    const { project_name, session_id, synthesis, project_id } = task.metadata;
 
     // Resolve label from pending_options (value is short key like "d1")
     const chosenOption = (task.pending_options as Array<{ label: string; value: string }> | null)
@@ -1636,9 +1892,87 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
 
     await updateTask(result.taskId, { status: "completed", result: choiceLabel });
 
-    // Trigger general agent follow-up with next steps
-    const followUp = `Board decision made for project "${project_name}": ${choiceLabel}\n\nWhat are the immediate next steps to execute this decision?`;
-    await callClaudeAndReply(ctx, chatId, followUp, "general");
+    // Create a follow-up task with 3 action options
+    const actionTask = await createTask(chatId, `Action: ${choiceLabel}`, undefined, "mac");
+    if (actionTask) {
+      const actionOptions = [
+        { label: "\u26A1 Agent executes", value: "agent" },
+        { label: "\u{1F3E2} CEO takes over", value: "ceo" },
+        { label: "\u{1F464} I'll handle it", value: "myself" },
+      ];
+      await updateTask(actionTask.id, {
+        status: "needs_input",
+        pending_question: `Decision: "${choiceLabel}"\nHow should this be handled?`,
+        pending_options: actionOptions,
+        metadata: {
+          type: "board_action",
+          decision: choiceLabel,
+          project_name,
+          project_id,
+          session_id,
+          synthesis,
+        },
+      });
+      const keyboard = buildTaskKeyboard(actionTask.id, actionOptions);
+      await ctx.reply(
+        `Decision: _${choiceLabel}_\n\nHow should this be handled?`,
+        { parse_mode: "Markdown", reply_markup: keyboard }
+      ).catch(() => ctx.reply("How should this be handled?", { reply_markup: keyboard }));
+    }
+    return;
+  }
+
+  // --- Board action: agent / CEO / myself ---
+  if (task.metadata?.type === "board_action") {
+    const { decision, project_name, project_id, synthesis } = task.metadata;
+
+    if (result.choice === "myself" || result.cancelled) {
+      await updateTask(result.taskId, { status: "completed", result: "User handling externally" });
+      await ctx.reply(
+        `\u{1F4DD} Noted — you're handling: _${decision}_`,
+        { parse_mode: "Markdown" }
+      ).catch(() => {});
+      return;
+    }
+
+    if (result.choice === "agent") {
+      await updateTask(result.taskId, { status: "completed", result: "Dispatched to agent" });
+      const classification = classifyDecisionForExecution(
+        decision,
+        project_name || "Unknown Project",
+        synthesis || ""
+      );
+      await ctx.reply(
+        `\u26A1 Dispatching *${classification.agentLabel}* agent to execute:\n_${decision}_`,
+        { parse_mode: "Markdown" }
+      ).catch(() => {});
+      await callClaudeAndReply(ctx, chatId, classification.taskPrompt, classification.agentName);
+      return;
+    }
+
+    if (result.choice === "ceo") {
+      await updateTask(result.taskId, { status: "completed", result: "Handed to CEO" });
+      // Trigger CEO coordinator with the decision as the goal
+      await handleCEOCoordinator(ctx, chatId, project_name, undefined, decision);
+      return;
+    }
+    return;
+  }
+
+  // --- CEO plan approval: execute or reject ---
+  if (task.metadata?.type === "ceo_plan") {
+    if (result.choice === "reject" || result.cancelled) {
+      await updateTask(result.taskId, { status: "failed", result: "Plan rejected by user" });
+      await ctx.reply("Plan rejected. Modify the goal and try again.");
+      return;
+    }
+
+    if (result.choice === "approve") {
+      const plan = task.metadata.plan as CEOPlan;
+      await updateTask(result.taskId, { status: "running", result: "Executing plan..." });
+      await executeCEOPlan(ctx, chatId, plan, result.taskId);
+      return;
+    }
     return;
   }
 
@@ -1909,7 +2243,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
     outputFormat: "json",
     ...(agentConfig?.allowedTools ? { allowedTools: agentConfig.allowedTools } : {}),
     resumeSessionId: sessionState.sessionId || undefined,
-    timeoutMs: 300_000, // 5 minutes
+    timeoutMs: 300_000, // 5 minutes (haiku tier — quick tasks)
     cwd: PROJECT_ROOT,
     ...(options?.maxTurns ? { maxTurns: options.maxTurns } : {}),
   }));
@@ -1975,10 +2309,19 @@ async function callClaudeAndReply(
 
     if (tier !== "haiku") {
       // Complex task → streaming subprocess with live progress
+      // (callClaudeWithProgress sends its own "Working on it..." message)
       response = await callClaudeWithProgress(ctx, userMessage, chatId, agentName, topicId);
     } else {
-      // Simple task → no tools, single turn (skips MCP server init)
+      // Simple task — send quick acknowledgment then call Claude
+      let ackMsgId: number | undefined;
+      try {
+        const ack = await ctx.reply("_..._", { parse_mode: "Markdown" });
+        ackMsgId = ack.message_id;
+      } catch {}
       response = await callClaude(userMessage, chatId, agentName, topicId);
+      if (ackMsgId) {
+        ctx.api.deleteMessage(ctx.chat!.id, ackMsgId).catch(() => {});
+      }
     }
 
     // Persist bot response
@@ -2114,7 +2457,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
     prompt: fullPrompt,
     ...(agentConfig?.allowedTools ? { allowedTools: agentConfig.allowedTools } : {}),
     resumeSessionId: sessionState.sessionId || undefined,
-    timeoutMs: 300_000,
+    timeoutMs: 600_000, // 10 minutes (sonnet/opus tier — complex multi-tool tasks)
     cwd: PROJECT_ROOT,
     onToolStart: (toolName) => {
       updateProgress(toolName);

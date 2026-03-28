@@ -52,6 +52,8 @@ export function getAgentConfig(agentName: string): AgentConfig | undefined {
     case "critic":
     case "devils-advocate":
       return require("./critic").default;
+    case "ceo":
+      return require("./ceo").default;
     case "cto":
       return require("./cto").default;
     case "coo":
@@ -70,6 +72,7 @@ export const AGENT_INVOCATION_MAP: Record<string, string[]> = {
   finance: ["critic"],
   strategy: ["critic", "finance", "research"],
   general: ["critic", "finance", "research", "content", "strategy", "cto", "coo"],
+  ceo: ["critic", "finance", "research", "content", "strategy", "cto", "coo"],
   cto: ["critic", "research"],
   coo: ["critic", "finance", "research", "strategy"],
   critic: [], // Critic doesn't invoke others (prevents loops)
