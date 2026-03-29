@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "99-breaches",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8099", "-d", "/Users/alvin/claudeprojects/99-Breaches-Preview"],
+      "port": 8099
+    },
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8098", "-d", "/Users/alvin/claudeprojects/claude-telegram-relay"],
+      "port": 8098
+    }
+  ]
+}

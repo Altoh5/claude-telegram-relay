@@ -1,3 +1,16 @@
 {
-  "plugins": ["hookify@claude-plugins-official"]
+  "plugins": [
+    "hookify@claude-plugins-official"
+  ],
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Google_Calendar__gcal_create_event",
+      "mcp__claude_ai_Google_Calendar__gcal_list_events",
+      "mcp__claude_ai_Google_Calendar__gcal_update_event",
+      "mcp__claude_ai_Google_Calendar__gcal_get_event"
+    ]
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
+  }
 }
