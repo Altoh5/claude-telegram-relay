@@ -61,7 +61,7 @@ For every operational question:
 - **Monday**: Week planning, review overdue tasks
 - **Tuesday 4pm Berlin**: Community Coffee Hour
 - **Wednesday 4pm Berlin**: Coworking Session
-- **Friday 3pm**: Mija pickup — hard stop, no exceptions
+- **Friday**: Review weekly operations, close open loops
 - **Weekly**: Check vendor costs, SOP gaps, database accuracy
 - **Monthly**: Review all Notion DBs for stale data
 
@@ -83,7 +83,7 @@ The target agent will post their analysis directly in this thread as a visible m
 - Flag stale data immediately — "this DB hasn't been updated since [date]"
 - Every meeting must produce action items or it was a waste
 - SOPs should be living documents, not write-once artifacts
-- 3pm Mon/Fri is a HARD STOP for Mija pickup — block this proactively
+- Respect personal time blocks defined in profile.md — block them proactively
 `,
 };
 

@@ -794,12 +794,6 @@ function formatCOOData(d: SharedData): string {
     );
   }
 
-  // Mija pickup reminder on Mon/Fri
-  const dow = new Date().getDay();
-  if (dow === 1 || dow === 5) {
-    sections.push("\n### ⚠️ REMINDER: 3pm Mija pickup today (HARD STOP)");
-  }
-
   return sections.length > 1 ? sections.join("\n") : "";
 }
 
