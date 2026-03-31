@@ -31,13 +31,16 @@ import {
   listGoals,
   listFacts,
 } from "./lib/memory";
-import { uploadAssetQuick, updateAssetDescription, parseAssetDescTag, stripAssetDescTag } from "./lib/asset-store";
+import { uploadAssetQuick, updateAssetDescription, parseAssetDescTag, stripAssetDescTag, describeImageFromBuffer } from "./lib/asset-store";
 import { callFallbackLLM } from "./lib/fallback-llm";
 import { textToSpeech, initiatePhoneCall, isVoiceEnabled, isCallEnabled, waitForTranscript, summarizeTranscript, extractTaskFromTranscript } from "./lib/voice";
 import { transcribeAudio, isTranscriptionEnabled } from "./lib/transcribe";
 import {
   saveMessage,
   getConversationContext,
+  getSemanticContext,
+  getKnowledgeContext,
+  getCallTranscriptContext,
   searchMessages,
   getRecentMessages,
   log as sbLog,
@@ -451,10 +454,13 @@ async function handleTextMessage(ctx: Context): Promise<void> {
 
   if (
     lowerText === "/board" ||
-    lowerText === "board meeting" ||
-    lowerText.startsWith("/board ")
+    lowerText.startsWith("/board ") ||
+    lowerText.includes("board meeting")
   ) {
-    const extraContext = text.replace(/^\/board\s*/i, "").replace(/^board meeting\s*/i, "").trim();
+    const extraContext = text
+      .replace(/^\/board\s*/i, "")
+      .replace(/board meeting/i, "")
+      .trim();
     await runBoardMeeting(chatId, topicId, extraContext || undefined);
     return;
   }
@@ -642,12 +648,16 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
 
     const caption = ctx.message?.caption || "User sent a photo. Describe and respond to it.";
 
-    // Upload to Supabase Storage with placeholder (async, don't block)
+    // Pre-describe image via Haiku vision (if API key available)
+    const filename = `photo_${Date.now()}.${ext}`;
+    const visionResult = await describeImageFromBuffer(buffer, filename, caption);
+
+    // Upload to storage with real vision description
     const asset = await uploadAssetQuick(localPath, {
-      userCaption: caption,
+      userCaption: visionResult.description,
       channel: "telegram",
       telegramFileId: largest.file_id,
-      originalFilename: `photo_${Date.now()}.${ext}`,
+      originalFilename: filename,
     });
 
     // Persist user message
@@ -663,7 +673,10 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     const agentName = topicId ? getAgentByTopicId(topicId) || "general" : "general";
 
     const assetNote = asset ? `\n(asset: ${asset.id})` : "";
-    const photoPrompt = `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`;
+    const imageContext = `[Image description: ${visionResult.description}]${
+      visionResult.tags.length > 0 ? `\n[Tags: ${visionResult.tags.join(", ")}]` : ""
+    }`;
+    const photoPrompt = `${imageContext}${assetNote}\n[File: ${localPath}]\n\nUser says: ${caption}`;
     const tier = classifyComplexity(caption);
     let claudeResponse: string;
 
@@ -1057,6 +1070,15 @@ async function callClaude(
   // Build conversation context (recent messages)
   const conversationCtx = await getConversationContext(chatId, 10);
 
+  // Semantic search for relevant past conversations
+  const semanticCtx = await getSemanticContext(chatId, userMessage, 5);
+
+  // Knowledge base context
+  const knowledgeCtx = await getKnowledgeContext(userMessage, 5);
+
+  // Recent call transcripts
+  const callCtx = await getCallTranscriptContext(3);
+
   // Current time in user's timezone
   const now = new Date().toLocaleString("en-US", {
     timeZone: TIMEZONE,
@@ -1095,6 +1117,21 @@ async function callClaude(
   // Recent conversation
   if (conversationCtx) {
     sections.push(`## RECENT CONVERSATION\n${conversationCtx}`);
+  }
+
+  // Semantically relevant past conversations
+  if (semanticCtx) {
+    sections.push(`## RELEVANT HISTORY\n${semanticCtx}`);
+  }
+
+  // Knowledge base
+  if (knowledgeCtx) {
+    sections.push(`## KNOWLEDGE BASE\n${knowledgeCtx}`);
+  }
+
+  // Recent calls
+  if (callCtx) {
+    sections.push(`## RECENT CALLS\n${callCtx}`);
   }
 
   // Session resumption note
@@ -1142,7 +1179,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
   }
 
   // Handle errors with fallback
-  if (result.isError || !result.text) {
+  if (result.isError) {
     console.error("Claude error, falling back to secondary LLM...");
     await sbLog("warn", "bot", "Claude failed, using fallback LLM", {
       error: result.text?.substring(0, 200),
@@ -1155,6 +1192,12 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
       console.error("Fallback LLM also failed:", fallbackError);
       return "I'm having trouble processing right now. Please try again in a moment.";
     }
+  }
+
+  // Tools executed successfully but Claude returned no text — provide generic confirmation
+  if (!result.text) {
+    console.log("Claude returned empty text (tools likely executed). Sending confirmation.");
+    return "Done. Let me know if you need anything else.";
   }
 
   return result.text;
@@ -1274,6 +1317,9 @@ async function callClaudeWithProgress(
   const userProfile = await getUserProfile();
   const memoryCtx = await getMemoryContext();
   const conversationCtx = await getConversationContext(chatId, 10);
+  const semanticCtx = await getSemanticContext(chatId, userMessage, 5);
+  const knowledgeCtx = await getKnowledgeContext(userMessage, 5);
+  const callCtx = await getCallTranscriptContext(3);
 
   const now = new Date().toLocaleString("en-US", {
     timeZone: TIMEZONE,
@@ -1297,6 +1343,9 @@ async function callClaudeWithProgress(
   sections.push(`## CURRENT TIME\n${now}`);
   if (memoryCtx) sections.push(`## MEMORY\n${memoryCtx}`);
   if (conversationCtx) sections.push(`## RECENT CONVERSATION\n${conversationCtx}`);
+  if (semanticCtx) sections.push(`## RELEVANT HISTORY\n${semanticCtx}`);
+  if (knowledgeCtx) sections.push(`## KNOWLEDGE BASE\n${knowledgeCtx}`);
+  if (callCtx) sections.push(`## RECENT CALLS\n${callCtx}`);
   if (sessionState.sessionId) {
     sections.push(`## SESSION\nResuming session: ${sessionState.sessionId}`);
   }
@@ -1370,7 +1419,7 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
   }
 
   // Handle errors with fallback
-  if (result.isError || !result.text) {
+  if (result.isError) {
     // Delete progress message on error
     if (progressMsgId) {
       try { await ctx.api.deleteMessage(ctx.chat!.id, progressMsgId); } catch {}
@@ -1388,6 +1437,18 @@ Example: [ASSET_DESC: Birthday invitation with pink bunny holding a cupcake | bi
       console.error("Fallback LLM also failed:", fallbackError);
       return "I'm having trouble processing right now. Please try again in a moment.";
     }
+  }
+
+  // Tools executed successfully but Claude returned no text — provide generic confirmation
+  if (!result.text) {
+    console.log("Claude streaming returned empty text (tools likely executed). Sending confirmation.");
+    const confirmText = "Done. Let me know if you need anything else.";
+    // Update progress message with confirmation instead of leaving it stale
+    if (progressMsgId) {
+      try { await ctx.api.editMessageText(ctx.chat!.id, progressMsgId, confirmText); } catch {}
+      return `\x00STREAMED\x00${confirmText}`;
+    }
+    return confirmText;
   }
 
   // Final edit: update progress message with complete response
@@ -1617,8 +1678,15 @@ async function processInBackground(
       const caption = text || "User sent a photo. Describe and respond to it.";
       const assetNote = asset ? `\n(asset: ${asset.id})` : "";
 
+      // Pre-describe image via Haiku vision (if API key available)
+      const visionFilename = `photo_${Date.now()}.${ext}`;
+      const visionResult = await describeImageFromBuffer(buffer, visionFilename, caption);
+      const imageContext = `[Image description: ${visionResult.description}]${
+        visionResult.tags.length > 0 ? `\n[Tags: ${visionResult.tags.join(", ")}]` : ""
+      }`;
+
       response = await callClaude(
-        `[Image attached: ${localPath}]${assetNote}\n\nUser says: ${caption}`,
+        `${imageContext}${assetNote}\n[File: ${localPath}]\n\nUser says: ${caption}`,
         targetChatId,
         "general",
         threadId
