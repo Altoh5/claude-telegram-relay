@@ -545,16 +545,36 @@ Respond in JSON only:
     const textBlock = response.content.find((b) => b.type === "text");
     const text = (textBlock as any)?.text || "";
 
-    const jsonStr = text
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "")
-      .trim();
-    const parsed = JSON.parse(jsonStr);
+    // Robust JSON extraction: Haiku sometimes returns markdown instead of clean JSON
+    let parsed: any = null;
+    try {
+      const jsonStr = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      const jsonStart = text.indexOf("{");
+      const jsonEnd = text.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd > jsonStart) {
+        try {
+          parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+        } catch {
+          console.log("Vision returned non-JSON, using raw text as description");
+        }
+      }
+    }
 
+    if (parsed) {
+      return {
+        description: parsed.description || caption || "Image",
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+        suggestedProject: parsed.suggestedProject || null,
+      };
+    }
+
+    // Fallback: use raw vision text as description
     return {
-      description: parsed.description || caption || "Image",
-      tags: Array.isArray(parsed.tags) ? parsed.tags : [],
-      suggestedProject: parsed.suggestedProject || null,
+      description: text.replace(/[*_#`]/g, "").trim().slice(0, 500) || caption || "Image",
+      tags: [],
+      suggestedProject: null,
     };
   } catch (err) {
     console.error("describeImageFromBuffer error:", err);
