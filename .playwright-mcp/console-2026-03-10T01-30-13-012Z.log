@@ -1,0 +1,139 @@
+[     467ms] [WARNING] ripple[DAHDgJBQOWM:wiIa017DOQzwDqSlA(1773105978643-0,23)]: unexpected completion of incoming server stream @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1895ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1899ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1901ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1901ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1905ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1907ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1909ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1909ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1910ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1912ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1913ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1913ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1915ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1916ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1917ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60035ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60035ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60043ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60043ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60054ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60055ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60066ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60066ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60077ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60077ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60082ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60082ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60082ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60083ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60090ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60091ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60091ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60091ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60115ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60116ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60346ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60347ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60352ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60352ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60357ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60357ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60367ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60367ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60380ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60380ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60384ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60384ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60384ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60384ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60391ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60391ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60391ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60391ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60435ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60435ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   60435ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   60436ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89008ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89008ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89008ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89008ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89015ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89015ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89015ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89015ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89036ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89036ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89070ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89070ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89070ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89070ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89166ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89166ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   89169ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   89170ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[  169086ms] [WARNING] Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently @ https://static.canva.com/web/cbb1bd8ee56efa72.js:7211
+[  215350ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215351ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215352ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215352ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215353ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215354ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215355ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215356ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215357ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215358ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215363ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215363ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215365ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215365ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  215366ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282394ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282395ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282396ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282396ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282396ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282398ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282398ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282399ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282400ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282401ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282402ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282402ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282403ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282404ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  282404ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  361454ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  361455ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[  741567ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741568ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741569ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741569ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741570ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741571ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741572ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741576ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741577ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741578ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741579ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741579ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741580ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741581ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  741581ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948037ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948040ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948041ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948042ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948043ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948044ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948045ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948046ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948047ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948049ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948050ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948051ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948053ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948054ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[  948055ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0

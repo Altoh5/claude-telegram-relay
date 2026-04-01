@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Malaysia PDPA 2025 — NetAssist x Straits Interactive</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f0f1a;
+    color: #fff;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .deck {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    display: none;
+    position: absolute;
+    inset: 0;
+    padding: 60px 80px;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .slide.active { display: flex; }
+
+  /* ── NAV ── */
+  .nav {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 40px;
+    padding: 10px 20px;
+    z-index: 100;
+    font-size: 13px;
+    color: #aaa;
+  }
+  .nav button {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: #fff;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+  }
+  .nav button:hover { background: rgba(255,255,255,0.2); }
+
+  /* ── SLIDE STYLES ── */
+
+  /* Title */
+  .s-title {
+    background: linear-gradient(135deg, #0f0f1a 0%, #1a1a3e 50%, #0f0f1a 100%);
+    text-align: center;
+    align-items: center;
+  }
+  .s-title .eyebrow {
+    font-size: 13px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #7c6af7;
+    margin-bottom: 24px;
+    font-weight: 600;
+  }
+  .s-title h1 {
+    font-size: clamp(36px, 5vw, 64px);
+    font-weight: 800;
+    line-height: 1.1;
+    max-width: 900px;
+    background: linear-gradient(135deg, #fff 30%, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .s-title .sub {
+    margin-top: 28px;
+    font-size: 18px;
+    color: #888;
+    max-width: 600px;
+  }
+  .s-title .logos {
+    display: flex;
+    gap: 12px;
+    margin-top: 48px;
+    align-items: center;
+  }
+  .s-title .logos .badge {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 8px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ccc;
+  }
+  .s-title .logos span { color: #555; }
+
+  /* Hook */
+  .s-hook {
+    background: linear-gradient(135deg, #0f0f1a 0%, #1a0a0a 100%);
+  }
+  .s-hook .year-badge {
+    display: inline-block;
+    background: #ef4444;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 4px;
+    margin-bottom: 28px;
+  }
+  .s-hook h2 {
+    font-size: clamp(32px, 4.5vw, 56px);
+    font-weight: 800;
+    line-height: 1.15;
+    max-width: 800px;
+    color: #fff;
+  }
+  .s-hook h2 span { color: #f87171; }
+  .s-hook .quote {
+    margin-top: 36px;
+    font-size: 18px;
+    color: #888;
+    line-height: 1.7;
+    max-width: 700px;
+    border-left: 3px solid #ef4444;
+    padding-left: 20px;
+  }
+
+  /* Rule slides */
+  .s-rule {
+    background: linear-gradient(135deg, #0a0f1a 0%, #0a1a2e 100%);
+  }
+  .s-rule .rule-num {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #60a5fa;
+    margin-bottom: 16px;
+  }
+  .s-rule h2 {
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 800;
+    color: #fff;
+    max-width: 760px;
+    margin-bottom: 36px;
+    line-height: 1.2;
+  }
+  .rule-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 760px;
+  }
+  .rule-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-left: 4px solid #60a5fa;
+    border-radius: 12px;
+    padding: 18px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .rule-card .icon { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
+  .rule-card .text strong { font-size: 16px; color: #e2e8f0; display: block; margin-bottom: 4px; }
+  .rule-card .text span { font-size: 14px; color: #94a3b8; }
+  .big-stat {
+    font-size: clamp(48px, 8vw, 96px);
+    font-weight: 900;
+    color: #60a5fa;
+    line-height: 1;
+    margin: 8px 0;
+  }
+  .big-stat-label { font-size: 16px; color: #64748b; margin-top: 4px; }
+
+  /* Cases table */
+  .s-cases { background: linear-gradient(135deg, #0a0f0a 0%, #0a1a10 100%); }
+  .s-cases h2 {
+    font-size: clamp(26px, 3.5vw, 42px);
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 32px;
+  }
+  .cases-table { width: 100%; border-collapse: collapse; max-width: 900px; }
+  .cases-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #4ade80;
+    padding: 0 16px 12px;
+    border-bottom: 1px solid rgba(74,222,128,0.2);
+  }
+  .cases-table td {
+    padding: 14px 16px;
+    font-size: 15px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    vertical-align: top;
+  }
+  .cases-table tr:last-child td { border-bottom: none; }
+  .case-name { font-weight: 700; color: #f1f5f9; }
+  .case-fine { font-weight: 800; color: #4ade80; white-space: nowrap; }
+  .case-detail { color: #94a3b8; font-size: 13px; margin-top: 3px; }
+  .case-lesson { color: #94a3b8; font-size: 13px; }
+
+  /* Breach map */
+  .s-breach { background: linear-gradient(135deg, #0a0a0f 0%, #1a0a1a 100%); }
+  .s-breach h2 {
+    font-size: clamp(24px, 3.5vw, 40px);
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 28px;
+  }
+  .breach-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    max-width: 920px;
+  }
+  .breach-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+  .breach-card .principle {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #c084fc;
+    margin-bottom: 6px;
+  }
+  .breach-card .case-title { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+  .breach-card .desc { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+  .penalty-bar {
+    margin-top: 28px;
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px;
+    padding: 14px 20px;
+    max-width: 920px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .penalty-bar .p-item { font-size: 14px; color: #fca5a5; }
+  .penalty-bar .p-item strong { color: #f87171; }
+
+  /* AI convergence */
+  .s-ai {
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a0a0a 100%);
+  }
+  .s-ai h2 {
+    font-size: clamp(26px, 3.5vw, 44px);
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .s-ai .sub-h { font-size: 16px; color: #888; margin-bottom: 32px; }
+  .ai-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    max-width: 900px;
+  }
+  .ai-col { }
+  .ai-col .col-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .ai-col.pdpa .col-title { color: #60a5fa; }
+  .ai-col.aige .col-title { color: #a78bfa; }
+  .principle-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 14px;
+    color: #cbd5e1;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .principle-item .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ai-col.pdpa .dot { background: #60a5fa; }
+  .ai-col.aige .dot { background: #a78bfa; }
+  .convergence-note {
+    margin-top: 24px;
+    max-width: 900px;
+    background: rgba(167,139,250,0.08);
+    border: 1px solid rgba(167,139,250,0.2);
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-size: 14px;
+    color: #c4b5fd;
+    line-height: 1.6;
+  }
+
+  /* Hallucination */
+  .s-halluc { background: linear-gradient(135deg, #0a0a0a 0%, #1a0f0a 100%); }
+  .s-halluc h2 {
+    font-size: clamp(26px, 3.5vw, 44px);
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .s-halluc .sub-h { font-size: 15px; color: #888; margin-bottom: 28px; }
+  .halluc-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 860px;
+  }
+  .halluc-card {
+    background: rgba(251,191,36,0.06);
+    border: 1px solid rgba(251,191,36,0.2);
+    border-radius: 12px;
+    padding: 18px 22px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .halluc-card .flag {
+    background: #fbbf24;
+    color: #000;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    align-self: center;
+  }
+  .halluc-card .detail strong { font-size: 15px; color: #fef3c7; display: block; margin-bottom: 4px; }
+  .halluc-card .detail p { font-size: 13px; color: #92400e; color: #d97706; line-height: 1.5; }
+  .halluc-lesson {
+    margin-top: 20px;
+    max-width: 860px;
+    background: rgba(251,191,36,0.08);
+    border-left: 3px solid #fbbf24;
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    font-size: 14px;
+    color: #fde68a;
+    font-style: italic;
+  }
+
+  /* Timeline */
+  .s-timeline { background: linear-gradient(135deg, #0a0f0a 0%, #0a1a10 100%); }
+  .s-timeline h2 {
+    font-size: clamp(24px, 3.5vw, 40px);
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 32px;
+  }
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: 700px;
+    position: relative;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 28px;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, #4ade80, #ef4444);
+  }
+  .t-item {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    padding: 14px 0;
+    position: relative;
+  }
+  .t-dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    border: 3px solid #0a1a10;
+    flex-shrink: 0;
+    margin-top: 2px;
+    z-index: 1;
+    margin-left: 19px;
+  }
+  .t-dot.good { background: #4ade80; }
+  .t-dot.bad { background: #ef4444; }
+  .t-dot.warn { background: #fbbf24; }
+  .t-content { }
+  .t-time { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+  .t-action { font-size: 15px; color: #e2e8f0; margin-top: 2px; }
+  .t-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+  .t-badge.ok { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .t-badge.fail { background: rgba(239,68,68,0.15); color: #f87171; }
+
+  /* CTA */
+  .s-cta {
+    background: linear-gradient(135deg, #0f0f1a 0%, #1a1a3e 100%);
+    text-align: center;
+    align-items: center;
+  }
+  .s-cta .eyebrow {
+    font-size: 13px; letter-spacing: 3px; text-transform: uppercase;
+    color: #7c6af7; margin-bottom: 20px; font-weight: 600;
+  }
+  .s-cta h2 {
+    font-size: clamp(32px, 5vw, 60px);
+    font-weight: 800;
+    line-height: 1.15;
+    max-width: 800px;
+    background: linear-gradient(135deg, #fff 30%, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 40px;
+  }
+  .cta-boxes {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .cta-box {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 24px 32px;
+    text-align: left;
+    max-width: 300px;
+  }
+  .cta-box .cta-icon { font-size: 28px; margin-bottom: 12px; }
+  .cta-box strong { font-size: 16px; color: #f1f5f9; display: block; margin-bottom: 6px; }
+  .cta-box p { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+  .cta-url {
+    margin-top: 32px;
+    font-size: 14px;
+    color: #64748b;
+  }
+  .cta-url strong { color: #a78bfa; }
+
+  /* Slide counter */
+  #slide-counter { font-weight: 600; color: #fff; min-width: 50px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="deck">
+
+  <!-- SLIDE 1: TITLE -->
+  <div class="slide s-title active">
+    <div class="eyebrow">NetAssist × Straits Interactive — 18 March 2026</div>
+    <h1>Malaysia's PDPA<br>Has Teeth Now</h1>
+    <p class="sub">What Every Malaysian SME Must Know — and What It Costs to Ignore It</p>
+    <div class="logos">
+      <div class="badge">Straits Interactive</div>
+      <span>×</span>
+      <div class="badge">NetAssist</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2: HOOK -->
+  <div class="slide s-hook">
+    <div class="year-badge">Already in force since June 2025</div>
+    <h2>The PDPA was<br>quiet for 12 years.<br><span>That changed.</span></h2>
+    <p class="quote">Two new obligations are now law. Most Malaysian SMEs don't know if they apply — or if they're already non-compliant.</p>
+  </div>
+
+  <!-- SLIDE 3: RULE 1 — DPO -->
+  <div class="slide s-rule">
+    <div class="rule-num">New Rule #1 — Effective 1 June 2025</div>
+    <h2>Mandatory DPO<br>Appointment</h2>
+    <div class="rule-cards">
+      <div class="rule-card">
+        <div class="icon">🗄️</div>
+        <div class="text">
+          <strong>Threshold: 20,000+ individuals' data</strong>
+          <span>Customer records + HR data + mailing lists all count. Most growing SMEs already qualify.</span>
+        </div>
+      </div>
+      <div class="rule-card">
+        <div class="icon">📋</div>
+        <div class="text">
+          <strong>Must register with PDPD within 21 days</strong>
+          <span>DPO must be Malaysia-resident and easily contactable.</span>
+        </div>
+      </div>
+      <div class="rule-card">
+        <div class="icon">🌐</div>
+        <div class="text">
+          <strong>DPO contact must be published on your website</strong>
+          <span>This is a public-facing compliance requirement — regulators will check.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4: RULE 2 — BREACH NOTIFICATION -->
+  <div class="slide s-rule">
+    <div class="rule-num">New Rule #2 — Effective 1 June 2025</div>
+    <h2>72-Hour Breach<br>Notification</h2>
+    <div style="display:flex; gap:40px; align-items:flex-start; flex-wrap:wrap; margin-bottom:8px;">
+      <div>
+        <div class="big-stat">72h</div>
+        <div class="big-stat-label">Notify Commissioner</div>
+      </div>
+      <div>
+        <div class="big-stat" style="color:#f87171">7d</div>
+        <div class="big-stat-label">Notify affected individuals</div>
+      </div>
+      <div>
+        <div class="big-stat" style="color:#fbbf24">1K+</div>
+        <div class="big-stat-label">data subjects = "significant"</div>
+      </div>
+    </div>
+    <div class="rule-cards" style="margin-top:16px;">
+      <div class="rule-card" style="border-left-color:#f87171;">
+        <div class="icon">⚠️</div>
+        <div class="text">
+          <strong>Fine for notification failure: up to RM 250,000 + 2 years imprisonment</strong>
+          <span>Even if you didn't cause the breach — failing to notify in time is a separate offence.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 5: SINGAPORE CASES -->
+  <div class="slide s-cases">
+    <h2>What Violations Actually Cost<br><span style="color:#4ade80; font-size:0.6em">Singapore PDPC Enforcement Cases — Malaysia's Playbook</span></h2>
+    <table class="cases-table">
+      <thead>
+        <tr>
+          <th>Organisation</th>
+          <th>Fine</th>
+          <th>What Happened</th>
+          <th>The Lesson</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="case-name">Marina Bay Sands</div><div class="case-detail">2025</div></td>
+          <td><div class="case-fine">SGD 315,000</div></td>
+          <td style="color:#94a3b8; font-size:14px;">API exposed 6 months → 665K patrons' data exfiltrated</td>
+          <td class="case-lesson">One config mistake, undetected for months</td>
+        </tr>
+        <tr>
+          <td><div class="case-name">Air Sino-Euro Travel</div><div class="case-detail">2025</div></td>
+          <td><div class="case-fine">SGD 47,000</div></td>
+          <td style="color:#94a3b8; font-size:14px;">336K individuals' data exfiltrated</td>
+          <td class="case-lesson">Travel agencies aren't immune</td>
+        </tr>
+        <tr>
+          <td><div class="case-name">People Central</div><div class="case-detail">2026 — SME-scale</div></td>
+          <td><div class="case-fine">SGD 17,500</div></td>
+          <td style="color:#94a3b8; font-size:14px;">Databases deleted; 95K records sold on dark web</td>
+          <td class="case-lesson">SME-sized company, dark web exposure</td>
+        </tr>
+        <tr>
+          <td><div class="case-name">Autobahn Rent A Car</div><div class="case-detail">2023</div></td>
+          <td><div class="case-fine">SGD 3,000</div></td>
+          <td style="color:#94a3b8; font-size:14px;">Failed basic security arrangements</td>
+          <td class="case-lesson">Even small fines = reputational damage</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:20px; font-size:14px; color:#4ade80; font-style:italic;">
+      "Malaysia's PDPD modelled their rules on Singapore's. You're earlier in the enforcement curve — use the window."
+    </div>
+  </div>
+
+  <!-- SLIDE 6: MALAYSIA BREACHES -->
+  <div class="slide s-breach">
+    <h2>Malaysian Breaches — 2024<br><span style="color:#c084fc; font-size:0.6em">Mapped to PDPA's 7 Principles</span></h2>
+    <div class="breach-grid">
+      <div class="breach-card">
+        <div class="principle">Security Principle</div>
+        <div class="case-title">MyKAD Leak</div>
+        <div class="desc">17 million national ID records (names, addresses, IC numbers) leaked onto dark web marketplaces.</div>
+      </div>
+      <div class="breach-card">
+        <div class="principle">Security Principle</div>
+        <div class="case-title">Prasarana / RansomHub</div>
+        <div class="desc">316GB exfiltrated from public transport operator. Critical national infrastructure targeted.</div>
+      </div>
+      <div class="breach-card">
+        <div class="principle">Security Principle</div>
+        <div class="case-title">Maybank (2024)</div>
+        <div class="desc">Customer data offered for sale on illicit forums. Forced mass password resets across the bank.</div>
+      </div>
+      <div class="breach-card">
+        <div class="principle">Disclosure Principle</div>
+        <div class="case-title">EPF / KWSP + SPR</div>
+        <div class="desc">Official accounts hijacked by 'Solana' group — used to spread financial misinformation publicly.</div>
+      </div>
+      <div class="breach-card">
+        <div class="principle">Security Principle</div>
+        <div class="case-title">Armed Forces + KDN</div>
+        <div class="desc">Sensitive government datasets from military and Home Affairs published on GitHub.</div>
+      </div>
+      <div class="breach-card">
+        <div class="principle">General Principle (Consent)</div>
+        <div class="case-title">Biometric Data — New Rule</div>
+        <div class="desc">Amendment Act 2024: biometrics now classified as sensitive data. Explicit consent required. Mirrors Clearview AI fine (€30.5M).</div>
+      </div>
+    </div>
+    <div class="penalty-bar">
+      <div class="p-item">Breach of PDPA principles: <strong>up to RM 1M + 3 years</strong></div>
+      <div class="p-item">Breach notification failure: <strong>up to RM 250K + 2 years</strong></div>
+      <div class="p-item">Directors/CEOs: <strong>personally liable</strong></div>
+    </div>
+  </div>
+
+  <!-- SLIDE 7: AI GOVERNANCE -->
+  <div class="slide s-ai">
+    <h2>AI + PDPA — Two Laws,<br>One Risk</h2>
+    <p class="sub-h">Your AI tools are PDPA obligations in disguise. Malaysia's new AI Guidelines make it official.</p>
+    <div class="ai-grid">
+      <div class="ai-col pdpa">
+        <div class="col-title">PDPA 7 Principles</div>
+        <div class="principle-item"><div class="dot"></div>General (Consent)</div>
+        <div class="principle-item"><div class="dot"></div>Notice & Choice</div>
+        <div class="principle-item"><div class="dot"></div>Disclosure</div>
+        <div class="principle-item"><div class="dot"></div>Security</div>
+        <div class="principle-item"><div class="dot"></div>Retention</div>
+        <div class="principle-item"><div class="dot"></div>Data Integrity</div>
+        <div class="principle-item"><div class="dot"></div>Access</div>
+      </div>
+      <div class="ai-col aige">
+        <div class="col-title">Malaysia AI Governance (AIGE 2024)</div>
+        <div class="principle-item"><div class="dot"></div>Fairness</div>
+        <div class="principle-item"><div class="dot"></div>Transparency & Accountability</div>
+        <div class="principle-item"><div class="dot"></div>Privacy & Data Protection ←</div>
+        <div class="principle-item"><div class="dot"></div>Safety & Security ←</div>
+        <div class="principle-item"><div class="dot"></div>Inclusivity</div>
+        <div class="principle-item"><div class="dot"></div>Economic Benefit</div>
+        <div class="principle-item"><div class="dot"></div>Human Oversight</div>
+      </div>
+    </div>
+    <div class="convergence-note">
+      If your CRM, chatbot, or HR tool processes personal data — <strong>both</strong> frameworks apply simultaneously. Malaysia's AI Governance Bill heads to Cabinet in June 2026. It's not just guidelines for much longer.
+    </div>
+  </div>
+
+  <!-- SLIDE 8: AI HALLUCINATION CASES -->
+  <div class="slide s-halluc">
+    <h2>AI Without Governance —<br>Real Legal Liability</h2>
+    <p class="sub-h">You can't outsource blame to the tool. Accountability stays with you.</p>
+    <div class="halluc-cards">
+      <div class="halluc-card">
+        <div class="flag">Singapore — Mar 6, 2026</div>
+        <div class="detail">
+          <strong>Two lawyers fined S$5,000 each for AI-generated fake court citations</strong>
+          <p>A paralegal used an AI tool without disclosing it. Submitted fictitious case citations in civil court submissions. Judge called their offered payment "plainly inadequate."</p>
+        </div>
+      </div>
+      <div class="halluc-card">
+        <div class="flag">Singapore — 2025</div>
+        <div class="detail">
+          <strong>Lawyer Lalwani Anil Mangan fined S$800</strong>
+          <p>Court documents cited a fake case generated by an AI tool. Second Singapore case in quick succession.</p>
+        </div>
+      </div>
+      <div class="halluc-card">
+        <div class="flag">USA — 2023</div>
+        <div class="detail">
+          <strong>Two New York lawyers fined $5,000 each</strong>
+          <p>ChatGPT-generated fake case citations submitted in US federal court. The case that sparked global awareness.</p>
+        </div>
+      </div>
+    </div>
+    <div class="halluc-lesson">
+      → When AI processes your data or makes decisions that affect people, PDPA accountability doesn't disappear. The human is still responsible.
+    </div>
+  </div>
+
+  <!-- SLIDE 9: 72-HOUR TIMELINE -->
+  <div class="slide s-timeline">
+    <h2>The 72-Hour Reality<br><span style="color:#4ade80; font-size:0.6em">With Monitoring vs. Without</span></h2>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; max-width:900px;">
+      <div>
+        <div style="font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#4ade80; margin-bottom:16px;">✅ WITH SOC MONITORING</div>
+        <div class="timeline">
+          <div class="t-item"><div class="t-dot warn"></div><div class="t-content"><div class="t-time">Hour 0</div><div class="t-action">Breach occurs</div></div></div>
+          <div class="t-item"><div class="t-dot good"></div><div class="t-content"><div class="t-time">Hour 6</div><div class="t-action">SOC detects anomaly</div></div></div>
+          <div class="t-item"><div class="t-dot good"></div><div class="t-content"><div class="t-time">Hour 12</div><div class="t-action">Forensics confirm scope</div></div></div>
+          <div class="t-item"><div class="t-dot good"></div><div class="t-content"><div class="t-time">Hour 48</div><div class="t-action">Commissioner notified <span class="t-badge ok">✅</span></div></div></div>
+          <div class="t-item"><div class="t-dot good"></div><div class="t-content"><div class="t-time">Day 5</div><div class="t-action">Customers notified <span class="t-badge ok">✅</span></div></div></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#f87171; margin-bottom:16px;">❌ WITHOUT MONITORING</div>
+        <div class="timeline" style="--color:#ef4444">
+          <div class="t-item"><div class="t-dot warn" style="background:#fbbf24"></div><div class="t-content"><div class="t-time">Hour 0</div><div class="t-action">Breach occurs</div></div></div>
+          <div class="t-item"><div class="t-dot bad"></div><div class="t-content"><div class="t-time">Day 3–7</div><div class="t-action">You find out (maybe)</div></div></div>
+          <div class="t-item"><div class="t-dot bad"></div><div class="t-content"><div class="t-time">Day 10</div><div class="t-action">Commissioner notified <span class="t-badge fail">LATE</span></div></div></div>
+          <div class="t-item"><div class="t-dot bad"></div><div class="t-content"><div class="t-time">Day 14</div><div class="t-action">Customers notified <span class="t-badge fail">LATE</span></div></div></div>
+          <div class="t-item"><div class="t-dot bad"></div><div class="t-content"><div class="t-time">—</div><div class="t-action">RM 250,000 fine + 2 years <span class="t-badge fail">AUTO</span></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 10: CTA -->
+  <div class="slide s-cta">
+    <div class="eyebrow">Take Action Today</div>
+    <h2>Don't Wait for<br>Your 72-Hour Clock<br>to Start</h2>
+    <div class="cta-boxes">
+      <div class="cta-box">
+        <div class="cta-icon">📋</div>
+        <strong>Free PDPA Readiness Check</strong>
+        <p>3-minute self-assessment. Find out if the new rules apply to your business — and where your gaps are.</p>
+        <div style="margin-top:12px; font-size:13px; color:#7c6af7; font-weight:600;">straitsinteractive.com →</div>
+      </div>
+      <div class="cta-box">
+        <div class="cta-icon">💬</div>
+        <strong>Free 30-Min Consultation</strong>
+        <p>Book a call with Straits Interactive. We'll walk through your specific obligations under the new PDPA rules.</p>
+        <div style="margin-top:12px; font-size:13px; color:#7c6af7; font-weight:600;">alvin@straitsinteractive.com →</div>
+      </div>
+      <div class="cta-box">
+        <div class="cta-icon">🔒</div>
+        <strong>SOC Assessment</strong>
+        <p>Find out if your organisation can detect and respond within 72 hours. NetAssist's security team shows you your gaps.</p>
+        <div style="margin-top:12px; font-size:13px; color:#60a5fa; font-weight:600;">mynetassist.com →</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <button onclick="prev()">←</button>
+  <span id="slide-counter">1 / 10</span>
+  <button onclick="next()">→</button>
+</div>
+
+<script>
+  let current = 0;
+  const slides = document.querySelectorAll('.slide');
+
+  function show(n) {
+    slides[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    document.getElementById('slide-counter').textContent = `${current + 1} / ${slides.length}`;
+  }
+
+  function next() { show(current + 1); }
+  function prev() { show(current - 1); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') next();
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') prev();
+  });
+</script>
+</body>
+</html>

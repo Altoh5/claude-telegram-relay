@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Straits Interactive — FY25/26 Analytics Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0f172a;--surface:#1e293b;--surface2:#334155;--border:#475569;
+    --text:#f8fafc;--text2:#94a3b8;--text3:#64748b;
+    --cyan:#06b6d4;--cyan-dim:rgba(6,182,212,.15);
+    --amber:#f59e0b;--amber-dim:rgba(245,158,11,.15);
+    --emerald:#10b981;--emerald-dim:rgba(16,185,129,.15);
+    --rose:#f43f5e;--rose-dim:rgba(244,63,94,.15);
+    --violet:#8b5cf6;--violet-dim:rgba(139,92,246,.15);
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+  a{color:var(--cyan);text-decoration:none}
+
+  /* Header */
+  .header{background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-bottom:1px solid var(--border);padding:1.25rem 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+  .header h1{font-size:1.35rem;font-weight:700;letter-spacing:-.02em}
+  .header h1 span{color:var(--cyan)}
+  .header .subtitle{color:var(--text2);font-size:.8rem;margin-top:2px}
+  .header-right{display:flex;align-items:center;gap:1rem}
+  .badge{background:var(--cyan-dim);color:var(--cyan);padding:.25rem .75rem;border-radius:999px;font-size:.75rem;font-weight:600}
+
+  /* Tabs */
+  .tabs{display:flex;gap:.25rem;padding:.75rem 2rem;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
+  .tab{padding:.6rem 1.25rem;border-radius:.5rem;font-size:.85rem;font-weight:500;color:var(--text2);cursor:pointer;transition:all .2s;border:1px solid transparent;white-space:nowrap}
+  .tab:hover{color:var(--text);background:var(--surface2)}
+  .tab.active{color:var(--cyan);background:var(--cyan-dim);border-color:rgba(6,182,212,.3)}
+
+  /* Main */
+  .main{max-width:1400px;margin:0 auto;padding:1.5rem 2rem 3rem}
+  .section{display:none;animation:fadeIn .35s ease}
+  .section.active{display:block}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+  /* Grid */
+  .grid{display:grid;gap:1.25rem}
+  .grid-2{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}
+  .grid-3{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+
+  /* Cards */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:.75rem;padding:1.25rem;transition:border-color .2s,box-shadow .2s}
+  .card:hover{border-color:var(--cyan);box-shadow:0 0 20px rgba(6,182,212,.08)}
+  .card-title{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+  .card-title .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .card-full{grid-column:1/-1}
+
+  /* Chart containers */
+  .chart-wrap{position:relative;width:100%;aspect-ratio:16/9;min-height:280px}
+  .chart-wrap-sq{aspect-ratio:1/1;max-height:360px;margin:0 auto}
+  .chart-wrap canvas{width:100%!important;height:100%!important}
+
+  /* Stat cards */
+  .stat-row{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem}
+  .stat{flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:.75rem;padding:1rem 1.25rem;text-align:center;transition:border-color .2s}
+  .stat:hover{border-color:var(--cyan)}
+  .stat .value{font-size:1.6rem;font-weight:700;line-height:1.2}
+  .stat .label{font-size:.75rem;color:var(--text2);margin-top:.25rem}
+  .stat.emerald .value{color:var(--emerald)}
+  .stat.cyan .value{color:var(--cyan)}
+  .stat.amber .value{color:var(--amber)}
+  .stat.rose .value{color:var(--rose)}
+  .stat.violet .value{color:var(--violet)}
+
+  /* Insight cards */
+  .insight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
+  .insight{border-radius:.75rem;padding:1.15rem;border:1px solid}
+  .insight h4{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.65rem}
+  .insight ul{list-style:none;padding:0}
+  .insight li{font-size:.82rem;color:var(--text);padding:.3rem 0;padding-left:1.1rem;position:relative;line-height:1.5}
+  .insight li::before{content:'';position:absolute;left:0;top:.6rem;width:6px;height:6px;border-radius:50%}
+  .insight.worked{background:var(--emerald-dim);border-color:rgba(16,185,129,.25)}
+  .insight.worked h4{color:var(--emerald)}
+  .insight.worked li::before{background:var(--emerald)}
+  .insight.didnt{background:var(--rose-dim);border-color:rgba(244,63,94,.25)}
+  .insight.didnt h4{color:var(--rose)}
+  .insight.didnt li::before{background:var(--rose)}
+  .insight.improve{background:var(--amber-dim);border-color:rgba(245,158,11,.25)}
+  .insight.improve h4{color:var(--amber)}
+  .insight.improve li::before{background:var(--amber)}
+
+  /* Tables */
+  .tbl-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.82rem}
+  th{text-align:left;padding:.65rem .75rem;color:var(--text2);font-weight:600;text-transform:uppercase;font-size:.72rem;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:.6rem .75rem;border-bottom:1px solid rgba(71,85,105,.35);white-space:nowrap}
+  tr:hover td{background:rgba(6,182,212,.04)}
+  .tag{display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.7rem;font-weight:600}
+  .tag-green{background:var(--emerald-dim);color:var(--emerald)}
+  .tag-amber{background:var(--amber-dim);color:var(--amber)}
+  .tag-red{background:var(--rose-dim);color:var(--rose)}
+  .tag-cyan{background:var(--cyan-dim);color:var(--cyan)}
+  .tag-gray{background:rgba(100,116,139,.2);color:var(--text3)}
+
+  /* Pipeline kanban */
+  .kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+  .kanban-col{background:var(--surface);border:1px solid var(--border);border-radius:.75rem;padding:1rem;min-height:200px}
+  .kanban-col h4{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);margin-bottom:.75rem;display:flex;align-items:center;gap:.4rem}
+  .kanban-col h4 .cnt{background:var(--cyan-dim);color:var(--cyan);padding:.1rem .45rem;border-radius:999px;font-size:.65rem}
+  .kanban-card{background:var(--bg);border:1px solid var(--border);border-radius:.5rem;padding:.65rem;margin-bottom:.5rem;font-size:.78rem;transition:border-color .2s}
+  .kanban-card:hover{border-color:var(--cyan)}
+  .kanban-card .kc-name{font-weight:600;margin-bottom:.2rem}
+  .kanban-card .kc-meta{color:var(--text3);font-size:.7rem}
+
+  /* Comparison */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+  .compare-col{border-radius:.75rem;padding:1.25rem;border:1px solid}
+  .compare-col.bad{background:var(--rose-dim);border-color:rgba(244,63,94,.2)}
+  .compare-col.bad h3{color:var(--rose)}
+  .compare-col.good{background:var(--emerald-dim);border-color:rgba(16,185,129,.2)}
+  .compare-col.good h3{color:var(--emerald)}
+  .compare-col h3{font-size:.9rem;margin-bottom:.75rem}
+  .compare-col ul{list-style:none;padding:0}
+  .compare-col li{font-size:.82rem;padding:.35rem 0;padding-left:1.1rem;position:relative;line-height:1.45}
+  .compare-col.bad li::before{content:'\2717';position:absolute;left:0;color:var(--rose);font-size:.75rem}
+  .compare-col.good li::before{content:'\2713';position:absolute;left:0;color:var(--emerald);font-size:.75rem}
+
+  /* Quick wins */
+  .qw{display:flex;gap:.75rem;align-items:flex-start;padding:.85rem;background:var(--surface);border:1px solid var(--border);border-radius:.75rem;margin-bottom:.65rem;transition:border-color .2s}
+  .qw:hover{border-color:var(--cyan)}
+  .qw-num{width:28px;height:28px;border-radius:50%;background:var(--cyan-dim);color:var(--cyan);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0}
+  .qw-body h4{font-size:.85rem;font-weight:600;margin-bottom:.15rem}
+  .qw-body p{font-size:.78rem;color:var(--text2)}
+
+  /* Flow diagram */
+  .flow{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;padding:1.5rem}
+  .flow-step{background:var(--surface);border:1px solid var(--border);border-radius:.5rem;padding:.75rem 1rem;text-align:center;min-width:100px}
+  .flow-step .fs-label{font-size:.7rem;color:var(--text3);text-transform:uppercase;letter-spacing:.03em}
+  .flow-step .fs-val{font-size:.95rem;font-weight:700;color:var(--cyan);margin-top:.2rem}
+  .flow-arrow{color:var(--text3);font-size:1.2rem}
+
+  /* Responsive */
+  @media(max-width:900px){
+    .grid-2{grid-template-columns:1fr}
+    .compare,.kanban{grid-template-columns:1fr}
+    .main{padding:1rem}
+    .tabs{padding:.5rem 1rem}
+    .header{padding:1rem}
+    .stat-row{flex-direction:column}
+  }
+  @media(max-width:600px){
+    .grid-3{grid-template-columns:1fr}
+    .insight-grid{grid-template-columns:1fr}
+    .flow{flex-direction:column}
+    .flow-arrow{transform:rotate(90deg)}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1><span>Straits Interactive</span> &mdash; Analytics Dashboard</h1>
+    <div class="subtitle">FY25/26 Marketing &amp; Sales Performance Review</div>
+  </div>
+  <div class="header-right">
+    <span class="badge">FY25/26</span>
+  </div>
+</div>
+
+<div class="tabs" id="tabs">
+  <div class="tab active" data-tab="marketing" onclick="switchTab('marketing')">Marketing Performance</div>
+  <div class="tab" data-tab="sales" onclick="switchTab('sales')">Sales Pipeline</div>
+  <div class="tab" data-tab="kpi" onclick="switchTab('kpi')">KPI Framework</div>
+  <div class="tab" data-tab="system" onclick="switchTab('system')">Spreadsheets to System</div>
+</div>
+
+<div class="main">
+
+<!-- ==================== SECTION 1: MARKETING ==================== -->
+<div class="section active" id="sec-marketing">
+
+  <div class="stat-row">
+    <div class="stat cyan"><div class="value">$66K</div><div class="label">Total Ad Spend</div></div>
+    <div class="stat emerald"><div class="value">$52.4K</div><div class="label">Total Events Spend</div></div>
+    <div class="stat amber"><div class="value">76%</div><div class="label">Google Ads Share</div></div>
+    <div class="stat violet"><div class="value">37.6%</div><div class="label">Best CTR (GenAI)</div></div>
+    <div class="stat rose"><div class="value">$291</div><div class="label">Worst CPL (DPTM)</div></div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card card-full">
+      <div class="card-title"><span class="dot" style="background:var(--cyan)"></span>Monthly Ad Spend by Channel (SGD)</div>
+      <div class="chart-wrap" style="aspect-ratio:2.5/1;min-height:320px"><canvas id="chartAdSpend"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--emerald)"></span>Course Click-Through Rate (Google Ads)</div>
+      <div class="chart-wrap" style="aspect-ratio:4/3;min-height:300px"><canvas id="chartCTR"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Events ROI &mdash; CPL vs FOI Count</div>
+      <div class="chart-wrap" style="aspect-ratio:4/3;min-height:300px"><canvas id="chartEvents"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.25rem">
+    <div class="card-title"><span class="dot" style="background:var(--violet)"></span>Course Conversion Funnel (Google Ads)</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Course</th><th>Users</th><th>Clicks</th><th>CTR</th><th>Est. 50% Conv</th><th>Performance</th></tr></thead>
+        <tbody>
+          <tr><td>Digital Marketing GenAI</td><td>1,650</td><td>621</td><td>37.6%</td><td>311</td><td><span class="tag tag-green">Top Performer</span></td></tr>
+          <tr><td>PDPA Practitioner Cert</td><td>1,559</td><td>439</td><td>28.2%</td><td>220</td><td><span class="tag tag-green">Strong</span></td></tr>
+          <tr><td>Business Productivity &amp; HR</td><td>791</td><td>241</td><td>30.5%</td><td>121</td><td><span class="tag tag-green">Strong</span></td></tr>
+          <tr><td>Policy &amp; Third Party Mgmt</td><td>412</td><td>141</td><td>34.2%</td><td>71</td><td><span class="tag tag-cyan">Good</span></td></tr>
+          <tr><td>AIGP</td><td>667</td><td>120</td><td>18.0%</td><td>60</td><td><span class="tag tag-amber">Needs Work</span></td></tr>
+          <tr><td>Practical GenAI</td><td>715</td><td>98</td><td>13.7%</td><td>49</td><td><span class="tag tag-red">Low CTR</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.25rem">
+    <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Events ROI Detail</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Event</th><th>FOI</th><th>Attendees</th><th>Registrations</th><th>Cost</th><th>CPL</th><th>Rating</th></tr></thead>
+        <tbody>
+          <tr><td>A*star Talk</td><td>63</td><td>&mdash;</td><td>&mdash;</td><td>$0</td><td>$0</td><td><span class="tag tag-green">Best ROI</span></td></tr>
+          <tr><td>SME Centre Conference</td><td>34</td><td>&mdash;</td><td>&mdash;</td><td>$3,270</td><td>$96</td><td><span class="tag tag-green">Strong</span></td></tr>
+          <tr><td>DPEX Network Connect</td><td>17</td><td>42</td><td>69</td><td>$4,275</td><td>$252</td><td><span class="tag tag-amber">Moderate</span></td></tr>
+          <tr><td>AFAS Conference</td><td>11</td><td>&mdash;</td><td>&mdash;</td><td>$900</td><td>$82</td><td><span class="tag tag-green">Efficient</span></td></tr>
+          <tr><td>Mastering DPTM</td><td>3</td><td>33</td><td>57</td><td>$872</td><td>$291</td><td><span class="tag tag-red">Poor</span></td></tr>
+          <tr><td>Data Breaches RE</td><td>1</td><td>6</td><td>26</td><td>$168</td><td>$168</td><td><span class="tag tag-amber">Low FOI</span></td></tr>
+          <tr><td>Fintech &amp; GenAI</td><td>0</td><td>11</td><td>26</td><td>$343</td><td>&mdash;</td><td><span class="tag tag-red">No FOI</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="margin-top:1.5rem">
+    <div class="insight-grid">
+      <div class="insight worked">
+        <h4>What Worked</h4>
+        <ul>
+          <li>Google Ads is the dominant channel ($50K of $66K, 76% of spend) &mdash; highest volume driver</li>
+          <li>Digital Marketing GenAI course has 37.6% CTR &mdash; strongest performer across all courses</li>
+          <li>Free talks (A*star, ASME) generate FOI at $0 CPL &mdash; scalable model</li>
+          <li>SME Centre Conference: 34 FOI at $96 CPL &mdash; best paid event ROI</li>
+          <li>Events overall drove significant pipeline (SI Events is a top lead source)</li>
+        </ul>
+      </div>
+      <div class="insight didnt">
+        <h4>What Didn't Work</h4>
+        <ul>
+          <li>Meta Ads declined from $3.6K to near zero &mdash; likely poor ROAS causing budget cut</li>
+          <li>LinkedIn Ads inconsistent ($746 then $0 then $236 then $0) &mdash; no sustained strategy</li>
+          <li>DPTM webinar: $291 CPL with only 3 FOI &mdash; worst performing event</li>
+          <li>No attribution tracking: cannot tie ad spend to actual revenue closed</li>
+          <li>14% of revenue from AI courses but 35% of deals are AI &mdash; pricing gap?</li>
+        </ul>
+      </div>
+      <div class="insight improve">
+        <h4>Recommendations</h4>
+        <ul>
+          <li>Kill Meta Ads or redesign creative (declining to zero = abandoned)</li>
+          <li>LinkedIn needs a 3-month test with consistent $500/mo budget</li>
+          <li>Add UTM tracking to connect ad spend to registration to deal close</li>
+          <li>Double down on free/low-cost talks (A*star model: 63 FOI at $0)</li>
+          <li>AIGP has low CTR (18%) despite strong demand &mdash; rework landing page</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SECTION 2: SALES ==================== -->
+<div class="section" id="sec-sales">
+
+  <div class="stat-row">
+    <div class="stat cyan"><div class="value">~$900K</div><div class="label">Total Pipeline</div></div>
+    <div class="stat emerald"><div class="value">104</div><div class="label">Active Deals</div></div>
+    <div class="stat amber"><div class="value">~$8K</div><div class="label">Avg Deal Size</div></div>
+    <div class="stat violet"><div class="value">52%</div><div class="label">DP Deals (count)</div></div>
+    <div class="stat rose"><div class="value">12</div><div class="label">Lost Deals</div></div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--cyan)"></span>Pipeline vs Closed by Sales Rep ($K)</div>
+      <div class="chart-wrap" style="aspect-ratio:4/3;min-height:300px"><canvas id="chartPipeline"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--violet)"></span>Deal Mix by Count</div>
+      <div class="chart-wrap-sq"><canvas id="chartDealCount"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--emerald)"></span>Deal Mix by Revenue</div>
+      <div class="chart-wrap-sq"><canvas id="chartDealRev"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Lead Source Distribution</div>
+      <div class="chart-wrap" style="aspect-ratio:4/3;min-height:300px"><canvas id="chartLeadSource"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.25rem">
+    <div class="card-title"><span class="dot" style="background:var(--cyan)"></span>Sales Rep Performance Summary</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Rep</th><th>Pipeline Deals</th><th>Est. Pipeline Value</th><th>Closed Value</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Wendy</td><td>15</td><td>~$100K</td><td>$200K+ (50+ closes)</td><td><span class="tag tag-green">Top Closer</span></td></tr>
+          <tr><td>Raani</td><td>43</td><td>~$300K</td><td>$219,000</td><td><span class="tag tag-green">Highest Volume</span></td></tr>
+          <tr><td>Alfred</td><td>24</td><td>~$150K</td><td>$103,748</td><td><span class="tag tag-cyan">Solid</span></td></tr>
+          <tr><td>Chris</td><td>17</td><td>~$80K</td><td>$34,000</td><td><span class="tag tag-amber">Developing</span></td></tr>
+          <tr><td>Rishi</td><td>5</td><td>$264,312</td><td>$0</td><td><span class="tag tag-red">No Closes</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="margin-top:1.5rem">
+    <div class="insight-grid">
+      <div class="insight worked">
+        <h4>What Worked</h4>
+        <ul>
+          <li>Wendy is the top closer &mdash; dominates healthcare and non-profit verticals</li>
+          <li>Raani has largest pipeline (43 deals) &mdash; strong outbound activity</li>
+          <li>Corporate Client lead source produces high-value CLV deals (renewals, upsells)</li>
+          <li>Woh Hup (Construction) is a model account: multi-product, expanding engagement</li>
+          <li>Healthcare vertical is a goldmine: NHG, NTUC Healthcare, Allium &mdash; repeat buyers</li>
+        </ul>
+      </div>
+      <div class="insight didnt">
+        <h4>What Didn't Work</h4>
+        <ul>
+          <li>Rishi has $264K pipeline but $0 closed &mdash; execution gap or early stage?</li>
+          <li>12 lost deals suggest qualification issues (Razer, NLB, Great Eastern all dropped)</li>
+          <li>No deal velocity tracking &mdash; cannot tell if pipeline is fresh or stale</li>
+          <li>Pipeline values missing from most sheets &mdash; cannot forecast accurately</li>
+          <li>AI courses are 35% of deals but only 14% of revenue &mdash; underpriced or lower ASP</li>
+        </ul>
+      </div>
+      <div class="insight improve">
+        <h4>Recommendations</h4>
+        <ul>
+          <li>Add deal size to ALL pipeline entries (currently missing from most)</li>
+          <li>Track deal age and stage movement &mdash; identify stale deals</li>
+          <li>Create monthly pipeline review cadence per rep</li>
+          <li>Rishi needs coaching or his deals need co-selling support</li>
+          <li>Build playbook from Wendy's success: healthcare vertical + corporate client source</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SECTION 3: KPI ==================== -->
+<div class="section" id="sec-kpi">
+
+  <div class="stat-row">
+    <div class="stat cyan"><div class="value">8</div><div class="label">Marketing KPIs</div></div>
+    <div class="stat emerald"><div class="value">7</div><div class="label">Sales KPIs</div></div>
+    <div class="stat amber"><div class="value">3</div><div class="label">Currently Tracked</div></div>
+    <div class="stat rose"><div class="value">12</div><div class="label">Gaps to Fill</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:1.25rem">
+    <div class="card-title"><span class="dot" style="background:var(--cyan)"></span>Marketing KPIs</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>KPI</th><th>Current</th><th>Target</th><th>Tracking Method</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Monthly Ad Spend</td><td>~$5.5K</td><td>$6K</td><td>Google / Meta dashboards</td><td><span class="tag tag-green">Tracked</span></td></tr>
+          <tr><td>Cost Per Lead (paid)</td><td>$96 &ndash; $291</td><td>&lt;$150</td><td>UTM + CRM</td><td><span class="tag tag-amber">Partial</span></td></tr>
+          <tr><td>Event FOI Rate</td><td>5 &ndash; 40%</td><td>&gt;15%</td><td>Event registration forms</td><td><span class="tag tag-amber">Partial</span></td></tr>
+          <tr><td>Email List Growth</td><td>Unknown</td><td>+200/mo</td><td>Mailchimp / ActiveCampaign</td><td><span class="tag tag-red">Not Tracked</span></td></tr>
+          <tr><td>Webinar Registrations</td><td>26 &ndash; 69</td><td>&gt;50/event</td><td>Event platform</td><td><span class="tag tag-green">Tracked</span></td></tr>
+          <tr><td>Content Engagement</td><td>Unknown</td><td>Track</td><td>LinkedIn analytics</td><td><span class="tag tag-red">Not Tracked</span></td></tr>
+          <tr><td>Lead-to-Close Rate</td><td>Unknown</td><td>Track</td><td>Pipeline to Close ratio</td><td><span class="tag tag-red">Not Tracked</span></td></tr>
+          <tr><td>Marketing-Sourced Revenue</td><td>Unknown</td><td>Track</td><td>Attribution needed</td><td><span class="tag tag-red">Not Tracked</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--emerald)"></span>Sales KPIs</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>KPI</th><th>Current</th><th>Target</th><th>Tracking Method</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Pipeline Value</td><td>~$900K total</td><td>Track by rep</td><td>CRM or sheet</td><td><span class="tag tag-amber">Partial</span></td></tr>
+          <tr><td>Win Rate</td><td>Unknown</td><td>&gt;25%</td><td>Close / Total deals</td><td><span class="tag tag-red">Not Tracked</span></td></tr>
+          <tr><td>Average Deal Size</td><td>~$8K</td><td>&gt;$10K</td><td>Close sheet</td><td><span class="tag tag-green">Tracked</span></td></tr>
+          <tr><td>Sales Cycle Length</td><td>Unknown</td><td>&lt;60 days</td><td>Date tracking needed</td><td><span class="tag tag-red">Not Tracked</span></td></tr>
+          <tr><td>Deals per Rep / Month</td><td>~3&ndash;5</td><td>&gt;4</td><td>Pipeline sheet</td><td><span class="tag tag-amber">Partial</span></td></tr>
+          <tr><td>Close Rate by Source</td><td>Unknown</td><td>Track</td><td>Cross-ref pipeline to close</td><td><span class="tag tag-red">Not Tracked</span></td></tr>
+          <tr><td>Revenue per Market</td><td>SG only visible</td><td>Track SG/MY/PH</td><td>Separate by market</td><td><span class="tag tag-red">Not Tracked</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.25rem">
+    <div class="card-title"><span class="dot" style="background:var(--violet)"></span>KPI Coverage Overview</div>
+    <div class="chart-wrap" style="aspect-ratio:2.5/1;min-height:220px"><canvas id="chartKPI"></canvas></div>
+  </div>
+</div>
+
+<!-- ==================== SECTION 4: SYSTEM ==================== -->
+<div class="section" id="sec-system">
+
+  <div class="stat-row">
+    <div class="stat rose"><div class="value">17</div><div class="label">Separate Sheets</div></div>
+    <div class="stat amber"><div class="value">0</div><div class="label">Attribution Links</div></div>
+    <div class="stat cyan"><div class="value">5</div><div class="label">Quick Wins</div></div>
+    <div class="stat emerald"><div class="value">4</div><div class="label">Pipeline Stages</div></div>
+  </div>
+
+  <div class="compare">
+    <div class="compare-col bad">
+      <h3>Current State: Spreadsheet Chaos</h3>
+      <ul>
+        <li>17 separate sheets across one workbook</li>
+        <li>No deal sizes on most pipeline entries</li>
+        <li>No stage dates or deal velocity tracking</li>
+        <li>No connection between marketing spend and sales outcomes</li>
+        <li>Manual updates &mdash; data goes stale within days</li>
+        <li>No dashboard view &mdash; managers must read row by row</li>
+        <li>Pipeline values missing from most rep sheets</li>
+        <li>No way to identify stale deals (no last-updated date)</li>
+        <li>Lost deals tracked inconsistently across reps</li>
+      </ul>
+    </div>
+    <div class="compare-col good">
+      <h3>Recommended: CRM-Light System</h3>
+      <ul>
+        <li>Single pipeline view with Kanban board (see below)</li>
+        <li>Every deal has a value, source, stage, and timestamp</li>
+        <li>Automated alerts for stale deals (&gt;30 days no movement)</li>
+        <li>Marketing attribution: Ad to Registration to Lead to Deal to Close</li>
+        <li>Rep performance scorecards auto-generated weekly</li>
+        <li>Weekly auto-generated pipeline and revenue reports</li>
+        <li>UTM parameters on all campaigns connecting spend to revenue</li>
+        <li>Deal velocity metrics: time-in-stage, conversion rates</li>
+        <li>Market-level breakdowns (SG / MY / PH)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.5rem">
+    <div class="card-title"><span class="dot" style="background:var(--cyan)"></span>Recommended Pipeline Kanban View</div>
+    <div class="kanban">
+      <div class="kanban-col">
+        <h4>Preliminary <span class="cnt">38</span></h4>
+        <div class="kanban-card"><div class="kc-name">Axiata AIGP Training</div><div class="kc-meta">Rishi &mdash; $80K &mdash; 12 days</div></div>
+        <div class="kanban-card"><div class="kc-name">NUS Data Protection</div><div class="kc-meta">Raani &mdash; $15K &mdash; 8 days</div></div>
+        <div class="kanban-card"><div class="kc-name">MOH Privacy Review</div><div class="kc-meta">Alfred &mdash; $22K &mdash; 3 days</div></div>
+        <div class="kanban-card" style="opacity:.5;text-align:center;color:var(--text3)">+35 more deals</div>
+      </div>
+      <div class="kanban-col">
+        <h4>Discovery Call <span class="cnt">28</span></h4>
+        <div class="kanban-card"><div class="kc-name">DBS GenAI Workshop</div><div class="kc-meta">Raani &mdash; $18K &mdash; 5 days</div></div>
+        <div class="kanban-card"><div class="kc-name">SingHealth PDPA</div><div class="kc-meta">Wendy &mdash; $12K &mdash; 14 days</div></div>
+        <div class="kanban-card"><div class="kc-name">GIC AI Governance</div><div class="kc-meta">Alfred &mdash; $35K &mdash; 21 days</div></div>
+        <div class="kanban-card" style="opacity:.5;text-align:center;color:var(--text3)">+25 more deals</div>
+      </div>
+      <div class="kanban-col">
+        <h4>Proposal Sent <span class="cnt">22</span></h4>
+        <div class="kanban-card"><div class="kc-name">Woh Hup Phase 3</div><div class="kc-meta">Alfred &mdash; $28K &mdash; 7 days</div></div>
+        <div class="kanban-card"><div class="kc-name">NTUC Health Renewal</div><div class="kc-meta">Wendy &mdash; $16K &mdash; 4 days</div></div>
+        <div class="kanban-card"><div class="kc-name">Temasek AI Policy</div><div class="kc-meta">Raani &mdash; $45K &mdash; 18 days</div></div>
+        <div class="kanban-card" style="opacity:.5;text-align:center;color:var(--text3)">+19 more deals</div>
+      </div>
+      <div class="kanban-col">
+        <h4>Closed Won <span class="cnt">16</span></h4>
+        <div class="kanban-card" style="border-color:rgba(16,185,129,.4)"><div class="kc-name">NHG PDPA Training</div><div class="kc-meta">Wendy &mdash; $24K &mdash; Closed</div></div>
+        <div class="kanban-card" style="border-color:rgba(16,185,129,.4)"><div class="kc-name">Allium Healthcare</div><div class="kc-meta">Wendy &mdash; $18K &mdash; Closed</div></div>
+        <div class="kanban-card" style="border-color:rgba(16,185,129,.4)"><div class="kc-name">Woh Hup Phase 2</div><div class="kc-meta">Alfred &mdash; $32K &mdash; Closed</div></div>
+        <div class="kanban-card" style="opacity:.5;text-align:center;color:var(--text3)">+13 more deals</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.25rem">
+    <div class="card-title"><span class="dot" style="background:var(--emerald)"></span>Marketing Attribution Flow (Target State)</div>
+    <div class="flow">
+      <div class="flow-step"><div class="fs-label">Ad / Event</div><div class="fs-val">$118K spent</div></div>
+      <span class="flow-arrow">&#10132;</span>
+      <div class="flow-step"><div class="fs-label">Registration</div><div class="fs-val">1,660 clicks</div></div>
+      <span class="flow-arrow">&#10132;</span>
+      <div class="flow-step"><div class="fs-label">Qualified Lead</div><div class="fs-val">129 FOI</div></div>
+      <span class="flow-arrow">&#10132;</span>
+      <div class="flow-step"><div class="fs-label">Pipeline</div><div class="fs-val">104 deals</div></div>
+      <span class="flow-arrow">&#10132;</span>
+      <div class="flow-step"><div class="fs-label">Closed Won</div><div class="fs-val">~$557K</div></div>
+    </div>
+    <p style="text-align:center;font-size:.78rem;color:var(--text3);margin-top:.5rem">Currently this flow is disconnected &mdash; no UTM or CRM linking marketing spend to closed revenue.</p>
+  </div>
+
+  <div class="card" style="margin-top:1.25rem">
+    <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Quick Wins &mdash; Implement This Week</div>
+    <div class="qw"><div class="qw-num">1</div><div class="qw-body"><h4>Add deal size to every pipeline entry</h4><p>Even estimated ranges. Without this, forecasting is impossible. Time: 1 day.</p></div></div>
+    <div class="qw"><div class="qw-num">2</div><div class="qw-body"><h4>Add "Date Added" and "Last Updated" columns</h4><p>Enables deal velocity tracking and stale deal alerts. Time: 1 day.</p></div></div>
+    <div class="qw"><div class="qw-num">3</div><div class="qw-body"><h4>Create a Google Sheet summary tab</h4><p>Use IMPORTRANGE formulas pulling from all rep sheets into one view. Time: half day.</p></div></div>
+    <div class="qw"><div class="qw-num">4</div><div class="qw-body"><h4>Set up UTM parameters on all ad campaigns</h4><p>Links ad spend to registrations to pipeline. Essential for ROI measurement. Time: half day.</p></div></div>
+    <div class="qw"><div class="qw-num">5</div><div class="qw-body"><h4>Weekly 15-min pipeline standup per rep</h4><p>Quick review of new deals, stage movement, and stuck deals. Keeps pipeline fresh. Time: 15 min/week.</p></div></div>
+  </div>
+
+  <div class="card" style="margin-top:1.25rem">
+    <div class="card-title"><span class="dot" style="background:var(--violet)"></span>Rep Performance Scorecard (Target Template)</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Metric</th><th>Wendy</th><th>Raani</th><th>Alfred</th><th>Chris</th><th>Rishi</th></tr></thead>
+        <tbody>
+          <tr><td>Open Deals</td><td>15</td><td>43</td><td>24</td><td>17</td><td>5</td></tr>
+          <tr><td>Pipeline Value</td><td>~$100K</td><td>~$300K</td><td>~$150K</td><td>~$80K</td><td>$264K</td></tr>
+          <tr><td>Closed This FY</td><td>$200K+</td><td>$219K</td><td>$104K</td><td>$34K</td><td>$0</td></tr>
+          <tr><td>Win Rate</td><td colspan="5" style="color:var(--rose);font-style:italic">Not tracked &mdash; need stage dates to calculate</td></tr>
+          <tr><td>Avg Deal Size</td><td colspan="5" style="color:var(--rose);font-style:italic">Not tracked &mdash; need deal values on pipeline entries</td></tr>
+          <tr><td>Avg Cycle Time</td><td colspan="5" style="color:var(--rose);font-style:italic">Not tracked &mdash; need date-added and date-closed fields</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- end main -->
+
+<script>
+// Tab navigation — inline onclick for reliability
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelector('[data-tab="'+name+'"]').classList.add('active');
+  document.getElementById('sec-'+name).classList.add('active');
+}
+
+// Chart defaults
+Chart.defaults.color='#94a3b8';
+Chart.defaults.borderColor='rgba(71,85,105,.35)';
+Chart.defaults.font.family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
+Chart.defaults.font.size=12;
+Chart.defaults.plugins.legend.labels.padding=16;
+Chart.defaults.plugins.legend.labels.usePointStyle=true;
+Chart.defaults.plugins.tooltip.backgroundColor='#1e293b';
+Chart.defaults.plugins.tooltip.borderColor='#475569';
+Chart.defaults.plugins.tooltip.borderWidth=1;
+Chart.defaults.plugins.tooltip.padding=10;
+Chart.defaults.plugins.tooltip.cornerRadius=8;
+Chart.defaults.plugins.tooltip.titleFont={weight:'600'};
+
+const months=['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+
+// 1. Ad Spend stacked bar
+new Chart(document.getElementById('chartAdSpend'),{
+  type:'bar',
+  data:{
+    labels:months,
+    datasets:[
+      {label:'Google Ads',data:[4387,4699,4633,5178,4560,3812,5948,8015,4152,3440,1334,0],backgroundColor:'#06b6d4',borderRadius:3},
+      {label:'Meta Ads',data:[3584,1660,1868,1820,1184,1510,565,338,13,243,1323,0],backgroundColor:'#8b5cf6',borderRadius:3},
+      {label:'LinkedIn Ads',data:[746,249,329,0,0,0,35,236,0,0,192,0],backgroundColor:'#f59e0b',borderRadius:3}
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,ticks:{callback:v=>'$'+v.toLocaleString()}}},
+    plugins:{tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': $'+ctx.parsed.y.toLocaleString()}}}
+  }
+});
+
+// 2. Course CTR horizontal bar
+new Chart(document.getElementById('chartCTR'),{
+  type:'bar',
+  data:{
+    labels:['Digital Mktg GenAI','Policy & 3rd Party','Business Prod & HR','PDPA Practitioner','AIGP','Practical GenAI'],
+    datasets:[{
+      label:'Click-Through Rate (%)',
+      data:[37.6,34.2,30.5,28.2,18.0,13.7],
+      backgroundColor:['#10b981','#10b981','#10b981','#06b6d4','#f59e0b','#f43f5e'],
+      borderRadius:4
+    }]
+  },
+  options:{
+    indexAxis:'y',responsive:true,maintainAspectRatio:false,
+    scales:{x:{max:45,ticks:{callback:v=>v+'%'}},y:{grid:{display:false}}},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.x+'% CTR'}}}
+  }
+});
+
+// 3. Events scatter: CPL vs FOI
+new Chart(document.getElementById('chartEvents'),{
+  type:'bubble',
+  data:{
+    datasets:[
+      {label:'A*star Talk',data:[{x:63,y:0,r:18}],backgroundColor:'rgba(16,185,129,.7)'},
+      {label:'SME Centre',data:[{x:34,y:96,r:14}],backgroundColor:'rgba(6,182,212,.7)'},
+      {label:'DPEX Connect',data:[{x:17,y:252,r:12}],backgroundColor:'rgba(245,158,11,.7)'},
+      {label:'AFAS Conf',data:[{x:11,y:82,r:10}],backgroundColor:'rgba(6,182,212,.7)'},
+      {label:'Mastering DPTM',data:[{x:3,y:291,r:8}],backgroundColor:'rgba(244,63,94,.7)'},
+      {label:'Data Breaches',data:[{x:1,y:168,r:6}],backgroundColor:'rgba(245,158,11,.7)'},
+      {label:'Fintech GenAI',data:[{x:0,y:0,r:6}],backgroundColor:'rgba(100,116,139,.5)'}
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    scales:{
+      x:{title:{display:true,text:'FOI Count',color:'#94a3b8'},min:-5,max:70},
+      y:{title:{display:true,text:'Cost Per Lead (SGD)',color:'#94a3b8'},min:-20,max:320,ticks:{callback:v=>'$'+v}}
+    },
+    plugins:{
+      legend:{position:'bottom',labels:{font:{size:10}}},
+      tooltip:{callbacks:{label:ctx=>{const d=ctx.raw;return 'FOI: '+d.x+' | CPL: $'+d.y}}}
+    }
+  }
+});
+
+// 4. Pipeline by rep grouped bar
+new Chart(document.getElementById('chartPipeline'),{
+  type:'bar',
+  data:{
+    labels:['Wendy','Raani','Alfred','Chris','Rishi'],
+    datasets:[
+      {label:'Pipeline Value ($K)',data:[100,300,150,80,264],backgroundColor:'rgba(6,182,212,.6)',borderRadius:4},
+      {label:'Closed Value ($K)',data:[200,219,104,34,0],backgroundColor:'rgba(16,185,129,.6)',borderRadius:4}
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>'$'+v+'K'}}},
+    plugins:{tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': $'+ctx.parsed.y+'K'}}}
+  }
+});
+
+// 5. Deal mix by count (doughnut)
+new Chart(document.getElementById('chartDealCount'),{
+  type:'doughnut',
+  data:{
+    labels:['DP Related (52%)','AI Related (35%)','Both (9%)','Other (4%)'],
+    datasets:[{data:[52,35,9,4],backgroundColor:['#06b6d4','#8b5cf6','#f59e0b','#64748b'],borderWidth:0,hoverOffset:8}]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,cutout:'62%',
+    plugins:{legend:{position:'bottom'}}
+  }
+});
+
+// 6. Deal mix by revenue (doughnut)
+new Chart(document.getElementById('chartDealRev'),{
+  type:'doughnut',
+  data:{
+    labels:['DP Related (82%)','AI Related (14%)','Both (4%)','Other (1%)'],
+    datasets:[{data:[82,14,4,1],backgroundColor:['#06b6d4','#8b5cf6','#f59e0b','#64748b'],borderWidth:0,hoverOffset:8}]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,cutout:'62%',
+    plugins:{legend:{position:'bottom'}}
+  }
+});
+
+// 7. Lead source horizontal bar
+new Chart(document.getElementById('chartLeadSource'),{
+  type:'bar',
+  data:{
+    labels:['Inbound','Corporate Client','Outbound','SI Events','Referral','Personal'],
+    datasets:[{
+      label:'% of Deals',data:[45,20,15,10,5,5],
+      backgroundColor:['#06b6d4','#10b981','#8b5cf6','#f59e0b','#f43f5e','#64748b'],
+      borderRadius:4
+    }]
+  },
+  options:{
+    indexAxis:'y',responsive:true,maintainAspectRatio:false,
+    scales:{x:{max:55,ticks:{callback:v=>v+'%'}},y:{grid:{display:false}}},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.x+'% of deals'}}}
+  }
+});
+
+// 8. KPI coverage stacked bar
+new Chart(document.getElementById('chartKPI'),{
+  type:'bar',
+  data:{
+    labels:['Ad Spend','CPL','Event FOI','Email Growth','Webinar Reg','Content Eng','Lead-Close','Mktg Revenue','Pipeline Val','Win Rate','Deal Size','Cycle Length','Deals/Rep','Close by Src','Rev/Market'],
+    datasets:[
+      {label:'Tracked',data:[1,0.5,0.5,0,1,0,0,0,0.5,0,1,0,0.5,0,0],backgroundColor:'rgba(16,185,129,.6)',borderRadius:3},
+      {label:'Gap',data:[0,0.5,0.5,1,0,1,1,1,0.5,1,0,1,0.5,1,1],backgroundColor:'rgba(244,63,94,.25)',borderRadius:3}
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    scales:{
+      x:{stacked:true,grid:{display:false},ticks:{maxRotation:45,minRotation:45,font:{size:10}}},
+      y:{stacked:true,display:false,max:1}
+    },
+    plugins:{
+      legend:{position:'top'},
+      tooltip:{callbacks:{label:ctx=>{
+        if(ctx.dataset.label==='Tracked') return ctx.parsed.y===1?'Fully tracked':'Partially tracked';
+        return ctx.parsed.y===1?'Not tracked':'Partially tracked';
+      }}}
+    }
+  }
+});
+</script>
+</body>
+</html>

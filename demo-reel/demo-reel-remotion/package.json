@@ -1,0 +1,24 @@
+{
+  "name": "demo-reel-remotion",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "studio": "npx remotion studio src/index.ts",
+    "render": "npx remotion render src/index.ts DemoReel out/demo-reel.mp4",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@remotion/cli": "^4.0.441",
+    "@remotion/media": "^4.0.441",
+    "@remotion/transitions": "^4.0.441",
+    "@types/react": "^19.2.14",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "remotion": "^4.0.441",
+    "typescript": "^6.0.2"
+  }
+}

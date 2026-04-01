@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Straits Interactive — FY26/FY27 Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .tab-btn.active { border-bottom: 3px solid #2563eb; color: #2563eb; font-weight: 700; }
+    .stage-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .deal-row:hover { background: #f0f7ff; }
+    .kpi-card { border-left: 4px solid; }
+    @media(max-width:640px) { .hide-mobile { display: none; } }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+<!-- Header -->
+<div class="bg-white border-b shadow-sm sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-gray-900">Straits Interactive</h1>
+      <p class="text-xs text-gray-500">FY26 Business Dashboard · Updated: Mar 29 2026 · Live from pipeline sheet</p>
+    </div>
+    <div class="flex gap-1 flex-wrap">
+      <button id="tab-pipeline" onclick="showTab('pipeline')" class="tab-btn active px-4 py-2 text-sm border-b-2 border-blue-600 text-blue-600 font-bold">Sales Pipeline</button>
+      <button id="tab-marketing" onclick="showTab('marketing')" class="tab-btn px-4 py-2 text-sm text-gray-500">Marketing</button>
+      <button id="tab-strategy" onclick="showTab('strategy')" class="tab-btn px-4 py-2 text-sm text-gray-500">Strategic Initiatives</button>
+      <button id="tab-fy27" onclick="showTab('fy27')" class="tab-btn px-4 py-2 text-sm text-gray-500 border border-indigo-200 rounded-md ml-1 bg-indigo-50">✦ FY27 Plan</button>
+    </div>
+  </div>
+</div>
+
+<div class="max-w-7xl mx-auto px-4 py-6">
+
+<!-- ===================== PIPELINE TAB ===================== -->
+<div id="pane-pipeline">
+
+  <!-- KPI Row -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm" style="border-color:#2563eb">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Pipeline Value (SGD)</p>
+      <p class="text-3xl font-bold text-blue-600 mt-1">3.82M</p>
+      <p class="text-xs text-gray-400 mt-1">90 deals · 5 reps</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm" style="border-color:#16a34a">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Weighted Pipeline</p>
+      <p class="text-3xl font-bold text-green-600 mt-1">2.1M</p>
+      <p class="text-xs text-gray-400 mt-1">Probability-adjusted SGD</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm" style="border-color:#d97706">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Win Rate (est.)</p>
+      <p class="text-3xl font-bold text-amber-600 mt-1">58%</p>
+      <p class="text-xs text-gray-400 mt-1">vs 45% target</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm" style="border-color:#7c3aed">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Avg Deal Size</p>
+      <p class="text-3xl font-bold text-purple-600 mt-1">42K</p>
+      <p class="text-xs text-gray-400 mt-1">SGD avg deal size</p>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="grid md:grid-cols-2 gap-4 mb-6">
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <h2 class="font-semibold text-gray-700 mb-4">Pipeline by Stage</h2>
+      <canvas id="pipelineChart" height="200"></canvas>
+    </div>
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <h2 class="font-semibold text-gray-700 mb-4">Pipeline by Sales Rep (SGD K)</h2>
+      <canvas id="marketChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Per-Rep Summary -->
+  <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+    <h2 class="font-semibold text-gray-700 mb-3">Pipeline by Rep (Live Data)</h2>
+    <div class="grid grid-cols-5 gap-3 text-center">
+      <div class="bg-blue-50 rounded-lg p-3"><div class="text-xs text-gray-500">Alfred</div><div class="text-lg font-bold text-blue-700">1.72M</div></div>
+      <div class="bg-green-50 rounded-lg p-3"><div class="text-xs text-gray-500">Raani</div><div class="text-lg font-bold text-green-700">1.23M</div></div>
+      <div class="bg-amber-50 rounded-lg p-3"><div class="text-xs text-gray-500">Wendy</div><div class="text-lg font-bold text-amber-700">576K</div></div>
+      <div class="bg-purple-50 rounded-lg p-3"><div class="text-xs text-gray-500">Rishi</div><div class="text-lg font-bold text-purple-700">264K</div></div>
+      <div class="bg-red-50 rounded-lg p-3"><div class="text-xs text-gray-500">Chris</div><div class="text-lg font-bold text-red-700">30K</div></div>
+    </div>
+  </div>
+
+  <!-- Deal Table -->
+  <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+      <h2 class="font-semibold text-gray-700">Active Deals</h2>
+      <span class="text-xs text-gray-400">SGD values · sorted by close date</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 text-xs uppercase text-gray-500">
+            <th class="text-left px-5 py-3">Deal / Client</th>
+            <th class="text-left px-5 py-3 hide-mobile">Market</th>
+            <th class="text-left px-5 py-3">Stage</th>
+            <th class="text-right px-5 py-3">Value (SGD)</th>
+            <th class="text-left px-5 py-3 hide-mobile">Close By</th>
+            <th class="text-left px-5 py-3 hide-mobile">Owner / Notes</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <!-- WMI -->
+          <tr class="deal-row">
+            <td class="px-5 py-3">
+              <div class="font-semibold">WMI AI Workshop</div>
+              <div class="text-xs text-gray-400">Wealth Mgmt Institute · 1-day, 20 pax</div>
+            </td>
+            <td class="px-5 py-3 hide-mobile"><span class="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5">Singapore</span></td>
+            <td class="px-5 py-3">
+              <span class="stage-pill bg-red-100 text-red-700">🔴 Closing NOW</span>
+            </td>
+            <td class="px-5 py-3 text-right font-bold text-green-700">~12K</td>
+            <td class="px-5 py-3 hide-mobile text-red-600 font-semibold">Mar 31</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">Rachel (sign-off). Upsell → SMU courses</td>
+          </tr>
+          <!-- Axiata -->
+          <tr class="deal-row">
+            <td class="px-5 py-3">
+              <div class="font-semibold">Axiata In-House AIGP</div>
+              <div class="text-xs text-gray-400">20 pax × SGD 4K · HRDC claimable</div>
+            </td>
+            <td class="px-5 py-3 hide-mobile"><span class="text-xs bg-green-50 text-green-700 rounded-full px-2 py-0.5">Malaysia</span></td>
+            <td class="px-5 py-3">
+              <span class="stage-pill bg-amber-100 text-amber-700">🟡 Proposal</span>
+            </td>
+            <td class="px-5 py-3 text-right font-bold">80K</td>
+            <td class="px-5 py-3 hide-mobile">Q1 FY27</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">HRDC claimable angle is key</td>
+          </tr>
+          <!-- SIT -->
+          <tr class="deal-row">
+            <td class="px-5 py-3">
+              <div class="font-semibold">SIT Enterprise (Copilot)</div>
+              <div class="text-xs text-gray-400">Rollout workshops · 50 execs delivered</div>
+            </td>
+            <td class="px-5 py-3 hide-mobile"><span class="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5">Singapore</span></td>
+            <td class="px-5 py-3">
+              <span class="stage-pill bg-green-100 text-green-700">✅ Delivered</span>
+            </td>
+            <td class="px-5 py-3 text-right font-bold text-gray-400">~30K</td>
+            <td class="px-5 py-3 hide-mobile text-gray-400">Delivered</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">Renewal / expansion opp</td>
+          </tr>
+          <!-- MSG/ITE -->
+          <tr class="deal-row">
+            <td class="px-5 py-3">
+              <div class="font-semibold">MSG Grant POCs (ITE)</div>
+              <div class="text-xs text-gray-400">3 POC deployments × up to 30K each · 90% govt funded</div>
+            </td>
+            <td class="px-5 py-3 hide-mobile"><span class="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5">Singapore</span></td>
+            <td class="px-5 py-3">
+              <span class="stage-pill bg-blue-100 text-blue-700">🔵 In Progress</span>
+            </td>
+            <td class="px-5 py-3 text-right font-bold">90K</td>
+            <td class="px-5 py-3 hide-mobile">Q2 FY27</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">Stephen intermediary · client pays 10%</td>
+          </tr>
+          <!-- DRB/TDI -->
+          <tr class="deal-row">
+            <td class="px-5 py-3">
+              <div class="font-semibold">Malaysia Prompt Challenge</div>
+              <div class="text-xs text-gray-400">DRB/DHU · Phase 1 April · Phase 2 July (national)</div>
+            </td>
+            <td class="px-5 py-3 hide-mobile"><span class="text-xs bg-green-50 text-green-700 rounded-full px-2 py-0.5">Malaysia</span></td>
+            <td class="px-5 py-3">
+              <span class="stage-pill bg-blue-100 text-blue-700">🔵 Active</span>
+            </td>
+            <td class="px-5 py-3 text-right font-bold">TBD</td>
+            <td class="px-5 py-3 hide-mobile">Apr → Jul</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">Ross can unblock · Zoo cert approval</td>
+          </tr>
+          <!-- GGU -->
+          <tr class="deal-row">
+            <td class="px-5 py-3">
+              <div class="font-semibold">GGU Partnership</div>
+              <div class="text-xs text-gray-400">Credentialed Gen AI programs · US University</div>
+            </td>
+            <td class="px-5 py-3 hide-mobile"><span class="text-xs bg-purple-50 text-purple-700 rounded-full px-2 py-0.5">Global</span></td>
+            <td class="px-5 py-3">
+              <span class="stage-pill bg-gray-100 text-gray-600">⚪ Exploration</span>
+            </td>
+            <td class="px-5 py-3 text-right font-bold text-gray-400">172K+</td>
+            <td class="px-5 py-3 hide-mobile">H2 FY27</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">Long tail · high value</td>
+          </tr>
+          <!-- Philippines -->
+          <tr class="deal-row">
+            <td class="px-5 py-3">
+              <div class="font-semibold">Philippines Operations</div>
+              <div class="text-xs text-gray-400">SEC registration · company setup</div>
+            </td>
+            <td class="px-5 py-3 hide-mobile"><span class="text-xs bg-yellow-50 text-yellow-700 rounded-full px-2 py-0.5">Philippines</span></td>
+            <td class="px-5 py-3">
+              <span class="stage-pill bg-red-100 text-red-600">⚠️ Blocked</span>
+            </td>
+            <td class="px-5 py-3 text-right font-bold text-gray-400">1M PHP</td>
+            <td class="px-5 py-3 hide-mobile text-red-500">Stalled</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">Edwin leading · Jeremy/Jen on SEC</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="bg-blue-50 font-bold">
+            <td class="px-5 py-3" colspan="3">Total Pipeline · Weighted</td>
+            <td class="px-5 py-3 text-right text-blue-700">3.82M · 2.1M</td>
+            <td class="px-5 py-3 hide-mobile" colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Action items -->
+  <div class="mt-4 bg-red-50 border border-red-200 rounded-xl p-4">
+    <h3 class="font-semibold text-red-700 mb-2">🚨 Immediate Actions</h3>
+    <ul class="text-sm text-red-800 space-y-1">
+      <li>• <strong>WMI</strong> — Close by March 31. Contact Rachel (sign-off authority). Push proposal today.</li>
+      <li>• <strong>Axiata</strong> — Send HRDC-framed proposal. Differentiate on governance layer.</li>
+      <li>• <strong>Philippines SEC</strong> — Follow up Jeremy/Jen on registration blockers.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===================== MARKETING TAB ===================== -->
+<div id="pane-marketing" class="hidden">
+
+  <!-- KPI Row -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm" style="border-color:#2563eb">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Monthly Ad Spend</p>
+      <p class="text-3xl font-bold text-blue-600 mt-1">~800</p>
+      <p class="text-xs text-gray-400 mt-1">SGD/month (200+/week)</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm" style="border-color:#16a34a">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Webinar Tracks</p>
+      <p class="text-3xl font-bold text-green-600 mt-1">2</p>
+      <p class="text-xs text-gray-400 mt-1">Data Protection · AI/Gen AI</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm" style="border-color:#d97706">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Marketing Budget Rule</p>
+      <p class="text-3xl font-bold text-amber-600 mt-1">10%</p>
+      <p class="text-xs text-gray-400 mt-1">of anticipated course revenue</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm" style="border-color:#7c3aed">
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Target Market</p>
+      <p class="text-3xl font-bold text-purple-600 mt-1">MY</p>
+      <p class="text-xs text-gray-400 mt-1">Primary focus this quarter</p>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="grid md:grid-cols-2 gap-4 mb-6">
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <h2 class="font-semibold text-gray-700 mb-4">Channel Allocation (Budget %)</h2>
+      <canvas id="channelChart" height="220"></canvas>
+    </div>
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <h2 class="font-semibold text-gray-700 mb-4">Malaysia Funnel (Estimated)</h2>
+      <canvas id="funnelChart" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- Campaign Table -->
+  <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-4">
+    <div class="px-5 py-4 border-b">
+      <h2 class="font-semibold text-gray-700">Campaign Status</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 text-xs uppercase text-gray-500">
+            <th class="text-left px-5 py-3">Campaign</th>
+            <th class="text-left px-5 py-3">Market</th>
+            <th class="text-left px-5 py-3">Channel</th>
+            <th class="text-left px-5 py-3">Status</th>
+            <th class="text-right px-5 py-3">Budget (SGD)</th>
+            <th class="text-left px-5 py-3 hide-mobile">Owner / Notes</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr class="deal-row">
+            <td class="px-5 py-3"><div class="font-semibold">AI Courses — Malaysia</div><div class="text-xs text-gray-400">AIGP + Gen AI workshops</div></td>
+            <td class="px-5 py-3"><span class="text-xs bg-green-50 text-green-700 rounded-full px-2 py-0.5">Malaysia</span></td>
+            <td class="px-5 py-3">Facebook Ads</td>
+            <td class="px-5 py-3"><span class="stage-pill bg-green-100 text-green-700">🟢 Active</span></td>
+            <td class="px-5 py-3 text-right">~200+/wk</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">Mutaza running ads · Jill MY lead</td>
+          </tr>
+          <tr class="deal-row">
+            <td class="px-5 py-3"><div class="font-semibold">Data Protection Webinars</div><div class="text-xs text-gray-400">PDPA, DPO, compliance audience</div></td>
+            <td class="px-5 py-3"><span class="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5">SG + MY</span></td>
+            <td class="px-5 py-3">Webinar + NetAssist</td>
+            <td class="px-5 py-3"><span class="stage-pill bg-blue-100 text-blue-700">🔵 Ongoing</span></td>
+            <td class="px-5 py-3 text-right">Co-promo</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">NetAssist + Absol partners</td>
+          </tr>
+          <tr class="deal-row">
+            <td class="px-5 py-3"><div class="font-semibold">Malaysia Prompt Challenge</div><div class="text-xs text-gray-400">Phase 1: April (Pekan) · Phase 2: July (national)</div></td>
+            <td class="px-5 py-3"><span class="text-xs bg-green-50 text-green-700 rounded-full px-2 py-0.5">Malaysia</span></td>
+            <td class="px-5 py-3">MOE / DRB</td>
+            <td class="px-5 py-3"><span class="stage-pill bg-amber-100 text-amber-700">🟡 Prep Phase</span></td>
+            <td class="px-5 py-3 text-right">Partnership</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">DRB/DHU co-run · Lena calendar mgmt</td>
+          </tr>
+          <tr class="deal-row">
+            <td class="px-5 py-3"><div class="font-semibold">AIGP / CIPM Certifications</div><div class="text-xs text-gray-400">Open enrollment across ASEAN</div></td>
+            <td class="px-5 py-3"><span class="text-xs bg-purple-50 text-purple-700 rounded-full px-2 py-0.5">ASEAN</span></td>
+            <td class="px-5 py-3">Email + LinkedIn</td>
+            <td class="px-5 py-3"><span class="stage-pill bg-blue-100 text-blue-700">🔵 Ongoing</span></td>
+            <td class="px-5 py-3 text-right">Organic</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">DPEX Network community</td>
+          </tr>
+          <tr class="deal-row">
+            <td class="px-5 py-3"><div class="font-semibold">WMI Proposal Campaign</div><div class="text-xs text-gray-400">1:1 outreach to close deal</div></td>
+            <td class="px-5 py-3"><span class="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5">Singapore</span></td>
+            <td class="px-5 py-3">Email / Direct</td>
+            <td class="px-5 py-3"><span class="stage-pill bg-red-100 text-red-700">🔴 Urgent</span></td>
+            <td class="px-5 py-3 text-right">—</td>
+            <td class="px-5 py-3 hide-mobile text-gray-500 text-xs">Rachel (HR) sign-off needed by Mar 31</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Marketing recommendations -->
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <h3 class="font-semibold text-amber-800 mb-2">📋 Budget Requests Pending</h3>
+      <ul class="text-sm text-amber-900 space-y-1">
+        <li>• Angela's budget plan — awaiting review</li>
+        <li>• Facebook ad spend: consider scaling MY campaigns if ROAS &gt; 3×</li>
+        <li>• Malaysia course revenue target: RM 500K → budget = RM 50K/yr</li>
+      </ul>
+    </div>
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+      <h3 class="font-semibold text-blue-800 mb-2">🎯 Marketing Priorities</h3>
+      <ul class="text-sm text-blue-900 space-y-1">
+        <li>• Separate MY tracks: Data Protection ≠ AI (different buyers)</li>
+        <li>• AIGP positioning: governance-first for enterprise risk/compliance buyers</li>
+        <li>• Webinar partner expansion: Absol + NetAssist + NASSCOM/APCO</li>
+        <li>• Content: 1 AI automation case study per week (Alvin's goal)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== STRATEGY TAB ===================== -->
+<div id="pane-strategy" class="hidden">
+
+  <!-- Top Goal -->
+  <div class="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 mb-6 text-white">
+    <p class="text-sm uppercase tracking-widest opacity-80 mb-1">90-Day #1 Priority</p>
+    <h2 class="text-2xl font-bold mb-2">Partner Ecosystem Growth</h2>
+    <p class="text-blue-100 text-sm">More deals, more market coverage, less single-point dependency on Alvin for delivery.</p>
+  </div>
+
+  <!-- Strategic Goals Grid -->
+  <div class="grid md:grid-cols-2 gap-4 mb-6">
+
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-2xl">🇲🇾</span>
+        <div>
+          <h3 class="font-bold">Malaysia: RM 500K</h3>
+          <p class="text-xs text-gray-500">FY27 Revenue Target</p>
+        </div>
+        <div class="ml-auto">
+          <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+            <span class="text-sm font-bold text-amber-600">35%</span>
+          </div>
+        </div>
+      </div>
+      <div class="w-full bg-gray-100 rounded-full h-2 mb-3">
+        <div class="bg-amber-500 h-2 rounded-full" style="width:35%"></div>
+      </div>
+      <p class="text-xs text-gray-500 mb-3">Estimated current run rate based on active deals</p>
+      <div class="space-y-2 text-sm">
+        <div class="bg-gray-50 rounded-lg p-3">
+          <p class="font-semibold text-gray-700">Ideas to hit RM 500K</p>
+          <ul class="mt-2 space-y-1 text-gray-600 text-xs">
+            <li>1. <strong>Axiata AIGP deal</strong> (SGD 80K ≈ RM 250K) — biggest single lever</li>
+            <li>2. <strong>Scale Prompt Challenge</strong> to July national rollout (MOE reach)</li>
+            <li>3. <strong>HRDC-claimable bundle</strong>: AIGP + AI Governance combo for corporates</li>
+            <li>4. <strong>DRB/TDI repeat</strong>: Expand from pilot to full faculty program</li>
+            <li>5. <strong>My(Jill) marketing push</strong>: Increase Facebook ads, target HR/compliance</li>
+            <li>6. <strong>CTC deals</strong>: Identify 1 SGD 100K+ target in Malaysia</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-2xl">🇵🇭</span>
+        <div>
+          <h3 class="font-bold">Philippines: PHP 1M</h3>
+          <p class="text-xs text-gray-500">FY27 Revenue Target</p>
+        </div>
+        <div class="ml-auto">
+          <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+            <span class="text-sm font-bold text-red-600">5%</span>
+          </div>
+        </div>
+      </div>
+      <div class="w-full bg-gray-100 rounded-full h-2 mb-3">
+        <div class="bg-red-400 h-2 rounded-full" style="width:5%"></div>
+      </div>
+      <p class="text-xs text-gray-500 mb-3">Blocked by SEC registration stall</p>
+      <div class="space-y-2 text-sm">
+        <div class="bg-gray-50 rounded-lg p-3">
+          <p class="font-semibold text-gray-700">Ideas to unblock Philippines</p>
+          <ul class="mt-2 space-y-1 text-gray-600 text-xs">
+            <li>1. <strong>SEC escalation</strong>: Jeremy/Jen status call this week</li>
+            <li>2. <strong>Revenue before entity</strong>: Partner with local firm to run courses while SEC pending</li>
+            <li>3. <strong>Edwin pipeline</strong>: What 3 deals can Edwin close in next 60 days?</li>
+            <li>4. <strong>Target: BPO sector</strong> — large workforce, AI upskilling demand, SGD-budget buyers</li>
+            <li>5. <strong>NASSCOM/APCO partners</strong>: Use network to get into enterprise accounts faster</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-2xl">🤝</span>
+        <div>
+          <h3 class="font-bold">Partner Ecosystem</h3>
+          <p class="text-xs text-gray-500">Consulting · Training · Outreach</p>
+        </div>
+        <div class="ml-auto">
+          <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+            <span class="text-sm font-bold text-blue-600">Goal</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1">
+        <p class="font-semibold text-gray-700">Build the partner flywheel:</p>
+        <li>• <strong>Capabara + SI</strong>: Harness-agnostic AI governance positioning with Kevin/Robin</li>
+        <li>• <strong>GGU</strong>: Credentialed program → international market access</li>
+        <li>• <strong>IBF</strong>: WMI → IBF-accredited AI Finance track?</li>
+        <li>• <strong>NASSCOM/APCO</strong>: Reach Indian + Pacific markets via association events</li>
+        <li>• <strong>SMU Academy</strong>: Deepen existing relationship, add new courses</li>
+        <li>• <strong>DPEX Network</strong>: Convert community members → paying clients</li>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl p-5 shadow-sm">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-2xl">🤖</span>
+        <div>
+          <h3 class="font-bold">Agentic Strategy</h3>
+          <p class="text-xs text-gray-500">Apr 2 Sync · GoBot Demo</p>
+        </div>
+        <div class="ml-auto">
+          <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+            <span class="text-sm font-bold text-purple-600">Apr 2</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1">
+        <p class="font-semibold text-gray-700">Ideas to accelerate agentic adoption:</p>
+        <li>• <strong>GoBot team of 6</strong>: Identify 6 early adopters. Start with Rishi + Kevin/Robin.</li>
+        <li>• <strong>1 automation/week</strong>: Document + share as content for DPEX community</li>
+        <li>• <strong>Capabara differentiation</strong>: "Governance wrapper" story for enterprise buyers</li>
+        <li>• <strong>Demo-to-deal</strong>: Apr 2 demo → which client/partner can we pilot with by May?</li>
+        <li>• <strong>Mini workshop</strong>: Package GoBot + Claude Code as "AI Productivity Workshop"</li>
+      </div>
+    </div>
+  </div>
+
+  <!-- Now / Next / Later -->
+  <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b">
+      <h2 class="font-semibold text-gray-700">Now / Next / Later Roadmap</h2>
+    </div>
+    <div class="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+      <div class="p-5">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-3 h-3 bg-red-500 rounded-full inline-block"></span>
+          <h3 class="font-bold text-red-700">NOW (Mar–Apr)</h3>
+        </div>
+        <ul class="space-y-2 text-sm text-gray-700">
+          <li class="flex gap-2"><span>🔴</span><span>Close WMI by Mar 31</span></li>
+          <li class="flex gap-2"><span>🔴</span><span>Run Apr 2 Agentic Sync demo</span></li>
+          <li class="flex gap-2"><span>🟡</span><span>Send Axiata AIGP proposal</span></li>
+          <li class="flex gap-2"><span>🟡</span><span>Unblock Philippines SEC</span></li>
+          <li class="flex gap-2"><span>🟡</span><span>Confirm GoBot team of 6 pilot group</span></li>
+        </ul>
+      </div>
+      <div class="p-5">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-3 h-3 bg-amber-500 rounded-full inline-block"></span>
+          <h3 class="font-bold text-amber-700">NEXT (May–Jun)</h3>
+        </div>
+        <ul class="space-y-2 text-sm text-gray-700">
+          <li class="flex gap-2"><span>📋</span><span>Malaysia Prompt Challenge Phase 2 prep</span></li>
+          <li class="flex gap-2"><span>📋</span><span>Launch GGU partnership agreement</span></li>
+          <li class="flex gap-2"><span>📋</span><span>MSG grant POC #1 delivery</span></li>
+          <li class="flex gap-2"><span>📋</span><span>AI productivity mini-workshop launch</span></li>
+          <li class="flex gap-2"><span>📋</span><span>Edwin PHP pipeline: 3 named deals</span></li>
+        </ul>
+      </div>
+      <div class="p-5">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="w-3 h-3 bg-blue-500 rounded-full inline-block"></span>
+          <h3 class="font-bold text-blue-700">LATER (H2 FY27)</h3>
+        </div>
+        <ul class="space-y-2 text-sm text-gray-700">
+          <li class="flex gap-2"><span>🔮</span><span>GGU credentialed cohort #1</span></li>
+          <li class="flex gap-2"><span>🔮</span><span>Capabara enterprise pilots (post-Apr 2)</span></li>
+          <li class="flex gap-2"><span>🔮</span><span>CTC deal (SGD 100K+) — MY or PH</span></li>
+          <li class="flex gap-2"><span>🔮</span><span>IBF-accredited AI Finance track</span></li>
+          <li class="flex gap-2"><span>🔮</span><span>DPEX community → paid product</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== FY27 PLAN TAB ===================== -->
+<div id="pane-fy27" class="hidden">
+
+  <div class="bg-gradient-to-r from-indigo-700 to-purple-700 rounded-2xl p-6 mb-6 text-white">
+    <div class="flex items-start justify-between">
+      <div>
+        <p class="text-xs uppercase tracking-widest opacity-70 mb-1">FY27 · Apr 2026 – Mar 2027</p>
+        <h2 class="text-2xl font-bold mb-1">The AI Factory Ecosystem</h2>
+        <p class="text-indigo-200 text-sm">Applied Learning · AI Governance · Capabara Platform</p>
+      </div>
+      <div class="text-right text-xs text-indigo-200 opacity-80">
+        <div>Draft: Mar 28 2026</div>
+        <div>Owner: Alvin</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Revenue KPI targets -->
+  <h2 class="text-sm font-bold uppercase tracking-wide text-gray-500 mb-3">Revenue Targets</h2>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm relative overflow-hidden" style="border-color:#6366f1">
+      <div class="absolute top-0 right-0 w-20 h-20 bg-indigo-50 rounded-bl-full opacity-60"></div>
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Malaysia</p>
+      <p class="text-3xl font-bold text-indigo-600 mt-1">500K</p>
+      <p class="text-xs text-gray-400 mt-1">RM target</p>
+      <div class="mt-2 w-full bg-gray-100 rounded-full h-1.5">
+        <div class="bg-indigo-400 h-1.5 rounded-full" style="width:20%"></div>
+      </div>
+      <p class="text-xs text-indigo-500 mt-1">~20% est. current</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm relative overflow-hidden" style="border-color:#f59e0b">
+      <div class="absolute top-0 right-0 w-20 h-20 bg-amber-50 rounded-bl-full opacity-60"></div>
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Philippines</p>
+      <p class="text-3xl font-bold text-amber-600 mt-1">1M</p>
+      <p class="text-xs text-gray-400 mt-1">PHP target</p>
+      <div class="mt-2 w-full bg-gray-100 rounded-full h-1.5">
+        <div class="bg-amber-400 h-1.5 rounded-full" style="width:20%"></div>
+      </div>
+      <p class="text-xs text-amber-500 mt-1">~PHP 200K current</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm relative overflow-hidden" style="border-color:#10b981">
+      <div class="absolute top-0 right-0 w-20 h-20 bg-green-50 rounded-bl-full opacity-60"></div>
+      <p class="text-xs text-gray-500 uppercase tracking-wide">Singapore</p>
+      <p class="text-3xl font-bold text-green-600 mt-1">500K</p>
+      <p class="text-xs text-gray-400 mt-1">SGD target</p>
+      <div class="mt-2 w-full bg-gray-100 rounded-full h-1.5">
+        <div class="bg-green-400 h-1.5 rounded-full" style="width:40%"></div>
+      </div>
+      <p class="text-xs text-green-500 mt-1">~SGD 200K pipeline</p>
+    </div>
+    <div class="kpi-card bg-white rounded-xl p-4 shadow-sm relative overflow-hidden" style="border-color:#8b5cf6">
+      <div class="absolute top-0 right-0 w-20 h-20 bg-purple-50 rounded-bl-full opacity-60"></div>
+      <p class="text-xs text-gray-500 uppercase tracking-wide">New Partners</p>
+      <p class="text-3xl font-bold text-purple-600 mt-1">5+</p>
+      <p class="text-xs text-gray-400 mt-1">active referral partners</p>
+      <div class="mt-2 w-full bg-gray-100 rounded-full h-1.5">
+        <div class="bg-purple-400 h-1.5 rounded-full" style="width:30%"></div>
+      </div>
+      <p class="text-xs text-purple-500 mt-1">DRB, GGU, SMU, IBF...</p>
+    </div>
+  </div>
+
+  <!-- Sales Team OKRs -->
+  <div class="grid md:grid-cols-2 gap-4 mb-6">
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="bg-blue-600 px-5 py-3">
+        <h2 class="font-bold text-white text-sm">📊 Sales Team — FY27 KPIs</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-50 text-xs uppercase text-gray-400">
+              <th class="text-left px-4 py-2">KPI</th>
+              <th class="text-right px-4 py-2">Target</th>
+              <th class="text-left px-4 py-2">Notes</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 text-xs">
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Malaysia Revenue</td>
+              <td class="px-4 py-2.5 text-right font-bold text-indigo-600">RM 500K</td>
+              <td class="px-4 py-2.5 text-gray-500">Axiata deal = 50% of target</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Philippines Revenue</td>
+              <td class="px-4 py-2.5 text-right font-bold text-amber-600">PHP 1M</td>
+              <td class="px-4 py-2.5 text-gray-500">Needs SEC + 3 named Edwin deals</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Singapore Revenue</td>
+              <td class="px-4 py-2.5 text-right font-bold text-green-600">SGD 500K</td>
+              <td class="px-4 py-2.5 text-gray-500">MSG grants + enterprise</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">MSG Grant Projects</td>
+              <td class="px-4 py-2.5 text-right font-bold">3–5</td>
+              <td class="px-4 py-2.5 text-gray-500">Concurrent, SGD 30K each</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">CTC Deal (100K+)</td>
+              <td class="px-4 py-2.5 text-right font-bold">1</td>
+              <td class="px-4 py-2.5 text-gray-500">Via ITE partnership</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">New Enterprise Clients</td>
+              <td class="px-4 py-2.5 text-right font-bold">6</td>
+              <td class="px-4 py-2.5 text-gray-500">2 per market</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Avg Deal Size (SGD)</td>
+              <td class="px-4 py-2.5 text-right font-bold">≥70K</td>
+              <td class="px-4 py-2.5 text-gray-500">Up from SGD 64K in FY26</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Win Rate</td>
+              <td class="px-4 py-2.5 text-right font-bold">≥65%</td>
+              <td class="px-4 py-2.5 text-gray-500">Up from 58% in FY26</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Partner Referrals</td>
+              <td class="px-4 py-2.5 text-right font-bold">30%</td>
+              <td class="px-4 py-2.5 text-gray-500">% of new deals from partners</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">GGU Cohort #1</td>
+              <td class="px-4 py-2.5 text-right font-bold">Launch</td>
+              <td class="px-4 py-2.5 text-gray-500">H2 FY27 target</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Marketing Team OKRs -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div class="bg-green-600 px-5 py-3">
+        <h2 class="font-bold text-white text-sm">📣 Marketing Team — FY27 KPIs</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-50 text-xs uppercase text-gray-400">
+              <th class="text-left px-4 py-2">KPI</th>
+              <th class="text-right px-4 py-2">Target</th>
+              <th class="text-left px-4 py-2">Notes</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 text-xs">
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Qualified Leads/Month</td>
+              <td class="px-4 py-2.5 text-right font-bold text-green-700">50</td>
+              <td class="px-4 py-2.5 text-gray-500">MY + SG combined</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">CPL (Cost per Lead)</td>
+              <td class="px-4 py-2.5 text-right font-bold">≤SGD 30</td>
+              <td class="px-4 py-2.5 text-gray-500">Facebook + LinkedIn blend</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Webinars per Quarter</td>
+              <td class="px-4 py-2.5 text-right font-bold">3</td>
+              <td class="px-4 py-2.5 text-gray-500">1 SI + 2 co-hosted (APSCo, NetAssist)</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Avg Webinar Attendance</td>
+              <td class="px-4 py-2.5 text-right font-bold">100+</td>
+              <td class="px-4 py-2.5 text-gray-500">Baseline: 67 (Mar 2026)</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Ad ROAS</td>
+              <td class="px-4 py-2.5 text-right font-bold">≥3×</td>
+              <td class="px-4 py-2.5 text-gray-500">Revenue per ad dollar spent</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Email List Growth</td>
+              <td class="px-4 py-2.5 text-right font-bold">+500/qtr</td>
+              <td class="px-4 py-2.5 text-gray-500">Via lead magnets + webinars</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Lead Magnet Downloads</td>
+              <td class="px-4 py-2.5 text-right font-bold">200/mo</td>
+              <td class="px-4 py-2.5 text-gray-500">AI Factory Book + 99 Breaches</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Content Pieces/Month</td>
+              <td class="px-4 py-2.5 text-right font-bold">4</td>
+              <td class="px-4 py-2.5 text-gray-500">AI automation case studies</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Campaign Report Cadence</td>
+              <td class="px-4 py-2.5 text-right font-bold">Weekly</td>
+              <td class="px-4 py-2.5 text-gray-500">R/Y/G dashboard, no prompting</td>
+            </tr>
+            <tr class="deal-row">
+              <td class="px-4 py-2.5 font-medium">Prompt Challenge Reach</td>
+              <td class="px-4 py-2.5 text-right font-bold">National</td>
+              <td class="px-4 py-2.5 text-gray-500">Phase 2 July — MOE reach</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quarterly Roadmap -->
+  <h2 class="text-sm font-bold uppercase tracking-wide text-gray-500 mb-3">Quarterly Execution Plan</h2>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="bg-white rounded-xl p-4 shadow-sm border-t-4 border-red-400">
+      <p class="text-xs font-bold text-red-500 uppercase mb-2">Q1 · Apr–Jun 2026</p>
+      <ul class="space-y-1.5 text-xs text-gray-700">
+        <li class="flex gap-1.5"><span class="text-red-400 mt-0.5">▸</span><span>Close WMI (carry over)</span></li>
+        <li class="flex gap-1.5"><span class="text-red-400 mt-0.5">▸</span><span>Apr 2 Agentic Sync — demo + pilot commit</span></li>
+        <li class="flex gap-1.5"><span class="text-red-400 mt-0.5">▸</span><span>Send Axiata AIGP proposal</span></li>
+        <li class="flex gap-1.5"><span class="text-red-400 mt-0.5">▸</span><span>Malaysia Prompt Challenge Phase 1</span></li>
+        <li class="flex gap-1.5"><span class="text-red-400 mt-0.5">▸</span><span>Philippines SEC unblock + Edwin 3 deals</span></li>
+        <li class="flex gap-1.5"><span class="text-red-400 mt-0.5">▸</span><span>GoBot team of 6 pilot group confirmed</span></li>
+        <li class="flex gap-1.5"><span class="text-red-400 mt-0.5">▸</span><span>MSG grant POC #1 scoped</span></li>
+      </ul>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border-t-4 border-amber-400">
+      <p class="text-xs font-bold text-amber-500 uppercase mb-2">Q2 · Jul–Sep 2026</p>
+      <ul class="space-y-1.5 text-xs text-gray-700">
+        <li class="flex gap-1.5"><span class="text-amber-400 mt-0.5">▸</span><span>Malaysia Prompt Challenge Phase 2 (national, MOE)</span></li>
+        <li class="flex gap-1.5"><span class="text-amber-400 mt-0.5">▸</span><span>Axiata AIGP delivery — 20 pax</span></li>
+        <li class="flex gap-1.5"><span class="text-amber-400 mt-0.5">▸</span><span>Launch AI productivity mini-workshop</span></li>
+        <li class="flex gap-1.5"><span class="text-amber-400 mt-0.5">▸</span><span>MSG grant POC #1 + #2 delivery</span></li>
+        <li class="flex gap-1.5"><span class="text-amber-400 mt-0.5">▸</span><span>NAIO AI Governance guidelines — ride the narrative</span></li>
+        <li class="flex gap-1.5"><span class="text-amber-400 mt-0.5">▸</span><span>Rokid AR POC pilot delivery</span></li>
+        <li class="flex gap-1.5"><span class="text-amber-400 mt-0.5">▸</span><span>AI Factory Book lead magnet launch</span></li>
+      </ul>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border-t-4 border-blue-400">
+      <p class="text-xs font-bold text-blue-500 uppercase mb-2">Q3 · Oct–Dec 2026</p>
+      <ul class="space-y-1.5 text-xs text-gray-700">
+        <li class="flex gap-1.5"><span class="text-blue-400 mt-0.5">▸</span><span>GGU partnership launch + cohort prep</span></li>
+        <li class="flex gap-1.5"><span class="text-blue-400 mt-0.5">▸</span><span>CTC deal targeted (SGD 100K+)</span></li>
+        <li class="flex gap-1.5"><span class="text-blue-400 mt-0.5">▸</span><span>Philippines revenue mid-year review</span></li>
+        <li class="flex gap-1.5"><span class="text-blue-400 mt-0.5">▸</span><span>MSG grant POC #3 + scale playbook</span></li>
+        <li class="flex gap-1.5"><span class="text-blue-400 mt-0.5">▸</span><span>Capabara Chinese LLM build</span></li>
+        <li class="flex gap-1.5"><span class="text-blue-400 mt-0.5">▸</span><span>SI as AI Factory Enabler — ASEAN positioning</span></li>
+        <li class="flex gap-1.5"><span class="text-blue-400 mt-0.5">▸</span><span>Techno China MSG pilot launch</span></li>
+      </ul>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border-t-4 border-purple-400">
+      <p class="text-xs font-bold text-purple-500 uppercase mb-2">Q4 · Jan–Mar 2027</p>
+      <ul class="space-y-1.5 text-xs text-gray-700">
+        <li class="flex gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>GGU Cohort #1 delivery</span></li>
+        <li class="flex gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>DPEX community → paid product</span></li>
+        <li class="flex gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>IBF-accredited AI Finance track</span></li>
+        <li class="flex gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>FY27 target close-out review</span></li>
+        <li class="flex gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>FY28 planning + new market scan</span></li>
+        <li class="flex gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>Annual Capabara platform review</span></li>
+        <li class="flex gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>Partner ecosystem QBR</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Strategic Pillars — from AI Factory Ecosystem infographic -->
+  <div class="bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-3 mb-4 flex items-center gap-3">
+    <span class="text-2xl">🏭</span>
+    <div>
+      <p class="text-xs uppercase tracking-widest text-indigo-500 font-bold">FY27 Strategic Framework</p>
+      <p class="font-bold text-indigo-800">The AI Factory Ecosystem — AI Capability, Innovation & Productivity</p>
+    </div>
+  </div>
+  <div class="grid md:grid-cols-3 gap-4 mb-6">
+    <!-- Pillar 1 -->
+    <div class="bg-white rounded-xl p-5 shadow-sm border-t-4 border-blue-500">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center text-xl">📚</div>
+        <div>
+          <p class="text-xs text-blue-500 font-bold uppercase tracking-wide">Pillar 1</p>
+          <h3 class="font-bold text-gray-800 text-sm">Applied Learning</h3>
+        </div>
+      </div>
+      <p class="text-xs text-blue-600 font-semibold mb-2">Revenue Engine — Partnerships & Training</p>
+      <ul class="text-xs text-gray-600 space-y-1.5">
+        <li>• <strong>Axiata AIGP:</strong> 20 pax × SGD 4K = SGD 80K (HRDC claimable)</li>
+        <li>• <strong>MSG Grants:</strong> 3–5 concurrent POC projects (SGD 30K each)</li>
+        <li>• <strong>GGU Partnership:</strong> Credentialed Gen AI cohort (65/35 rev share)</li>
+        <li>• <strong>MY Prompt Challenge:</strong> Scale Phase 2 to national MOE reach</li>
+        <li>• <strong>SIT expansion:</strong> Copilot rollout → full platform adoption</li>
+        <li>• <strong>KPI:</strong> 6 new enterprise clients · ≥65% win rate</li>
+      </ul>
+    </div>
+    <!-- Pillar 2 -->
+    <div class="bg-white rounded-xl p-5 shadow-sm border-t-4 border-green-500">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center text-xl">🛡️</div>
+        <div>
+          <p class="text-xs text-green-500 font-bold uppercase tracking-wide">Pillar 2</p>
+          <h3 class="font-bold text-gray-800 text-sm">AI Governance / Differentiation</h3>
+        </div>
+      </div>
+      <p class="text-xs text-green-600 font-semibold mb-2">Compliance & Certification</p>
+      <ul class="text-xs text-gray-600 space-y-1.5">
+        <li>• <strong>AIGP + CIPM certs:</strong> Open enrollment across ASEAN</li>
+        <li>• <strong>NAIO tailwind:</strong> MY AI Governance Bill (Cabinet Jun 2026) = timing window</li>
+        <li>• <strong>WMI Advisory:</strong> AI policy consulting add-on → Phase B upsell</li>
+        <li>• <strong>AI Governance consulting:</strong> Risk scanner, security checklist, succession framework</li>
+        <li>• <strong>DPEX Network:</strong> Community → paid governance product</li>
+        <li>• <strong>KPI:</strong> 30% deals via partner referrals · IBF-accredited track</li>
+      </ul>
+    </div>
+    <!-- Pillar 3 -->
+    <div class="bg-white rounded-xl p-5 shadow-sm border-t-4 border-purple-500">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-9 h-9 bg-purple-100 rounded-lg flex items-center justify-center text-xl">🐾</div>
+        <div>
+          <p class="text-xs text-purple-500 font-bold uppercase tracking-wide">Pillar 3</p>
+          <h3 class="font-bold text-gray-800 text-sm">Capabara Platform</h3>
+        </div>
+      </div>
+      <p class="text-xs text-purple-600 font-semibold mb-2">Discovery Engine</p>
+      <ul class="text-xs text-gray-600 space-y-1.5">
+        <li>• <strong>Chinese LLM support:</strong> Unlock MY + CN segments (due Apr 30)</li>
+        <li>• <strong>Multi-channel API:</strong> Web, Telegram, mobile, Rokid wearable</li>
+        <li>• <strong>AI tutor traction:</strong> Education showing highest adoption — double down</li>
+        <li>• <strong>Rokid AR POC:</strong> First XR learning demo in SG (IMDA funding target)</li>
+        <li>• <strong>Reach 5K:</strong> Scale from ~1K via classes + outreach</li>
+        <li>• <strong>KPI:</strong> 5× Capabara reach · XR governance course launched</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- FY27 Scorecard -->
+  <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b flex items-center gap-2">
+      <h2 class="font-semibold text-gray-700">FY27 Scorecard — Update Each Quarter</h2>
+      <span class="text-xs bg-yellow-100 text-yellow-700 rounded-full px-2 py-0.5">Template — fill in actuals</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 text-xs uppercase text-gray-400">
+            <th class="text-left px-5 py-3">Metric</th>
+            <th class="text-right px-5 py-3">Target</th>
+            <th class="text-right px-5 py-3">Q1 Actual</th>
+            <th class="text-right px-5 py-3">Q2 Actual</th>
+            <th class="text-right px-5 py-3">Q3 Actual</th>
+            <th class="text-right px-5 py-3">Q4 Actual</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 text-xs">
+          <tr><td class="px-5 py-2.5 font-medium text-gray-700">Malaysia Revenue (RM)</td><td class="px-5 py-2.5 text-right font-bold">500,000</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td></tr>
+          <tr><td class="px-5 py-2.5 font-medium text-gray-700">Philippines Revenue (PHP)</td><td class="px-5 py-2.5 text-right font-bold">1,000,000</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td></tr>
+          <tr><td class="px-5 py-2.5 font-medium text-gray-700">Singapore Revenue (SGD)</td><td class="px-5 py-2.5 text-right font-bold">500,000</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td></tr>
+          <tr><td class="px-5 py-2.5 font-medium text-gray-700">Qualified Leads/Month</td><td class="px-5 py-2.5 text-right font-bold">50</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td></tr>
+          <tr><td class="px-5 py-2.5 font-medium text-gray-700">MSG Grant Projects Running</td><td class="px-5 py-2.5 text-right font-bold">3–5</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td></tr>
+          <tr><td class="px-5 py-2.5 font-medium text-gray-700">New Enterprise Clients</td><td class="px-5 py-2.5 text-right font-bold">6</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td></tr>
+          <tr><td class="px-5 py-2.5 font-medium text-gray-700">Active Partners</td><td class="px-5 py-2.5 text-right font-bold">5+</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td></tr>
+          <tr><td class="px-5 py-2.5 font-medium text-gray-700">GoBot Power Users</td><td class="px-5 py-2.5 text-right font-bold">6</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td><td class="px-5 py-2.5 text-right text-gray-300">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="px-5 py-3 bg-gray-50 text-xs text-gray-400">
+      Note: The image you sent wasn't fully readable by the Vision API — specific initiatives from the photo can be added manually. Share as text or a clearer screenshot to fill in any missing items.
+    </div>
+  </div>
+
+</div>
+</div><!-- /max-w-7xl -->
+
+<script>
+// Tab switching
+function showTab(name) {
+  ['pipeline','marketing','strategy','fy27'].forEach(t => {
+    document.getElementById('pane-'+t).classList.add('hidden');
+    document.getElementById('tab-'+t).classList.remove('active');
+    document.getElementById('tab-'+t).classList.add('text-gray-500');
+    document.getElementById('tab-'+t).classList.remove('text-blue-600','text-indigo-700','font-bold');
+  });
+  document.getElementById('pane-'+name).classList.remove('hidden');
+  const color = name === 'fy27' ? 'text-indigo-700' : 'text-blue-600';
+  document.getElementById('tab-'+name).classList.add('active', color, 'font-bold');
+  document.getElementById('tab-'+name).classList.remove('text-gray-500');
+}
+
+// Pipeline Chart — real data from xlsx
+new Chart(document.getElementById('pipelineChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Won/Closing (100%)', 'Near-Won (99%)', 'High Confidence (75%)', 'Proposal (50%)', 'Early Stage (25%)'],
+    datasets: [{
+      data: [87, 1, 1032, 2275, 425],
+      backgroundColor: ['#16a34a','#22c55e','#f59e0b','#3b82f6','#9ca3af'],
+      borderWidth: 2,
+      borderColor: '#fff',
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { size: 11 } } },
+      tooltip: { callbacks: { label: ctx => ctx.label + ': SGD ' + ctx.parsed.toLocaleString() + 'K' } }
+    }
+  }
+});
+
+// Rep Chart — pipeline by sales rep
+new Chart(document.getElementById('marketChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Alfred', 'Raani', 'Wendy', 'Rishi', 'Chris'],
+    datasets: [{
+      label: 'Pipeline Value (SGD K)',
+      data: [1724, 1226, 576, 264, 30],
+      backgroundColor: ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444'],
+      borderRadius: 6,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { callback: v => v+'K' } }
+    }
+  }
+});
+
+// Channel Chart
+new Chart(document.getElementById('channelChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Facebook Ads', 'Webinars/Partners', 'Email/Direct', 'Organic/Community'],
+    datasets: [{
+      data: [40, 30, 20, 10],
+      backgroundColor: ['#3b82f6','#10b981','#f59e0b','#8b5cf6'],
+      borderWidth: 2,
+      borderColor: '#fff',
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }
+  }
+});
+
+// Funnel Chart
+new Chart(document.getElementById('funnelChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Impressions', 'Clicks', 'Leads', 'Qualified', 'Enrolled'],
+    datasets: [{
+      label: 'Malaysia AI Funnel (est.)',
+      data: [5000, 800, 120, 40, 12],
+      backgroundColor: ['#dbeafe','#93c5fd','#3b82f6','#2563eb','#1d4ed8'],
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true,
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: { x: { beginAtZero: true } }
+  }
+});
+</script>
+</body>
+</html>

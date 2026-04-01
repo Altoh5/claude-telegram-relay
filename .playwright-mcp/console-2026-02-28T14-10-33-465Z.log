@@ -1,0 +1,57 @@
+[    1766ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1767ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1767ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1767ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1767ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1767ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1767ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1768ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1768ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1768ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1768ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1768ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1768ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1768ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[    1768ms] [WARNING] 'expr' should only be used inside other reactive functions. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   56416ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   56416ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   56563ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   56563ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   56711ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   56712ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   56936ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   56936ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   57229ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   57229ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   57366ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   57366ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   57366ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   57367ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   57575ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   57575ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   57575ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   57576ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58086ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58087ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58476ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58476ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58482ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58482ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58485ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58485ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58490ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58490ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58499ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58499ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58502ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58502ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58502ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58502ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58506ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58506ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58507ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58507ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58859ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58859ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1
+[   58859ms] [WARNING] Fragl warning:  image may come from a different origin but you did not set the crossOrigin attribute. @ https://static.canva.com/web/de7b6a15ca4634aa.sentry_browser.js:0
+[   58859ms] [WARNING] WebGL: INVALID_VALUE: texImage2D: no image @ https://static.canva.com/web/2bc93aa1908f04fa.vendor.js:1

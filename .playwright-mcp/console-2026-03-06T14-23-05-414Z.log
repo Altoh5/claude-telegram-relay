@@ -1,0 +1,22 @@
+[  193157ms] [WARNING] Deprecation warning: value provided is not in a recognized RFC2822 or ISO format. moment construction falls back to js Date(), which is not reliable across all browsers and versions. Non RFC2822/ISO date formats are discouraged. Please refer to http://momentjs.com/guides/#/warnings/js-date/ for more info.
+Arguments: 
+[0] _isAMomentObject: true, _isUTC: false, _useUTC: false, _l: undefined, _i: 03/18/2025, _f: undefined, _strict: undefined, _locale: [object Object]
+Error
+    at t.createFromInputFallback (https://www.skool.com/_next/static/chunks/pages/_app-4fc58970c7277a77.js:18:94124)
+    at https://www.skool.com/_next/static/chunks/pages/_app-4fc58970c7277a77.js:18:114021
+    at tr (https://www.skool.com/_next/static/chunks/pages/_app-4fc58970c7277a77.js:18:114050)
+    at tn (https://www.skool.com/_next/static/chunks/pages/_app-4fc58970c7277a77.js:18:114618)
+    at to (https://www.skool.com/_next/static/chunks/pages/_app-4fc58970c7277a77.js:18:114700)
+    at t (https://www.skool.com/_next/static/chunks/pages/_app-4fc58970c7277a77.js:18:91041)
+    at https://www.skool.com/_next/static/chunks/pages/%5Bgroup%5D-128d2483e875f477.js:1:38144
+    at ak (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:60999)
+    at up (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:72881)
+    at uc (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:72087)
+    at us (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:71692)
+    at i (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:122867)
+    at oD (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:99169)
+    at https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:94218
+    at ox (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:94225)
+    at x (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:137567)
+    at MessagePort.T (https://www.skool.com/_next/static/chunks/framework-b0ec748c7a4c483a.js:1:138097) @ https://www.skool.com/_next/static/chunks/pages/_app-4fc58970c7277a77.js:0
+[  193353ms] [WARNING] Unsupported prop change on Elements: You cannot change the `stripe` prop after setting it. @ https://www.skool.com/_next/static/chunks/pages/_app-4fc58970c7277a77.js:0

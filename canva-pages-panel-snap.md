@@ -1,0 +1,767 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - heading "Canva editor" [level=1] [ref=e7]
+    - generic [ref=e8]: Loading
+    - generic [ref=e10]:
+      - paragraph [ref=e12]:
+        - link "Skip navigation" [ref=e13] [cursor=pointer]:
+          - /url: "#_r_0_"
+          - generic [ref=e14]: Skip navigation
+      - paragraph [ref=e16]:
+        - button "Skip to main content" [ref=e17] [cursor=pointer]:
+          - generic [ref=e18]: Skip to main content
+      - generic [ref=e19]:
+        - banner [ref=e20]:
+          - menubar "Main" [ref=e22]:
+            - generic [ref=e24]:
+              - menuitem "Home" [ref=e571] [cursor=pointer]:
+                - generic [ref=e572]:
+                  - generic:
+                    - img
+              - menuitem "File" [ref=e29] [cursor=pointer]:
+                - generic [ref=e30]: File
+              - menuitem "Resize" [ref=e33] [cursor=pointer]:
+                - generic [ref=e39]:
+                  - generic:
+                    - img
+                - generic [ref=e41]: Resize
+              - menuitem "Editing" [ref=e44] [cursor=pointer]:
+                - generic [ref=e45]:
+                  - generic:
+                    - img
+                - generic [ref=e47]:
+                  - generic [ref=e48]: Editing
+                  - generic [ref=e49]:
+                    - generic:
+                      - img
+              - menuitem "Undo" [ref=e53] [cursor=pointer]:
+                - generic [ref=e54]:
+                  - generic:
+                    - img
+              - menuitem "Redo" [disabled] [ref=e57]:
+                - generic [ref=e58]:
+                  - generic:
+                    - img
+              - menuitem "All changes saved" [ref=e64] [cursor=pointer]:
+                - generic [ref=e65]:
+                  - generic:
+                    - img
+            - generic [ref=e66]:
+              - generic [ref=e69]:
+                - textbox "Design title" [ref=e70]: GGU-Partnership-Proposal-Slides.pdf
+                - generic: GGU-Partnership-Proposal-Slides.pdf
+              - generic [ref=e72]:
+                - button "Alvin Toh" [ref=e74] [cursor=pointer]:
+                  - generic "Alvin Toh" [ref=e75]:
+                    - img [ref=e76]:
+                      - generic [ref=e78]: AT
+                - button "Share" [ref=e81] [cursor=pointer]:
+                  - generic [ref=e82]:
+                    - generic:
+                      - img
+              - menuitem "Analytics" [ref=e578] [cursor=pointer]:
+                - generic [ref=e579]:
+                  - generic:
+                    - img
+              - menuitem "View all comments" [ref=e84] [cursor=pointer]:
+                - generic [ref=e85]:
+                  - generic:
+                    - img
+              - menuitem "Share" [ref=e584] [cursor=pointer]:
+                - generic [ref=e585]:
+                  - generic:
+                    - img
+                - generic [ref=e586]: Share
+        - generic [ref=e87]:
+          - complementary "Side Panel" [ref=e88]:
+            - tablist "Side Panel" [ref=e95]:
+              - tab "Templates" [ref=e96] [cursor=pointer]:
+                - generic "Templates" [ref=e97]:
+                  - generic [ref=e99]:
+                    - generic:
+                      - img
+                  - generic [ref=e100]: Templates
+              - tab "Elements" [ref=e101] [cursor=pointer]:
+                - generic "Elements" [ref=e102]:
+                  - generic [ref=e104]:
+                    - generic:
+                      - img
+                  - generic [ref=e105]: Elements
+              - tab "Text" [ref=e106] [cursor=pointer]:
+                - generic "Text" [ref=e107]:
+                  - generic [ref=e109]:
+                    - generic:
+                      - img
+                  - generic [ref=e110]: Text
+              - tab "Brand" [ref=e111] [cursor=pointer]:
+                - generic "Brand" [ref=e112]:
+                  - generic [ref=e114]:
+                    - generic:
+                      - img
+                    - generic [ref=e117]: New
+                  - generic [ref=e118]: Brand
+              - tab "Uploads" [ref=e119] [cursor=pointer]:
+                - generic "Uploads" [ref=e121]:
+                  - generic [ref=e122]:
+                    - generic:
+                      - img
+                  - generic "Uploads" [ref=e124]:
+                    - generic [ref=e126]:
+                      - generic:
+                        - img
+                    - generic [ref=e127]: Uploads
+              - tab "Tools" [ref=e128] [cursor=pointer]:
+                - generic "Tools" [ref=e129]:
+                  - generic [ref=e131]:
+                    - generic:
+                      - img
+                  - generic [ref=e132]: Tools
+              - tab "Projects" [ref=e133] [cursor=pointer]:
+                - generic "Projects" [ref=e135]:
+                  - generic [ref=e136]:
+                    - generic:
+                      - img
+                  - generic "Projects" [ref=e138]:
+                    - generic [ref=e140]:
+                      - generic:
+                        - img
+                    - generic [ref=e141]: Projects
+              - tab "Apps" [ref=e142] [cursor=pointer]:
+                - generic "Apps" [ref=e143]:
+                  - generic [ref=e145]:
+                    - generic:
+                      - img
+                  - generic [ref=e146]: Apps
+              - separator [ref=e148]
+              - tab "Magic Media" [ref=e149] [cursor=pointer]:
+                - generic "Magic Media" [ref=e150]:
+                  - generic [ref=e152]:
+                    - generic:
+                      - img
+                  - generic [ref=e153]: Magic Media
+              - tab "Photos" [ref=e154] [cursor=pointer]:
+                - generic "Photos" [ref=e155]:
+                  - generic [ref=e157]:
+                    - generic:
+                      - img
+                  - generic [ref=e158]: Photos
+              - tab "Background" [ref=e159] [cursor=pointer]:
+                - generic "Background" [ref=e160]:
+                  - generic [ref=e162]:
+                    - generic:
+                      - img
+                  - generic [ref=e163]: Background
+              - tab "Captions" [ref=e164] [cursor=pointer]:
+                - generic "Captions" [ref=e165]:
+                  - generic [ref=e167]:
+                    - generic:
+                      - img
+                  - generic [ref=e168]: Captions
+              - tab "Frame Maker" [ref=e587] [cursor=pointer]:
+                - generic "Frame Maker" [ref=e588]:
+                  - generic [ref=e592]: Frame Maker
+              - tab "D-ID AI Avatars" [ref=e593] [cursor=pointer]:
+                - generic "D-ID AI Avatars" [ref=e594]:
+                  - generic [ref=e598]: D-ID AI Avatars
+              - tab "SpeedPaint" [ref=e599] [cursor=pointer]:
+                - generic "SpeedPaint" [ref=e600]:
+                  - generic [ref=e604]: SpeedPaint
+          - generic [ref=e190]:
+            - generic:
+              - button "Canvas entry point"
+            - main "Canvas" [ref=e191]:
+              - toolbar "Selected element common controls" [ref=e978]:
+                - generic [ref=e982]:
+                  - button "5.0s, Edit timing" [ref=e1721] [cursor=pointer]:
+                    - generic [ref=e1722]:
+                      - generic:
+                        - img
+                    - generic [ref=e1723]: 5.0s
+                  - button "Background color" [ref=e1729] [cursor=pointer]:
+                    - img "#ffffff" [ref=e1731]
+                  - button "Animate" [ref=e1078] [cursor=pointer]:
+                    - generic [ref=e1079]: Animate
+                  - button "Position" [ref=e1084] [cursor=pointer]:
+                    - generic [ref=e1085]: Position
+                  - button "Delete page" [ref=e1736] [cursor=pointer]:
+                    - generic [ref=e1737]:
+                      - generic:
+                        - img
+              - generic [ref=e193]:
+                - generic [ref=e1739]:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - application
+                    - generic [ref=e1746]:
+                      - img
+                      - generic [ref=e1748]:
+                        - generic:
+                          - img
+                - navigation "Page" [ref=e1749]:
+                  - generic [ref=e1755]:
+                    - paragraph [ref=e1759]:
+                      - button "Skip to end of carousel" [ref=e1760] [cursor=pointer]:
+                        - generic [ref=e1761]: Skip to end of carousel
+                    - generic [ref=e1768]:
+                      - generic [ref=e1769]:
+                        - button "Page 1" [ref=e1776] [cursor=pointer]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - paragraph: "1"
+                                - paragraph: "-"
+                                - paragraph [ref=e1785]
+                      - generic [ref=e1786]:
+                        - button "Page 2" [ref=e1793] [cursor=pointer]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - paragraph: "2"
+                                - paragraph: "-"
+                                - paragraph [ref=e1802]
+                      - generic [ref=e1804]:
+                        - generic [ref=e1809] [cursor=pointer]:
+                          - button "Page 3" [ref=e1810]:
+                            - img [ref=e1819]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "3"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e1825] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e1826] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e1827] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e1830]:
+                        - generic [ref=e1835] [cursor=pointer]:
+                          - button "Page 4" [ref=e1836]:
+                            - img [ref=e1845]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "4"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e1851] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e1852] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e1853] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e1856]:
+                        - generic [ref=e1861] [cursor=pointer]:
+                          - button "Page 5" [ref=e1862]:
+                            - img [ref=e1871]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "5"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e1877] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e1878] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e1879] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e1882]:
+                        - generic [ref=e1887] [cursor=pointer]:
+                          - button "Page 6" [ref=e1888]:
+                            - img [ref=e1897]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "6"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e1903] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e1904] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e1905] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e1908]:
+                        - generic [ref=e1913] [cursor=pointer]:
+                          - button "Page 7" [ref=e1914]:
+                            - img [ref=e1923]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "7"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e1929] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e1930] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e1931] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e1934]:
+                        - generic [ref=e1939] [cursor=pointer]:
+                          - button "Page 8" [ref=e1940]:
+                            - img [ref=e1949]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "8"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e1955] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e1956] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e1957] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e1960]:
+                        - generic [ref=e1965] [cursor=pointer]:
+                          - button "Page 9" [ref=e1966]:
+                            - img [ref=e1975]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "9"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e1981] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e1982] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e1983] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e1986]:
+                        - generic [ref=e1991] [cursor=pointer]:
+                          - button "Page 10" [ref=e1992]:
+                            - img [ref=e2001]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "10"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e2007] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e2008] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e2009] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e2012]:
+                        - generic [ref=e2017] [cursor=pointer]:
+                          - button "Page 11" [ref=e2018]:
+                            - img [ref=e2027]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "11"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e2033] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e2034] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e2035] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e2038]:
+                        - generic [ref=e2043] [cursor=pointer]:
+                          - button "Page 12" [ref=e2044]:
+                            - img [ref=e2053]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "12"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e2059] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e2060] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e2061] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e2064]:
+                        - generic [ref=e2069] [cursor=pointer]:
+                          - button "Page 13" [ref=e2070]:
+                            - img [ref=e2079]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "13"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e2085] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e2086] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e2087] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e2090]:
+                        - generic [ref=e2095] [cursor=pointer]:
+                          - button "Page 14" [ref=e2096]:
+                            - img [ref=e2105]
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - button "Page options":
+                                            - generic:
+                                              - img
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: "14"
+                                  - paragraph: "-"
+                                  - generic:
+                                    - textbox "Page title" [disabled]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - button "Add" [ref=e2111] [cursor=pointer]:
+                                  - generic:
+                                    - img
+                                - generic:
+                                  - menu:
+                                    - menuitem "Add page" [ref=e2112] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                                    - menuitem "Add transition" [ref=e2113] [cursor=pointer]:
+                                      - generic:
+                                        - img
+                      - generic [ref=e2121] [cursor=pointer]:
+                        - button "Page 15" [ref=e2122]:
+                          - img [ref=e2131]
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - button "Page options":
+                                          - generic:
+                                            - img
+                          - generic:
+                            - generic:
+                              - generic:
+                                - paragraph: "15"
+                                - paragraph: "-"
+                                - textbox "Page title" [ref=e2136]
+                      - generic [ref=e2142]:
+                        - button "Add page" [ref=e2146] [cursor=pointer]:
+                          - generic [ref=e2147]:
+                            - generic:
+                              - img
+                        - button "Add page type" [ref=e2152] [cursor=pointer]:
+                          - generic [ref=e2153]:
+                            - generic:
+                              - img
+                    - paragraph [ref=e2156]:
+                      - button "Skip to start of carousel" [ref=e2157] [cursor=pointer]:
+                        - generic [ref=e2158]: Skip to start of carousel
+            - contentinfo [ref=e467]:
+              - generic [ref=e468]:
+                - button "Notes" [ref=e473] [cursor=pointer]:
+                  - generic [ref=e474]:
+                    - generic:
+                      - img
+                  - generic [ref=e475]: Notes
+                - generic [ref=e476]:
+                  - slider "Zoom" [ref=e491] [cursor=pointer]: "-0.538"
+                  - combobox "Zoom options" [ref=e498] [cursor=pointer]:
+                    - generic [ref=e500]: 58%
+                  - button "Pages" [expanded] [active] [ref=e504] [cursor=pointer]:
+                    - generic [ref=e505]:
+                      - generic:
+                        - img
+                    - generic [ref=e506]: Pages
+                  - button "15 / 15" [ref=e935] [cursor=pointer]:
+                    - generic [ref=e511]: 15 / 15
+                  - button "Grid view" [ref=e516] [cursor=pointer]:
+                    - generic [ref=e517]:
+                      - generic:
+                        - img
+                  - button "Present full screen" [ref=e608] [cursor=pointer]:
+                    - generic [ref=e609]:
+                      - generic:
+                        - img
+                  - button "Downloads" [ref=e1566] [cursor=pointer]:
+                    - generic [ref=e1567]:
+                      - generic:
+                        - img
+                  - button "Help Assistant" [ref=e522] [cursor=pointer]:
+                    - generic [ref=e523]:
+                      - generic:
+                        - img
+  - generic [ref=e526]: Side Panel
+  - generic [ref=e527]: Canvas
+  - generic [ref=e528]: The main navigation contains buttons for document level options. To switch between buttons, use the left and right keys and to activate, press Enter. To skip to the canvas, press “⌘F2”.
+  - generic [ref=e529]: Undo
+  - generic [ref=e530]: Redo
+  - generic [ref=e531]: The design title holds the name of your design. To edit the design title, press Enter. To stop editing the design title, press Escape.
+  - generic [ref=e557]: The side panel is where you can apply templates or add elements. To skip to the canvas, press “⌘F2”.
+  - generic [ref=e558]: Notes
+  - generic [ref=e559]: Zoom
+  - generic [ref=e560]: All changes saved
+  - generic [ref=e565]: Hide page thumbnails
+  - generic [ref=e566]: Go to page
+  - generic [ref=e567]: Grid view
+  - generic [ref=e568]: Help Assistant
+  - generic [ref=e610]: Present full screen
+  - generic [ref=e611]: Home
+  - generic [ref=e612]: Analytics
+  - generic [ref=e613]: Share
+  - generic [ref=e614]: This button opens the menu with all the options to share and print your design.
+  - generic [ref=e942]: Animate
+  - generic [ref=e1700]: Press the enter key to select a fill color and the escape key to exit
+  - generic [ref=e1701]: Background color
+  - generic [ref=e2159]: Edit timing
+  - generic [ref=e2160]: Delete page
+  - generic [ref=e2161]: The canvas is where your design is. To navigate into the page, press Enter. To navigate into groups or elements on the page, press Enter again. Press tab to move to the next page, group, or element. To operate the toolbar, use the “⌘F1” key. If an element is selected, move it using the arrow keys; rotate using the “,” key and “.” key; and resize using the arrow keys with the “⌘” key. All of these keys can be modified with the “⇧” key to increase increment.
+  - generic [ref=e2162]: Lock position only
+  - generic [ref=e2163]: Duplicate page
+  - generic [ref=e2164]: Delete page
+  - generic [ref=e2165]: More
+  - generic [ref=e2166]: Add page
+  - generic [ref=e2167]: Add page type

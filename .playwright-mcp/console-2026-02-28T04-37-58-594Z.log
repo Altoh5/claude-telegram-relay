@@ -1,0 +1,64 @@
+[    1163ms] [WARNING] [GSI_LOGGER]: Your client application uses one of the Google One Tap prompt UI status methods that may stop functioning when FedCM becomes mandatory. Refer to the migration guide to update your code accordingly and opt-in to FedCM to test your changes. Learn more: https://developers.google.com/identity/gsi/web/guides/fedcm-migration?s=dc#display_moment and https://developers.google.com/identity/gsi/web/guides/fedcm-migration?s=dc#skipped_moment @ https://static.canva.com/web/f3cf4411110060c6.sentry_browser.js:0
+[    1168ms] [ERROR] Not signed in with the identity provider. @ https://www.canva.com/:0
+[    4161ms] [ERROR] [GSI_LOGGER]: FedCM get() rejects with NetworkError: Error retrieving a token. @ https://static.canva.com/web/f3cf4411110060c6.sentry_browser.js:0
+[ 1330082ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://static.canva.com/web/24ac6b150d42572b.js:556
+[ 1330082ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://static.canva.com/web/24ac6b150d42572b.js:556
+[ 1370142ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://static.canva.com/web/24ac6b150d42572b.js:556
+[ 1370142ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://static.canva.com/web/24ac6b150d42572b.js:556
+[ 1370843ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://static.canva.com/web/24ac6b150d42572b.js:556
+[ 1370843ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://static.canva.com/web/24ac6b150d42572b.js:556
+[ 6585227ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260063734:0
+[ 6586528ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260065117:0
+[ 6587969ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260066556:0
+[ 6589863ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260068453:0
+[ 6592321ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260070906:0
+[ 6595999ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260074586:0
+[ 6600403ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260078987:0
+[ 6605551ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260084140:0
+[ 6611037ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772260089620:0
+[12195153ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772265673691:0
+[12196371ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772265674960:0
+[12198006ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772265676597:0
+[12200189ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772265678769:0
+[12202397ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772265680986:0
+[15332504ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772268811026:0
+[15333516ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772268812107:0
+[15335208ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772268813793:0
+[15337307ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772268815897:0
+[15926585ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772269405063:0
+[15927601ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772269406188:0
+[15929135ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772269407726:0
+[19661066ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772273139605:0
+[19662193ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772273140783:0
+[19663603ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772273142191:0
+[19665664ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772273144255:0
+[19667998ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772273146588:0
+[21524897ms] [ERROR] Failed to load resource: net::ERR_NETWORK_CHANGED @ https://www.canva.com/_online?1772275003418:0
+[21526093ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://telemetry.canva.com/v1/traces:0
+[21526115ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772275004704:0
+[21527660ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772275006250:0
+[25276970ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772278755484:0
+[25278085ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://telemetry.canva.com/v1/traces:0
+[25278123ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772278756709:0
+[25279461ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772278758048:0
+[25281312ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772278759898:0
+[25283529ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772278762120:0
+[27143778ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772280622308:0
+[27144817ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772280623406:0
+[27146177ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772280624767:0
+[27148328ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772280626919:0
+[27150626ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772280629217:0
+[27154084ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772280632673:0
+[29002912ms] [ERROR] Failed to load resource: net::ERR_NETWORK_CHANGED @ https://www.canva.com/_online?1772282481119:0
+[29003451ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772282481677:0
+[29004050ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772282482589:0
+[29005383ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772282483957:0
+[29007471ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772282486059:0
+[29010094ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772282488680:0
+[29012964ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772282491554:0
+[31333098ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772284811657:0
+[31334410ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772284812991:0
+[31335823ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772284814407:0
+[31337711ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772284816259:0
+[31340362ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_online?1772284818949:0
+[31342354ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://www.canva.com/_ajax/livefolderitem/channel/AiPq6xI8kkh1gAvRotm7DwU/retrieve_updates?continuation=1772284331783-0:0
