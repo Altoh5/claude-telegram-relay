@@ -19,3 +19,6 @@ last-processed-call.json
 meeting-actions-state.json
 gobot-master/
 .worktrees/
+demo-reel/manus-walkthrough-full.mp4
+demo-reel/clips/claude-cowork-full.mp4
+demo-reel/demo-reel-remotion/out/*.mp4
