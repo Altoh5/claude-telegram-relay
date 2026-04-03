@@ -1,38 +1,21 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { sendTelegramMessage } from "../telegram";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export type PhotoCategory = "receipt" | "food_place" | "product" | "general";
 
-const VALID_PHOTO_CATEGORIES = new Set<PhotoCategory>(["receipt", "food_place", "product", "general"]);
-
+/**
+ * Classify a photo using keyword matching on the vision description.
+ * No API key required — works with Claude subprocess vision output.
+ */
 export async function classifyPhoto(opts: {
   caption: string;
   visionDescription: string;
 }): Promise<PhotoCategory> {
-  const { caption, visionDescription } = opts;
+  const text = `${opts.caption} ${opts.visionDescription}`.toLowerCase();
 
-  const res = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 20,
-    messages: [{
-      role: "user",
-      content: `Classify this photo into exactly one category. Reply with ONLY the category name.
-
-Categories:
-- receipt — shows a bill, invoice, or payment confirmation
-- food_place — shows food, a restaurant, café, or place to eat
-- product — shows a product the user may be considering purchasing
-- general — anything else
-
-Caption: ${caption || "(none)"}
-Image description: ${visionDescription}`,
-    }],
-  });
-
-  const raw = (res.content[0] as any).text.trim().toLowerCase() as PhotoCategory;
-  return VALID_PHOTO_CATEGORIES.has(raw) ? raw : "general";
+  if (/receipt|invoice|bill|payment\s*confirmation|total.*[\$£€]|total.*sgd|total.*rm|subtotal|amount\s*due|paid|transaction/i.test(text)) return "receipt";
+  if (/restaurant|café|cafe|food|dish|meal|menu|dining|bakery|hawker|kopitiam/i.test(text)) return "food_place";
+  if (/product|package|box|brand|label|price\s*tag|shopping|unbox/i.test(text)) return "product";
+  return "general";
 }
 
 export async function lookupVenueAndNotify(opts: {
@@ -151,10 +134,8 @@ export async function lookupProductAndNotify(opts: {
 
 export async function saveMemoryEntry(content: string): Promise<void> {
   try {
-    const { getConvex, api } = await import("../convex");
-    const cx = getConvex();
-    if (!cx) return;
-    await cx.mutation(api.memory.insert, { type: "fact", content });
+    const { addFact } = await import("../memory");
+    await addFact(content);
   } catch (err) {
     console.warn(`Memory save failed: ${err}`);
   }

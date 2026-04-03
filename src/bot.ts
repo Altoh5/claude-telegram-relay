@@ -648,7 +648,7 @@ async function handleTextMessage(ctx: Context): Promise<void> {
   // ----- Receipt reply handling -----
   {
     const sb = (await import("./lib/supabase")).getSupabase();
-    if (sb) {
+    if (sb && process.env.ANTHROPIC_API_KEY) {
       const { data: pendingReceipts } = await sb
         .from("async_tasks")
         .select("*")
@@ -661,7 +661,7 @@ async function handleTextMessage(ctx: Context): Promise<void> {
       if (pendingReceipts && pendingReceipts.length > 0) {
         const task = pendingReceipts[0];
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
-        const client = new Anthropic();
+        const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const parseRes = await client.messages.create({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 100,
@@ -1513,14 +1513,16 @@ async function handlePhotoMessage(ctx: Context): Promise<void> {
     }
 
     if (photoCategory === "receipt") {
-      const { startReceiptFlow } = await import("./lib/flows/receipt");
+      const { extractReceiptData, startReceiptFlow } = await import("./lib/flows/receipt");
+      const receipt = await extractReceiptData(visionDescription);
       await startReceiptFlow({
         botToken: BOT_TOKEN!,
         chatId,
-        vendor: "",
-        amount: 0,
-        currency: "SGD",
-        date: new Date().toISOString().slice(0, 10),
+        vendor: receipt.vendor,
+        items: receipt.items,
+        amount: receipt.amount,
+        currency: receipt.currency,
+        date: receipt.date,
         imagePath: localPath,
       });
       return;
@@ -1799,6 +1801,29 @@ async function handleCallbackQuery(ctx: Context): Promise<void> {
 
   if (data.startsWith("ph:skip:")) {
     await ctx.editMessageText("✓").catch(() => {});
+    return;
+  }
+
+  // ---- Receipt classification callbacks ----
+  if (data.startsWith("rcpt:biz:") || data.startsWith("rcpt:personal:")) {
+    const isBusiness = data.startsWith("rcpt:biz:");
+    const taskId = data.replace(/^rcpt:(biz|personal):/, "");
+    const category = isBusiness ? "business" as const : "personal" as const;
+    try {
+      const { classifyReceipt } = await import("./lib/flows/receipt");
+      await classifyReceipt({
+        botToken: BOT_TOKEN!,
+        chatId: String(ctx.chat?.id || ""),
+        taskId,
+        category,
+      });
+      await ctx.editMessageText(
+        `${isBusiness ? "💼" : "🏠"} Classified as ${isBusiness ? "Business" : "Personal"} expense ✓`
+      ).catch(() => {});
+    } catch (err: any) {
+      console.error("[receipt] Classification error:", err);
+      await ctx.editMessageText(`❌ Error: ${err.message}`).catch(() => {});
+    }
     return;
   }
 
